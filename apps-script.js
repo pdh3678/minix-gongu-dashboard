@@ -112,10 +112,10 @@ function doGet(e) {
       return _json(_debugViewsRaw(sheet));
     }
 
-    var purchases = parseMainSheet(sheet);
-    purchases.forEach(function(p, idx) { p.id = idx + 1; });
+    var result = parseMainSheet(sheet, ss);
+    result.deals.forEach(function(p, idx) { p.id = idx + 1; });
 
-    return _json({ purchases: purchases, updatedAt: new Date().toISOString() });
+    return _json({ purchases: result.deals, updatedAt: new Date().toISOString(), codeMatchStats: result.codeStats });
   } catch (err) {
     return _json({ error: err.toString(), purchases: [] });
   }
@@ -146,10 +146,86 @@ function _debugViewsRaw(sheet) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 브랜드별 일정 시트 → 상품코드 매칭 ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 실적통합엔 상품코드 컬럼이 없어서, 브랜드별 일정 시트(구조 동일: 3행 헤더, 4행부터 데이터)에서
+// 채널명(인플루언서)+시작일(월/일)로 매칭해 가져옴. 셋 다 열 구조가 같음:
+// A연도 B월 C브랜드 D제품명 E인플루언서 F벤더사 G링크 H상품코드 I상태 J시작일 K마감일 ...
+var SCHEDULE_SHEETS = ['1) 더 플렌더', '2) 더 시프트  더 슬림', '3) 더 에어드라이'];
+var SCHED_COL = { product: 3, channel: 4, code: 7, start: 9, end: 10 };
+var SCHED_START_ROW = 3; // 0-based (4행부터 데이터)
+
+// 채널명 정규화: 공백 제거 + "재이맘 (단독일정)"처럼 괄호가 붙으면 괄호 앞부분만 사용
+function _normChannel(s) {
+  return String(s || '').split('(')[0].replace(/\s/g, '').toLowerCase().trim();
+}
+
+// 더 플렌더는 모델(PRO/MAX/mini)까지 구분, 나머지는 제품 단위로 묶음
+function _scheduleProductKey(p) {
+  var np = _normProd(p);
+  if (np.indexOf('플렌더') >= 0) {
+    if (np.slice(-3) === 'pro') return '플렌더PRO';
+    if (np.slice(-3) === 'max') return '플렌더MAX';
+    return '플렌더MINI';
+  }
+  if (np === '더시프트') return '시프트';
+  if (np === '더슬림') return '슬림';
+  if (np.indexOf('에어드라이') >= 0) return '에어드라이';
+  return np;
+}
+
+function _cellToMD(cell) {
+  if (cell instanceof Date && !isNaN(cell.getTime())) {
+    return _pad(cell.getMonth() + 1) + '-' + _pad(cell.getDate());
+  }
+  return null;
+}
+
+// 브랜드별 일정 시트 3개를 훑어서 { productKey__채널__MM-DD(시작일) : [{code, endMD}] } 맵으로 만듦
+function _loadScheduleCodeMap(ss) {
+  var map = {};
+  for (var s = 0; s < SCHEDULE_SHEETS.length; s++) {
+    var sheet = ss.getSheetByName(SCHEDULE_SHEETS[s]);
+    if (!sheet) { Logger.log('일정 시트를 찾을 수 없음: ' + SCHEDULE_SHEETS[s]); continue; }
+    var data = sheet.getDataRange().getValues();
+    for (var i = SCHED_START_ROW; i < data.length; i++) {
+      var row = data[i];
+      var product = String(row[SCHED_COL.product] || '').trim();
+      var channel = String(row[SCHED_COL.channel] || '').trim();
+      if (!product || !channel) continue;
+      var startMD = _cellToMD(row[SCHED_COL.start]);
+      if (!startMD) continue;
+      var endMD = _cellToMD(row[SCHED_COL.end]) || startMD;
+      var codeRaw = String(row[SCHED_COL.code] || '').trim();
+      var code = (codeRaw && codeRaw.toUpperCase() !== 'X') ? codeRaw : '';
+      var key = _scheduleProductKey(product) + '__' + _normChannel(channel) + '__' + startMD;
+      if (!map[key]) map[key] = [];
+      map[key].push({ code: code, endMD: endMD });
+    }
+  }
+  return map;
+}
+
+// 실적통합 한 행에 대해 상품코드를 찾음. 후보가 여러 개면 종료일(월/일)까지 비교해 좁힘
+function _matchScheduleCode(scheduleMap, product, channel, startDate, endDate) {
+  if (!scheduleMap || !startDate) return { code: '', matched: false };
+  var sMD = startDate.slice(5);
+  var key = _scheduleProductKey(product) + '__' + _normChannel(channel) + '__' + sMD;
+  var candidates = scheduleMap[key] || [];
+  if (candidates.length === 1) return { code: candidates[0].code, matched: true };
+  if (candidates.length > 1) {
+    var eMD = (endDate || startDate).slice(5);
+    var narrowed = candidates.filter(function (c) { return c.endMD === eMD; });
+    if (narrowed.length === 1) return { code: narrowed[0].code, matched: true };
+  }
+  return { code: '', matched: false };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 메인 시트 파싱 (한 행 = 공구 1건) ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function parseMainSheet(sheet) {
+function parseMainSheet(sheet, ss) {
   var data = sheet.getDataRange().getValues();
 
   // 취소선 감지 (B열 기준, 실패해도 파싱은 계속)
@@ -174,6 +250,15 @@ function parseMainSheet(sheet) {
   } catch (e) {
     Logger.log('릴스 링크 읽기 실패 (무시): ' + e);
   }
+
+  // 브랜드별 일정 시트 → 상품코드 매칭용 맵 (실패해도 파싱은 계속, 전부 미매칭 처리)
+  var scheduleMap = null;
+  try {
+    scheduleMap = _loadScheduleCodeMap(ss || sheet.getParent());
+  } catch (e) {
+    Logger.log('상품코드 매칭용 일정 시트 로드 실패 (무시): ' + e);
+  }
+  var codeStats = { total: 0, matched: 0, unmatched: 0 };
 
   var today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -251,6 +336,17 @@ function parseMainSheet(sheet) {
       status = '예정';
     }
 
+    // 상품코드: 우리가 새로 추가한 AC열에 값이 있으면 그걸 우선 사용하고,
+    // 없으면 브랜드별 일정 시트에서 채널명+시작일(월/일)로 매칭 (모호하면 종료일까지 비교)
+    var code = String(row[COL.code] || '').trim();
+    if (!code) {
+      codeStats.total++;
+      var m = _matchScheduleCode(scheduleMap, product, channel, startDate, endDate);
+      // 일정 행을 찾았어도 그 행의 상품코드 자체가 비어있으면("X" 포함) 실질적으론 미매칭으로 집계
+      if (m.matched && m.code) { code = m.code; codeStats.matched++; }
+      else { codeStats.unmatched++; }
+    }
+
     deals.push({
       id:         0,
       brand:      'Minix',
@@ -267,7 +363,7 @@ function parseMainSheet(sheet) {
       views:      views,
       qty:        qty,
       revenue:    revenue,
-      code:        String(row[COL.code] || '').trim(),
+      code:        code,
       composition: String(row[COL.composition] || '').trim(),
       link:        String(row[COL.link] || '').trim(),
       reels:       reels,
@@ -279,8 +375,8 @@ function parseMainSheet(sheet) {
     });
   }
 
-  Logger.log('파싱 완료: ' + deals.length + '건 / 시트: ' + sheet.getName());
-  return deals;
+  Logger.log('파싱 완료: ' + deals.length + '건 / 시트: ' + sheet.getName() + ' / 상품코드 매칭: ' + codeStats.matched + '/' + codeStats.total);
+  return { deals: deals, codeStats: codeStats };
 }
 
 // ── 날짜 파싱: Date 셀 → "YYYY-MM-DD" (연도 + "M/D" 텍스트 형식도 폴백 지원) ──

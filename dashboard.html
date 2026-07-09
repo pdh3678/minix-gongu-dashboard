@@ -65,6 +65,19 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 .dash-mode-grp{display:flex;gap:4px}
 .dash-psel{width:auto;min-width:140px;margin:0}
 
+/* ── 브랜드별 실적: 연도/월 다중선택 필터 ── */
+.ym-filter-bar{display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.ym-filter-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ym-filter-lbl{font-size:11px;font-weight:700;color:var(--text-2);flex-shrink:0}
+.ym-chk-list{display:flex;flex-wrap:wrap;gap:4px 10px}
+.ym-chk{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.ym-mini-btn{padding:3px 9px;border-radius:12px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+.ym-mini-btn:hover{background:var(--border)}
+.ym-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ym-chip{display:inline-flex;align-items:center;gap:5px;background:var(--minix-lt);color:var(--minix);font-size:11px;font-weight:700;padding:3px 6px 3px 10px;border-radius:12px}
+.ym-chip button{background:none;border:none;color:var(--minix);cursor:pointer;font-size:11px;padding:0;line-height:1;font-family:inherit}
+.ym-chip-all{background:var(--nbg);color:var(--text-2);padding:3px 10px}
+
 /* ── 레이아웃: 사이드바 + 본문 ── */
 .app-shell{display:flex;min-height:100vh}
 .app-main{flex:1;min-width:0;margin-left:220px;transition:margin-left .18s ease}
@@ -124,6 +137,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 }
 
 .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+#salesKpiRow{grid-template-columns:repeat(3,1fr)}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:15px 17px;box-shadow:var(--sh)}
 .kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-3);margin-bottom:5px}
 .kpi-val{font-size:24px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
@@ -457,6 +471,28 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <button class="stab" data-m="MAX">MAX</button>
         <button class="stab" data-m="mini">mini</button>
       </div>
+
+      <div class="card">
+        <div class="card-hd">기간 필터</div>
+        <div class="ym-filter-bar">
+          <div class="ym-filter-group">
+            <span class="ym-filter-lbl">연도</span>
+            <div class="ym-chk-list" id="yearChkList"></div>
+            <button class="ym-mini-btn" onclick="ymSelectAll('years')">전체</button>
+            <button class="ym-mini-btn" onclick="ymSelectNone('years')">해제</button>
+          </div>
+          <div class="ym-filter-group">
+            <span class="ym-filter-lbl">월</span>
+            <div class="ym-chk-list" id="monthChkList"></div>
+            <button class="ym-mini-btn" onclick="ymSelectAll('months')">전체</button>
+            <button class="ym-mini-btn" onclick="ymSelectNone('months')">해제</button>
+          </div>
+        </div>
+        <div class="ym-chips" id="ymChips"></div>
+      </div>
+
+      <div class="kpi-row" id="salesKpiRow"></div>
+
       <div class="card" id="perfCard">
         <div class="card-hd">실적 상세</div>
         <div class="tbl-wrap">
@@ -1089,14 +1125,75 @@ const SALES_CELL={
   naverLink:d=>naverProductLink(d.code)?`<a href="${naverProductLink(d.code)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="pcode-link">🔗 열기</a>`:'<span style="color:var(--text-3)">—</span>'
 };
 
+/* ── 브랜드별 실적: 연도/월 다중선택 필터 ── */
+const SALES_YM={years:new Set(),months:new Set(),_initialized:false};
+function salesAvailableYears(){
+  return[...new Set(DATA.filter(d=>d.start).map(d=>yearOf(d.start)))].sort((a,b)=>a-b);
+}
+function salesYMMatch(d){
+  if(!d.start)return false;
+  return SALES_YM.years.has(yearOf(d.start))&&SALES_YM.months.has(monthOf(d.start));
+}
+function ymSelectAll(kind){
+  if(kind==='years')SALES_YM.years=new Set(salesAvailableYears());
+  else SALES_YM.months=new Set([1,2,3,4,5,6,7,8,9,10,11,12]);
+  renderTbl();
+}
+function ymSelectNone(kind){
+  SALES_YM[kind]=new Set();
+  renderTbl();
+}
+function toggleYM(kind,val,checked){
+  if(checked)SALES_YM[kind].add(val);else SALES_YM[kind].delete(val);
+  renderTbl();
+}
+function renderYMFilterBar(){
+  const years=salesAvailableYears();
+  if(!SALES_YM._initialized){
+    SALES_YM.years=new Set(years);
+    SALES_YM.months=new Set([1,2,3,4,5,6,7,8,9,10,11,12]);
+    SALES_YM._initialized=true;
+  }
+  document.getElementById('yearChkList').innerHTML=years.map(y=>`
+    <label class="ym-chk"><input type="checkbox" ${SALES_YM.years.has(y)?'checked':''} onchange="toggleYM('years',${y},this.checked)">${y}</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>';
+  document.getElementById('monthChkList').innerHTML=Array.from({length:12},(_,i)=>i+1).map(m=>`
+    <label class="ym-chk"><input type="checkbox" ${SALES_YM.months.has(m)?'checked':''} onchange="toggleYM('months',${m},this.checked)">${m}월</label>`).join('');
+
+  const chips=[];
+  if(years.length&&SALES_YM.years.size===years.length)chips.push({all:true,lbl:'연도: 전체'});
+  else[...SALES_YM.years].sort((a,b)=>a-b).forEach(y=>chips.push({type:'years',val:y,lbl:y+'년'}));
+  if(SALES_YM.months.size===12)chips.push({all:true,lbl:'월: 전체'});
+  else[...SALES_YM.months].sort((a,b)=>a-b).forEach(m=>chips.push({type:'months',val:m,lbl:m+'월'}));
+  document.getElementById('ymChips').innerHTML=chips.map(c=>c.all?
+    `<span class="ym-chip ym-chip-all">${c.lbl}</span>`:
+    `<span class="ym-chip">${c.lbl}<button onclick="toggleYM('${c.type}',${c.val},false)">✕</button></span>`
+  ).join('');
+}
+
+/* 실적 상세 표 상단 KPI (연도/월 필터 반영) */
+function renderSalesKpi(){
+  const f=filtered().filter(salesYMMatch);
+  const tRev=f.reduce((s,d)=>s+(d.rev||0),0);
+  const tQty=f.reduce((s,d)=>s+(d.qty||0),0);
+  const withViews=f.filter(d=>d.views!=null);
+  const avgViews=withViews.length?withViews.reduce((s,d)=>s+d.views,0)/withViews.length:0;
+  document.getElementById('salesKpiRow').innerHTML=`
+    <div class="kpi"><div class="kpi-lbl">총 매출</div><div class="kpi-val cm">${tRev?won(tRev):'—'}</div><div class="kpi-sub">${f.length}건</div></div>
+    <div class="kpi"><div class="kpi-lbl">총 판매수량</div><div class="kpi-val cn">${tQty?num(tQty)+'<span class="kpi-unit">개</span>':'—'}</div><div class="kpi-sub">선택된 기간 기준</div></div>
+    <div class="kpi"><div class="kpi-lbl">평균 릴스 조회수</div><div class="kpi-val cm">${avgViews?avgViews.toFixed(1)+'<span class="kpi-unit">만</span>':'—'}</div><div class="kpi-sub">조회수 등록 건 기준</div></div>`;
+}
+
 function renderTbl(){
+  renderYMFilterBar();
+  renderSalesKpi();
+
   document.getElementById('tHead').innerHTML=SALES_COLS.map(c=>{
     const sorted=SALES_SORT.key===c.key;
     const arrow=sorted?(SALES_SORT.dir>0?'▲':'▼'):'⇕';
     return`<th class="sortable${sorted?' sorted':''}${colClass(c)}" onclick="sortSales('${c.key}')">${c.lb}<span class="sort-ic">${arrow}</span></th>`;
   }).join('');
 
-  const f=filtered().slice();
+  const f=filtered().filter(salesYMMatch);
   if(SALES_SORT.key){
     const acc=SALES_ACC[SALES_SORT.key];
     f.sort((a,b)=>{
@@ -1572,6 +1669,11 @@ async function fetchLive(){
     if(adapted&&adapted.length){
       DATA.splice(0,DATA.length,...adapted);
       setConn('live');render();
+      if(j.codeMatchStats){
+        const cs=j.codeMatchStats;
+        console.log(`[상품코드 매칭] ${cs.matched}/${cs.total}건 성공 (미매칭 ${cs.unmatched}건)`);
+        if(cs.total>0)showToast(`상품코드 매칭: ${cs.matched}/${cs.total}건 성공`);
+      }
     }else throw new Error('데이터가 비어있습니다');
   }catch(e){console.error(e);setConn('error');}
   finally{setLoad(false);}
