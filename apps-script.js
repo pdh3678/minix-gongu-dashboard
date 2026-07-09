@@ -35,12 +35,11 @@ var COL = {
   endMD:      12,  // M: 종료일 (Date 셀. 드물게 "M/D" 텍스트인 경우 K열 연도와 조합)
   status:     13,  // N: 진행상태 (종료/진행중/예정, 수식으로 자동 계산됨)
   format:     14,  // O: 포맷 (릴스/유튜브/게시물)
-  views:      15,  // P: 릴스 조회수 합계 (Q~W 개별 게시물 조회수의 SUM 수식)
+  // P: 릴스 조회수 합계. 값이 이미 "만" 단위로 저장됨 (예: 3.4 = 3.4만 = 34,000회)
+  // "조회수" 헤더가 P~Z에 병합돼 있어 헤더 텍스트로는 열을 찾을 수 없음 → 고정 인덱스(P, 16번째 열)로 읽음
+  // Q~V열은 회차별 개별 조회수(하이퍼링크 포함)이므로 사용하지 않음
+  views:      15,  // P
 };
-
-// 조회수: 개별 게시물 조회수가 흩어진 열 범위 (P열 합계가 비어있을 때의 폴백)
-var VIEWS_COL_START = 15; // P
-var VIEWS_COL_END   = 26; // Z
 
 // 접근 제어
 var REQUIRE_AUTH   = true;
@@ -97,6 +96,11 @@ function doGet(e) {
       throw new Error('데이터 시트를 찾을 수 없습니다. 현재 시트 목록: ' + allNames.join(', '));
     }
 
+    // 디버그 모드: ?debug=1 로 호출 시 316행 근처 원본 P~V열 값을 그대로 반환 (조회수 파싱 확인용)
+    if (e && e.parameter && e.parameter.debug === '1') {
+      return _json(_debugViewsRaw(sheet));
+    }
+
     var purchases = parseMainSheet(sheet);
     purchases.forEach(function(p, idx) { p.id = idx + 1; });
 
@@ -104,6 +108,30 @@ function doGet(e) {
   } catch (err) {
     return _json({ error: err.toString(), purchases: [] });
   }
+}
+
+// ── 디버그: 316행 근처 5개 행의 P~V열 원시값 그대로 반환 ──
+function _debugViewsRaw(sheet) {
+  var data = sheet.getDataRange().getValues();
+  var centerRow1based = 316;
+  var startIdx = Math.max(DATA_START_ROW, centerRow1based - 3); // 0-based
+  var endIdx = Math.min(data.length, startIdx + 5);
+  var cols = ['P', 'Q', 'R', 'S', 'T', 'U', 'V']; // 15~21 (0-based)
+  var rows = [];
+  for (var i = startIdx; i < endIdx; i++) {
+    var row = data[i];
+    var vals = {};
+    for (var c = 0; c < cols.length; c++) {
+      var cellVal = row[15 + c];
+      vals[cols[c]] = {
+        value: cellVal,
+        type: Object.prototype.toString.call(cellVal),
+        asString: String(cellVal)
+      };
+    }
+    rows.push({ row: i + 1, brand: row[COL.brand], product: row[COL.product], cols: vals });
+  }
+  return { debug: true, sheetName: sheet.getName(), totalDataRows: data.length, rows: rows };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -161,14 +189,9 @@ function parseMainSheet(sheet) {
     var statusRaw  = String(row[COL.status]  || '').trim();
     var format     = String(row[COL.format]  || '').trim();
 
-    // 조회수: P열 우선, 없으면 P~T 합산
+    // 조회수: P열(고정 인덱스) 값 그대로 사용 — 이미 "만" 단위 (예: 3.4 = 3.4만회). Q~V열(회차별)은 사용하지 않음
     var views = _numOrNull(row[COL.views]);
-    if (views == null) {
-      for (var v = VIEWS_COL_START; v <= VIEWS_COL_END; v++) {
-        var vv = row[v] !== undefined ? _numOrNull(row[v]) : null;
-        if (vv != null) views = (views || 0) + vv;
-      }
-    }
+    if (views === 0) views = null; // 0/빈값은 프론트에서 "—"로 표시
 
     // 날짜 생성: L/M열은 보통 실제 날짜 셀(Date)이며, 드물게 "M/D" 텍스트 + K(연도)로 입력된 경우도 처리
     var startDate = _parseDate(startCell, year);

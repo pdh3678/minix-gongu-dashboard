@@ -514,8 +514,8 @@ tbody tr:hover td{background:var(--surface-2)}
     </div>
     <div class="fg fg-2" style="margin-bottom:14px">
       <div class="f-grp full">
-        <label class="f-lbl">릴스 조회수</label>
-        <input class="f-inp" type="number" id="pViews" placeholder="예: 286000">
+        <label class="f-lbl">릴스 조회수 <span class="f-badge">만 단위</span></label>
+        <input class="f-inp" type="number" step="0.1" id="pViews" placeholder="예: 28.6 (=28.6만회)">
       </div>
       <div class="f-grp">
         <label class="f-lbl">판매량 (개)</label>
@@ -545,12 +545,12 @@ tbody tr:hover td{background:var(--surface-2)}
 <script>
 'use strict';
 const SAMPLE=[
-  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:286000,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
-  {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:198000,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
-  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:412000,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
-  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:156000,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
-  {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'키친퀸',platform:'인스타그램',chId:'kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:334000,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
-  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:278000,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
+  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
+  {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:19.8,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
+  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:41.2,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
+  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:15.6,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
+  {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'키친퀸',platform:'인스타그램',chId:'kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:33.4,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
+  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:27.8,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
   {id:7,brand:'Minix',product:'더 플렌더 MAX',ch:'뷰티노트',platform:'인스타그램',chId:'beauty.note',start:'2026-07-02',end:'2026-07-04',status:'예정',views:null,qty:null,rev:null,code:'MX-BLD-002',s:{retail:59900,sale:49900,comm:14,note:'신규 채널 기본 스킴'}},
   {id:8,brand:'Minix',product:'더슬림',ch:'핏푸디',platform:'인스타그램',chId:'fit.foodie',start:'2026-07-08',end:'2026-07-10',status:'예정',views:null,qty:null,rev:null,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
 ];
@@ -625,14 +625,15 @@ function brandPill(){return`<span class="bp bm">Minix</span>`;}
 /* KPI */
 function renderKPI(){
   const f=filtered(),done=f.filter(d=>d.status==='완료'),act=f.filter(d=>d.status==='진행중'),plan=f.filter(d=>d.status==='예정');
+  // d.views는 이미 "만" 단위(P열 원값) — 실제 조회수로 환산할 때만 ×10000
   const tRev=done.reduce((s,d)=>s+(d.rev||0),0),tViews=done.reduce((s,d)=>s+(d.views||0),0),tQty=done.reduce((s,d)=>s+(d.qty||0),0);
-  const avgV=done.length?Math.round(tViews/done.length):0;
-  const conv=tViews>0&&tQty>0?((tQty/tViews)*100).toFixed(2)+'%':'—';
+  const avgV=done.length?tViews/done.length:0;
+  const conv=tViews>0&&tQty>0?((tQty/(tViews*10000))*100).toFixed(2)+'%':'—';
   document.getElementById('kpiRow').innerHTML=`
     <div class="kpi"><div class="kpi-lbl">총 매출 (완료)</div><div class="kpi-val cm">${tRev?won(tRev):'—'}</div><div class="kpi-sub">${done.length}건 완료</div></div>
     <div class="kpi"><div class="kpi-lbl">진행 중</div><div class="kpi-val cw">${act.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">${act.map(d=>d.product).join(' · ')||'없음'}</div></div>
     <div class="kpi"><div class="kpi-lbl">예정</div><div class="kpi-val cn">${plan.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">다가오는 공구</div></div>
-    <div class="kpi"><div class="kpi-lbl">평균 릴스 조회수</div><div class="kpi-val cm">${avgV?(avgV/10000).toFixed(1)+'<span class="kpi-unit">만</span>':'—'}</div><div class="kpi-sub">완료 건 기준</div></div>
+    <div class="kpi"><div class="kpi-lbl">평균 릴스 조회수</div><div class="kpi-val cm">${avgV?avgV.toFixed(1)+'<span class="kpi-unit">만</span>':'—'}</div><div class="kpi-sub">완료 건 기준</div></div>
     <div class="kpi"><div class="kpi-lbl">조회→구매 전환율</div><div class="kpi-val cok">${conv}</div><div class="kpi-sub">릴스 조회수 기준</div></div>`;
 }
 
@@ -671,7 +672,7 @@ function renderEv(){
         <div class="ev-top"><span class="ev-prod">${d.product}</span>${bdg(d.status)}</div>
         <div class="ev-ch">${d.ch}${d.chId?` · ${d.link?`<a href="${d.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')}`:''}</div>
         <div class="ev-dt">${fmtF(d.start)} ~ ${fmtF(d.end)} · ${durDays(d.start,d.end)}일</div>
-        ${d.views!=null?`<div class="ev-mets"><span>👁 <span class="ev-mv">${(d.views/10000).toFixed(0)}만</span></span><span>🛒 <span class="ev-mv">${num(d.qty)}개</span></span><span>💰 <span class="ev-mv">${won(d.rev)}</span></span></div>`:''}
+        ${d.views!=null?`<div class="ev-mets"><span>👁 <span class="ev-mv">${d.views.toFixed(1)}만</span></span><span>🛒 <span class="ev-mv">${num(d.qty)}개</span></span><span>💰 <span class="ev-mv">${won(d.rev)}</span></span></div>`:''}
       </div>
     </div>`).join(''):'<div style="text-align:center;padding:40px 0;color:var(--text-3)">해당 조건의 공구가 없습니다</div>';
 }
@@ -690,7 +691,7 @@ function renderTbl(){
       <td>${fmtS(d.start)}</td>
       <td>${fmtS(d.end)}</td>
       <td>${durDays(d.start,d.end)?durDays(d.start,d.end)+'일':'—'}</td>
-      <td>${d.views!=null?`<div class="vbar-wrap"><div class="vbar-bg"><div class="vbar-fill" style="width:${Math.round(d.views/mx*100)}%"></div></div><span>${(d.views/10000).toFixed(0)}만</span></div>`:'<span style="color:var(--text-3)">—</span>'}</td>
+      <td>${d.views!=null?`<div class="vbar-wrap"><div class="vbar-bg"><div class="vbar-fill" style="width:${Math.round(d.views/mx*100)}%"></div></div><span>${d.views.toFixed(1)}만</span></div>`:'<span style="color:var(--text-3)">—</span>'}</td>
       <td>${num(d.qty)}</td><td><strong>${won(d.rev)}</strong></td>
       <td>${bdg(d.status)}</td>
       <td><span class="pcode" onclick="event.stopPropagation();cpTxt('${d.code}',this)">${d.code||'—'}</span></td>
@@ -703,10 +704,12 @@ function renderSc(){
   const pts=filtered().filter(d=>d.views&&d.rev);
   const w=document.getElementById('scWrap');
   if(!pts.length){w.innerHTML='<div style="text-align:center;padding:60px;color:var(--text-3)">실적 데이터가 없습니다</div>';document.getElementById('corrLbl').textContent='';return;}
-  const W=500,H=250,L=58,R=18,T=18,B=40,pw=W-L-R,ph=H-T-B,mxX=600000,mxY=25000000;
+  const W=500,H=250,L=58,R=18,T=18,B=40,pw=W-L-R,ph=H-T-B,mxY=25000000;
+  // d.views는 "만" 단위 — 실제 데이터 최대값 기준으로 X축 스케일을 동적으로 잡음
+  const mxX=Math.max(10,Math.ceil(Math.max(...pts.map(d=>d.views))/10)*10);
   const px=v=>L+(v/mxX)*pw,py=v=>T+ph-(v/mxY)*ph;
   let s='';
-  for(let i=0;i<=5;i++){const gx=L+i*pw/5,gy=T+i*ph/5;s+=`<line x1="${gx}" y1="${T}" x2="${gx}" y2="${T+ph}" stroke="#E4E7EF" stroke-width="1"/><line x1="${L}" y1="${gy}" x2="${L+pw}" y2="${gy}" stroke="#E4E7EF" stroke-width="1"/>`;if(i>0){s+=`<text x="${gx}" y="${T+ph+14}" text-anchor="middle" fill="#9399A6" font-size="9">${(mxX/5*i/10000).toFixed(0)}만</text><text x="${L-4}" y="${T+ph-i*ph/5+4}" text-anchor="end" fill="#9399A6" font-size="9">${((mxY-mxY/5*i)/1000000).toFixed(0)}M</text>`;}}
+  for(let i=0;i<=5;i++){const gx=L+i*pw/5,gy=T+i*ph/5;s+=`<line x1="${gx}" y1="${T}" x2="${gx}" y2="${T+ph}" stroke="#E4E7EF" stroke-width="1"/><line x1="${L}" y1="${gy}" x2="${L+pw}" y2="${gy}" stroke="#E4E7EF" stroke-width="1"/>`;if(i>0){s+=`<text x="${gx}" y="${T+ph+14}" text-anchor="middle" fill="#9399A6" font-size="9">${(mxX/5*i).toFixed(0)}만</text><text x="${L-4}" y="${T+ph-i*ph/5+4}" text-anchor="end" fill="#9399A6" font-size="9">${((mxY-mxY/5*i)/1000000).toFixed(0)}M</text>`;}}
   s+=`<text x="${L}" y="${T+ph+14}" text-anchor="middle" fill="#9399A6" font-size="9">0</text><text x="${L+pw/2}" y="${H-3}" text-anchor="middle" fill="#9399A6" font-size="9">릴스 조회수</text><text x="11" y="${T+ph/2}" text-anchor="middle" fill="#9399A6" font-size="9" transform="rotate(-90 11 ${T+ph/2})">매출</text>`;
   if(pts.length>=2){
     const n=pts.length,xs=pts.map(d=>d.views),ys=pts.map(d=>d.rev);
@@ -718,7 +721,7 @@ function renderSc(){
     document.getElementById('corrLbl').textContent=dr>0?`r = ${(nr/dr).toFixed(2)}`:'';
   }else document.getElementById('corrLbl').textContent='';
   s+=`<line x1="${L}" y1="${T}" x2="${L}" y2="${T+ph}" stroke="#DDE1EB" stroke-width="1.5"/><line x1="${L}" y1="${T+ph}" x2="${L+pw}" y2="${T+ph}" stroke="#DDE1EB" stroke-width="1.5"/>`;
-  pts.forEach(d=>{const c='#3B56E5',cx=px(d.views),cy=py(d.rev);s+=`<circle cx="${cx}" cy="${cy}" r="7" fill="${c}" fill-opacity=".8" stroke="#fff" stroke-width="2"><title>${d.product} · ${d.ch}\n조회수: ${num(d.views)}\n매출: ${won(d.rev)}</title></circle><text x="${cx+10}" y="${cy+3}" font-size="8" fill="${c}" opacity=".7">${d.ch}</text>`;});
+  pts.forEach(d=>{const c='#3B56E5',cx=px(d.views),cy=py(d.rev);s+=`<circle cx="${cx}" cy="${cy}" r="7" fill="${c}" fill-opacity=".8" stroke="#fff" stroke-width="2"><title>${d.product} · ${d.ch}\n조회수: ${d.views.toFixed(1)}만\n매출: ${won(d.rev)}</title></circle><text x="${cx+10}" y="${cy+3}" font-size="8" fill="${c}" opacity=".7">${d.ch}</text>`;});
   w.innerHTML=`<svg viewBox="0 0 ${W} ${H}" class="csvg">${s}</svg>`;
 }
 
