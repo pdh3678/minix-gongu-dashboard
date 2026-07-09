@@ -181,13 +181,36 @@ function _cellToMD(cell) {
   return null;
 }
 
-// 브랜드별 일정 시트 3개를 훑어서 { productKey__채널__MM-DD(시작일) : [{code, endMD}] } 맵으로 만듦
+// 인플루언서명 셀의 하이퍼링크(인스타그램 프로필 등) 중 첫 번째로 발견되는 링크를 반환
+// (셀 전체에 링크가 걸려 있으면 getLinkUrl()로 바로 잡히고, 일부 텍스트에만 걸린 경우엔 getRuns()를 훑어야 함)
+function _firstLinkUrl(richTextValue) {
+  if (!richTextValue) return '';
+  var direct = richTextValue.getLinkUrl();
+  if (direct) return direct;
+  var runs = richTextValue.getRuns();
+  for (var r = 0; r < runs.length; r++) {
+    var u = runs[r].getLinkUrl();
+    if (u) return u;
+  }
+  return '';
+}
+
+// 브랜드별 일정 시트 3개를 훑어서 { productKey__채널__MM-DD(시작일) : [{code, endMD, link}] } 맵으로 만듦
+// (인플루언서명 열의 하이퍼링크는 시트당 한 번에 getRichTextValues()로 읽음 — 셀 단위 반복 호출 금지)
 function _loadScheduleCodeMap(ss) {
   var map = {};
   for (var s = 0; s < SCHEDULE_SHEETS.length; s++) {
     var sheet = ss.getSheetByName(SCHEDULE_SHEETS[s]);
     if (!sheet) { Logger.log('일정 시트를 찾을 수 없음: ' + SCHEDULE_SHEETS[s]); continue; }
     var data = sheet.getDataRange().getValues();
+    var rowCount = data.length - SCHED_START_ROW;
+
+    var channelLinks = [];
+    if (rowCount > 0) {
+      var richCol = sheet.getRange(SCHED_START_ROW + 1, SCHED_COL.channel + 1, rowCount, 1).getRichTextValues();
+      channelLinks = richCol.map(function (r) { return _firstLinkUrl(r[0]); });
+    }
+
     for (var i = SCHED_START_ROW; i < data.length; i++) {
       var row = data[i];
       var product = String(row[SCHED_COL.product] || '').trim();
@@ -198,27 +221,28 @@ function _loadScheduleCodeMap(ss) {
       var endMD = _cellToMD(row[SCHED_COL.end]) || startMD;
       var codeRaw = String(row[SCHED_COL.code] || '').trim();
       var code = (codeRaw && codeRaw.toUpperCase() !== 'X') ? codeRaw : '';
+      var profileLink = channelLinks[i - SCHED_START_ROW] || '';
       var key = _scheduleProductKey(product) + '__' + _normChannel(channel) + '__' + startMD;
       if (!map[key]) map[key] = [];
-      map[key].push({ code: code, endMD: endMD });
+      map[key].push({ code: code, endMD: endMD, link: profileLink });
     }
   }
   return map;
 }
 
-// 실적통합 한 행에 대해 상품코드를 찾음. 후보가 여러 개면 종료일(월/일)까지 비교해 좁힘
+// 실적통합 한 행에 대해 상품코드+프로필 링크를 찾음. 후보가 여러 개면 종료일(월/일)까지 비교해 좁힘
 function _matchScheduleCode(scheduleMap, product, channel, startDate, endDate) {
-  if (!scheduleMap || !startDate) return { code: '', matched: false };
+  if (!scheduleMap || !startDate) return { code: '', matched: false, link: '' };
   var sMD = startDate.slice(5);
   var key = _scheduleProductKey(product) + '__' + _normChannel(channel) + '__' + sMD;
   var candidates = scheduleMap[key] || [];
-  if (candidates.length === 1) return { code: candidates[0].code, matched: true };
+  if (candidates.length === 1) return { code: candidates[0].code, matched: true, link: candidates[0].link || '' };
   if (candidates.length > 1) {
     var eMD = (endDate || startDate).slice(5);
     var narrowed = candidates.filter(function (c) { return c.endMD === eMD; });
-    if (narrowed.length === 1) return { code: narrowed[0].code, matched: true };
+    if (narrowed.length === 1) return { code: narrowed[0].code, matched: true, link: narrowed[0].link || '' };
   }
-  return { code: '', matched: false };
+  return { code: '', matched: false, link: '' };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -338,14 +362,16 @@ function parseMainSheet(sheet, ss) {
 
     // 상품코드: 우리가 새로 추가한 AC열에 값이 있으면 그걸 우선 사용하고,
     // 없으면 브랜드별 일정 시트에서 채널명+시작일(월/일)로 매칭 (모호하면 종료일까지 비교)
+    // 인플루언서 프로필 링크도 같은 매칭 결과에서 가져옴 (상품코드 보유 여부와 무관하게 항상 시도)
     var code = String(row[COL.code] || '').trim();
+    var schedMatch = _matchScheduleCode(scheduleMap, product, channel, startDate, endDate);
     if (!code) {
       codeStats.total++;
-      var m = _matchScheduleCode(scheduleMap, product, channel, startDate, endDate);
       // 일정 행을 찾았어도 그 행의 상품코드 자체가 비어있으면("X" 포함) 실질적으론 미매칭으로 집계
-      if (m.matched && m.code) { code = m.code; codeStats.matched++; }
+      if (schedMatch.matched && schedMatch.code) { code = schedMatch.code; codeStats.matched++; }
       else { codeStats.unmatched++; }
     }
+    var profileLink = schedMatch.link || '';
 
     deals.push({
       id:         0,
@@ -353,6 +379,7 @@ function parseMainSheet(sheet, ss) {
       product:    product,
       channel:    channel,
       influencer: channel,
+      profileLink: profileLink,
       vendor:     vendor,
       platform:   platform,
       format:     format,

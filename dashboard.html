@@ -183,6 +183,8 @@ th.sortable.sorted .sort-ic{opacity:1;color:var(--minix)}
 /* 토스트 */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);background:#1B2035;color:#fff;font-size:12px;font-weight:600;padding:10px 18px;border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,.3);opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:300}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.ch-name-link{color:inherit;text-decoration:none}
+.ch-name-link:hover{text-decoration:underline}
 .ch-id{font-size:11px;display:inline-block;margin-left:5px}
 .ch-id a{color:var(--minix);text-decoration:none}
 .ch-id a:hover{text-decoration:underline}
@@ -1109,7 +1111,7 @@ function productBadge(p){
 
 const SALES_CELL={
   product:d=>productBadge(d.product),
-  channel:d=>`${d.ch}${d.chId?`<span class="ch-id">${d.link?`<a href="${d.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')}</span>`:''}`,
+  channel:d=>`${d.profileLink?`<a href="${d.profileLink}" target="_blank" rel="noopener" class="ch-name-link" onclick="event.stopPropagation()">${d.ch}</a>`:d.ch}${d.chId?`<span class="ch-id">${d.link?`<a href="${d.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')}</span>`:''}`,
   vendor:d=>d.vendor?`<span class="bp bp-vendor">${d.vendor}</span>`:'<span style="color:var(--text-3)">—</span>',
   platform:d=>d.platform||'—',
   price:d=>won(d.s&&d.s.sale),
@@ -1685,6 +1687,7 @@ function adaptGAS(j){
     id:i+1,brand:p.brand||'',product:p.product||'',ch:p.channel||p.influencer||'',
     influencer:p.influencer||'',vendor:p.vendor||'',platform:p.platform||'',format:p.format||'',
     chId:p.chId||'',link:p.link||(p.chId?buildChannelLink(p.platform,p.chId):''),
+    profileLink:p.profileLink||'',
     start:normDate(p.start),end:normDate(p.end),
     composition:p.composition||'',
     targetQty:p.targetQty!=null?Number(p.targetQty):null,
