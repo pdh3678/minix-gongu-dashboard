@@ -161,6 +161,7 @@ function _normChannel(s) {
 }
 
 // 더 플렌더는 모델(PRO/MAX/mini)까지 구분, 나머지는 제품 단위로 묶음
+// ※ 실적통합엔 "더 에어드라이"가 구형 명칭인 "미니건조기"로 남아있는 행이 있어 별칭 처리
 function _scheduleProductKey(p) {
   var np = _normProd(p);
   if (np.indexOf('플렌더') >= 0) {
@@ -170,8 +171,22 @@ function _scheduleProductKey(p) {
   }
   if (np === '더시프트') return '시프트';
   if (np === '더슬림') return '슬림';
-  if (np.indexOf('에어드라이') >= 0) return '에어드라이';
+  if (np.indexOf('에어드라이') >= 0 || np === '미니건조기') return '에어드라이';
   return np;
+}
+
+// 매칭 키: "제품명 + 채널명 + 시작일(월/일)" — 브랜드별 일정 시트 매칭·상품코드 매칭 공통으로 사용
+function _scheduleMatchKey(product, channel, md) {
+  return _scheduleProductKey(product) + '__' + _normChannel(channel) + '__' + md;
+}
+
+// 매칭 결과를 디버그 응답에 표시할 때 어느 일정 시트 그룹에 속하는지 라벨링
+function _scheduleGroupLabel(product) {
+  var key = _scheduleProductKey(product);
+  if (key.indexOf('플렌더') === 0) return SCHEDULE_SHEETS[0];
+  if (key === '시프트' || key === '슬림') return SCHEDULE_SHEETS[1];
+  if (key === '에어드라이') return SCHEDULE_SHEETS[2];
+  return '기타';
 }
 
 function _cellToMD(cell) {
@@ -222,7 +237,7 @@ function _loadScheduleCodeMap(ss) {
       var codeRaw = String(row[SCHED_COL.code] || '').trim();
       var code = (codeRaw && codeRaw.toUpperCase() !== 'X') ? codeRaw : '';
       var profileLink = channelLinks[i - SCHED_START_ROW] || '';
-      var key = _scheduleProductKey(product) + '__' + _normChannel(channel) + '__' + startMD;
+      var key = _scheduleMatchKey(product, channel, startMD);
       if (!map[key]) map[key] = [];
       map[key].push({ code: code, endMD: endMD, link: profileLink });
     }
@@ -234,7 +249,7 @@ function _loadScheduleCodeMap(ss) {
 function _matchScheduleCode(scheduleMap, product, channel, startDate, endDate) {
   if (!scheduleMap || !startDate) return { code: '', matched: false, link: '' };
   var sMD = startDate.slice(5);
-  var key = _scheduleProductKey(product) + '__' + _normChannel(channel) + '__' + sMD;
+  var key = _scheduleMatchKey(product, channel, sMD);
   var candidates = scheduleMap[key] || [];
   if (candidates.length === 1) return { code: candidates[0].code, matched: true, link: candidates[0].link || '' };
   if (candidates.length > 1) {
@@ -282,7 +297,8 @@ function parseMainSheet(sheet, ss) {
   } catch (e) {
     Logger.log('상품코드 매칭용 일정 시트 로드 실패 (무시): ' + e);
   }
-  var codeStats = { total: 0, matched: 0, unmatched: 0 };
+  var codeStats = { total: 0, matched: 0, unmatched: 0, byGroup: {}, failedRows: [] };
+  var CODE_FAIL_SAMPLE_LIMIT = 50;
 
   var today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -367,9 +383,18 @@ function parseMainSheet(sheet, ss) {
     var schedMatch = _matchScheduleCode(scheduleMap, product, channel, startDate, endDate);
     if (!code) {
       codeStats.total++;
+      var grp = _scheduleGroupLabel(product);
+      if (!codeStats.byGroup[grp]) codeStats.byGroup[grp] = { total: 0, matched: 0, unmatched: 0 };
+      codeStats.byGroup[grp].total++;
       // 일정 행을 찾았어도 그 행의 상품코드 자체가 비어있으면("X" 포함) 실질적으론 미매칭으로 집계
-      if (schedMatch.matched && schedMatch.code) { code = schedMatch.code; codeStats.matched++; }
-      else { codeStats.unmatched++; }
+      if (schedMatch.matched && schedMatch.code) {
+        code = schedMatch.code; codeStats.matched++; codeStats.byGroup[grp].matched++;
+      } else {
+        codeStats.unmatched++; codeStats.byGroup[grp].unmatched++;
+        if (codeStats.failedRows.length < CODE_FAIL_SAMPLE_LIMIT) {
+          codeStats.failedRows.push({ product: product, channel: channel, start: startDate || '' });
+        }
+      }
     }
     var profileLink = schedMatch.link || '';
 

@@ -1673,7 +1673,9 @@ async function fetchLive(){
       setConn('live');render();
       if(j.codeMatchStats){
         const cs=j.codeMatchStats;
-        console.log(`[상품코드 매칭] ${cs.matched}/${cs.total}건 성공 (미매칭 ${cs.unmatched}건)`);
+        console.log(`[상품코드/링크 매칭] ${cs.matched}/${cs.total}건 성공 (미매칭 ${cs.unmatched}건)`);
+        if(cs.byGroup)console.table(cs.byGroup);
+        if(cs.failedRows&&cs.failedRows.length)console.log('[매칭 실패 행 목록]',cs.failedRows);
         if(cs.total>0)showToast(`상품코드 매칭: ${cs.matched}/${cs.total}건 성공`);
       }
     }else throw new Error('데이터가 비어있습니다');
