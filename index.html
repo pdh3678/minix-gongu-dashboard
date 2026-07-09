@@ -25,7 +25,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 
 .subtabs{background:var(--surface);border:1px solid var(--border);border-radius:99px;display:none;align-items:center;gap:4px;padding:6px 10px;align-self:flex-start}
 .subtabs.open{display:flex}
-.stab{padding:4px 14px;border-radius:14px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .12s}
+.stab{padding:5px 16px;white-space:nowrap;flex-shrink:0;border-radius:14px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .12s}
 .stab:hover{background:var(--border)}
 .stab.sam{background:var(--minix);border-color:var(--minix);color:#fff}
 .ssel{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:12px;cursor:pointer;font-family:inherit;align-self:center}
@@ -61,9 +61,9 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 .cal-bar:hover{filter:brightness(.95)}
 
 /* ── 대시보드 페이지 ── */
-.dash-filter-row{display:flex;align-items:center;gap:10px}
-.dash-mode-grp{display:flex;gap:4px}
-.dash-psel{width:auto;min-width:140px;margin:0}
+.dash-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dash-mode-grp{display:flex;gap:4px;flex-shrink:0}
+.dash-psel{width:auto;min-width:140px;max-width:260px;margin:0}
 
 /* ── 브랜드별 실적: 연도/월 다중선택 필터 ── */
 .ym-filter-bar{display:flex;flex-wrap:wrap;gap:20px;align-items:center}
