@@ -37,9 +37,20 @@ var COL = {
   format:     14,  // O: 포맷 (릴스/유튜브/게시물)
   // P: 릴스 조회수 합계. 값이 이미 "만" 단위로 저장됨 (예: 3.4 = 3.4만 = 34,000회)
   // "조회수" 헤더가 P~Z에 병합돼 있어 헤더 텍스트로는 열을 찾을 수 없음 → 고정 인덱스(P, 16번째 열)로 읽음
-  // Q~V열은 회차별 개별 조회수(하이퍼링크 포함)이므로 사용하지 않음
+  // Q~Z열은 릴스별 개별 조회수+링크(하이퍼링크) — 모달의 "릴스 관리"에서 읽고 씀 (REEL_COL_START 참고)
   views:      15,  // P
+  // AC/AD/AE: 대시보드에서 새로 추가한 열 (원본 시트엔 없던 컬럼 — "새 공구건 등록" 폼용)
+  code:        28,  // AC: 상품코드
+  targetQty:   29,  // AD: 목표수량
+  composition: 30,  // AE: 구성
+  link:        31,  // AF: 채널 링크 (모달에서 직접 수정)
+  thumbs:      32,  // AG: 릴스별 썸네일 URL 목록 (JSON 배열, Q~Z 순서와 매칭)
 };
+
+// 릴스별 조회수/링크를 담는 열 범위: Q~Z (10칸). 셀 값=조회수(만 단위), 링크=해당 셀의 하이퍼링크.
+// P열(조회수 합계)은 이 10개 칸의 합으로 대시보드가 직접 계산해 덮어씀 (기존 SUM(Q:W) 수식 대체)
+var REEL_COL_START = 17; // Q (1-based)
+var REEL_SLOT_COUNT = 10;
 
 // 접근 제어
 var REQUIRE_AUTH   = true;
@@ -154,6 +165,16 @@ function parseMainSheet(sheet) {
     Logger.log('취소선 감지 실패 (무시): ' + e);
   }
 
+  // 릴스별 조회수/링크(Q~Z, 하이퍼링크 포함) — 한 번에 읽어서 행별로 매칭
+  var reelRich = null;
+  try {
+    if (data.length > DATA_START_ROW) {
+      reelRich = sheet.getRange(DATA_START_ROW + 1, REEL_COL_START, data.length - DATA_START_ROW, REEL_SLOT_COUNT).getRichTextValues();
+    }
+  } catch (e) {
+    Logger.log('릴스 링크 읽기 실패 (무시): ' + e);
+  }
+
   var today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -189,9 +210,26 @@ function parseMainSheet(sheet) {
     var statusRaw  = String(row[COL.status]  || '').trim();
     var format     = String(row[COL.format]  || '').trim();
 
-    // 조회수: P열(고정 인덱스) 값 그대로 사용 — 이미 "만" 단위 (예: 3.4 = 3.4만회). Q~V열(회차별)은 사용하지 않음
+    // 조회수: P열(고정 인덱스) 값 그대로 사용 — 이미 "만" 단위 (예: 3.4 = 3.4만회)
     var views = _numOrNull(row[COL.views]);
     if (views === 0) views = null; // 0/빈값은 프론트에서 "—"로 표시
+
+    // 릴스별 URL/조회수(Q~Z, 하이퍼링크 포함) + 썸네일(AG, JSON) 조합
+    var reels = [];
+    if (reelRich) {
+      var richRow = reelRich[i - DATA_START_ROW];
+      var thumbsArr = [];
+      try { thumbsArr = JSON.parse(row[COL.thumbs] || '[]'); } catch (e) {}
+      for (var k = 0; k < REEL_SLOT_COUNT; k++) {
+        var rc = richRow ? richRow[k] : null;
+        var txt = rc ? rc.getText() : '';
+        var linkUrl = rc ? rc.getLinkUrl() : null;
+        var v = txt ? _numOrNull(txt) : null;
+        if (v != null || linkUrl) {
+          reels.push({ views: v, url: linkUrl || '', thumb: thumbsArr[k] || '' });
+        }
+      }
+    }
 
     // 날짜 생성: L/M열은 보통 실제 날짜 셀(Date)이며, 드물게 "M/D" 텍스트 + K(연도)로 입력된 경우도 처리
     var startDate = _parseDate(startCell, year);
@@ -224,17 +262,20 @@ function parseMainSheet(sheet) {
       format:     format,
       start:      startDate || '',
       end:        endDate   || '',
-      targetQty:  null,
+      targetQty:  _numOrNull(row[COL.targetQty]),
       status:     status,
       views:      views,
       qty:        qty,
       revenue:    revenue,
-      code:       '',
-      retail:     null,
-      sale:       salePrice,
-      commission: commission,
-      openTime:   '',
-      note:       '',
+      code:        String(row[COL.code] || '').trim(),
+      composition: String(row[COL.composition] || '').trim(),
+      link:        String(row[COL.link] || '').trim(),
+      reels:       reels,
+      retail:      null,
+      sale:        salePrice,
+      commission:  commission,
+      openTime:    '',
+      note:        '',
     });
   }
 
@@ -269,33 +310,102 @@ function doPost(e) {
     var idToken = body.idToken || (e.parameter ? e.parameter.idToken : '') || '';
     if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED' });
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (body.action === 'addDeal') return _addDeal(ss, body.data);
+    if (body.action === 'addSalesRow') return _addSalesRow(ss, body.data);
     if (body.action === 'addPerf') return _addPerf(ss, body.data);
+    if (body.action === 'addCalendarRow') return _addCalendarRow(ss, body.data);
+    if (body.action === 'saveReels') return _saveReels(ss, body.data);
+    if (body.action === 'uploadThumbnail') return _uploadThumbnail(body.data);
     throw new Error('Unknown action: ' + body.action);
   } catch (err) {
     return _json({ error: err.toString() });
   }
 }
 
-// 새 공구건 추가 → 공구목록 시트에 기록
-function _addDeal(ss, data) {
-  var sheetName = '공구목록';
-  var sheet = ss.getSheetByName(sheetName);
-  if (!sheet) {
-    sheet = ss.insertSheet(sheetName);
-    sheet.appendRow(['브랜드','제품명','채널명','채널ID','벤더사','플랫폼','링크',
-      '시작일','종료일','오픈시간','상품코드','공동구매가','수수료율',
-      '구성','추가옵션1','추가옵션2','선착순이벤트','목표수량','상태','비고']);
-  }
+// 새 공구건 등록 → 실적통합 시트에 새 행 추가 (브랜드별 실적 표에 쓰이는 필드 전부 채움)
+function _addSalesRow(ss, data) {
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+
+  _ensureExtraHeaders(sheet);
+
   var scheme = data.s || {};
-  sheet.appendRow([
-    data.brand||'', data.product||'', data.influencer||'', data.chId||'', data.vendor||'',
-    data.platform||'', data.link||'', data.start||'', data.end||'',
-    data.openTime||'', data.code||'', scheme.sale||'', scheme.comm||'',
-    data.composition||'', data.option1||'', data.option2||'',
-    data.firstCome||'', data.targetQty||'', data.status||'예정', scheme.note||''
-  ]);
+  var startDate = data.start ? new Date(data.start) : null;
+  var endDate   = data.end   ? new Date(data.end)   : startDate;
+
+  var row = [];
+  row[COL.brand]      = '미닉스';
+  row[COL.product]    = data.product || '';
+  row[COL.vendor]     = data.vendor || '';
+  row[COL.channel]    = data.ch || '';
+  row[COL.platform]   = data.platform || '';
+  row[COL.salePrice]  = scheme.sale != null ? scheme.sale : '';
+  row[COL.commission] = scheme.comm != null ? scheme.comm / 100 : ''; // 화면은 %, 시트는 0.35 형태 소수
+  row[COL.year]       = startDate ? startDate.getFullYear() : '';
+  row[COL.startMD]    = startDate || '';
+  row[COL.endMD]      = endDate   || '';
+  row[COL.status]     = data.status || '예정';
+  row[COL.format]     = data.format || '';
+  row[COL.code]        = data.code || '';
+  row[COL.targetQty]   = data.targetQty != null ? data.targetQty : '';
+  row[COL.composition] = data.composition || '';
+  for (var i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = '';
+
+  sheet.appendRow(row);
   return _json({ success: true });
+}
+
+// 대시보드에서 새로 쓰는 AC~AG열에 헤더가 없으면 채워줌 (원본 시트엔 없던 컬럼이라 최초 1회만 필요)
+function _ensureExtraHeaders(sheet) {
+  var headers = [
+    [COL.code, '상품코드'],
+    [COL.targetQty, '목표수량'],
+    [COL.composition, '구성'],
+    [COL.link, '채널 링크'],
+    [COL.thumbs, '릴스 썸네일(JSON)']
+  ];
+  for (var i = 0; i < headers.length; i++) {
+    var cell = sheet.getRange(2, headers[i][0] + 1);
+    if (!cell.getValue()) cell.setValue(headers[i][1]);
+  }
+}
+
+// 공구 캘린더 "+ 행 추가" → 실적통합 시트에 새 행 추가
+// (브랜드/제품명/채널명/시작일/종료일/판매수량만 채우고 나머지는 비워둠 — 이후 실적 기입으로 보완)
+function _addCalendarRow(ss, data) {
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+
+  var startDate = data.start ? new Date(data.start) : null;
+  var endDate   = data.end   ? new Date(data.end)   : startDate;
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var status = '예정';
+  if (endDate && endDate < today) status = '완료';
+  else if (startDate && startDate <= today) status = '진행중';
+
+  var row = [];
+  row[COL.brand]   = '미닉스';
+  row[COL.product] = data.product || '';
+  row[COL.channel] = data.channel || '';
+  row[COL.qty]     = data.qty != null ? data.qty : '';
+  row[COL.year]    = startDate ? startDate.getFullYear() : '';
+  row[COL.startMD] = startDate || '';
+  row[COL.endMD]   = endDate   || '';
+  row[COL.status]  = status;
+  for (var i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = '';
+
+  sheet.appendRow(row);
+  return _json({ success: true });
+}
+
+// 제품명+채널명으로 실적통합 시트에서 일치하는 행을 찾음 (0-based 행 인덱스, 못 찾으면 -1)
+function _findDataRow(all, product, channel) {
+  var normTarget = _normProd(product || '') + '__' + _normProd(channel || '');
+  for (var i = DATA_START_ROW; i < all.length; i++) {
+    var np = _normProd(String(all[i][COL.product] || ''));
+    var nc = _normProd(String(all[i][COL.channel] || ''));
+    if (np + '__' + nc === normTarget) return i;
+  }
+  return -1;
 }
 
 // 실적 기입 → 실적통합 시트 해당 행 업데이트
@@ -304,15 +414,7 @@ function _addPerf(ss, data) {
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
 
   var all = sheet.getDataRange().getValues();
-  var normTarget = _normProd(data.product || '') + '__' + _normProd(data.channel || '');
-
-  var rowIdx = -1;
-  for (var i = DATA_START_ROW; i < all.length; i++) {
-    var np = _normProd(String(all[i][COL.product] || ''));
-    var nc = _normProd(String(all[i][COL.channel] || ''));
-    if (np + '__' + nc === normTarget) { rowIdx = i; break; }
-  }
-
+  var rowIdx = _findDataRow(all, data.product, data.channel);
   if (rowIdx < 0) return _json({ error: '일치하는 공구 행을 찾을 수 없습니다.' });
 
   var sheetRow = rowIdx + 1; // 1-based
@@ -321,6 +423,77 @@ function _addPerf(ss, data) {
   if (data.views   != null) sheet.getRange(sheetRow, COL.views   + 1).setValue(data.views);
 
   return _json({ success: true });
+}
+
+// 모달의 릴스 관리 저장 → 채널 링크(AF) + 릴스별 URL/조회수(Q~Z, 하이퍼링크 포함) + 썸네일(AG) + 조회수 합계(P)
+function _saveReels(ss, data) {
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+
+  _ensureExtraHeaders(sheet);
+
+  var all = sheet.getDataRange().getValues();
+  var rowIdx = _findDataRow(all, data.product, data.channel);
+  if (rowIdx < 0) return _json({ error: '일치하는 공구 행을 찾을 수 없습니다.' });
+  var sheetRow = rowIdx + 1; // 1-based
+
+  sheet.getRange(sheetRow, COL.link + 1).setValue(data.link || '');
+
+  // data.reels가 배열로 명시된 경우에만 Q~Z/P/썸네일을 갱신함
+  // (원래 릴스가 없던 건에서 링크만 고치고 저장한 경우 기존 조회수 데이터를 실수로 지우지 않기 위함)
+  if (data.reels != null) {
+    var reels = data.reels;
+    var thumbs = [];
+    var total = 0;
+    for (var i = 0; i < REEL_SLOT_COUNT; i++) {
+      var cell = sheet.getRange(sheetRow, REEL_COL_START + i);
+      var r = reels[i];
+      if (r && (r.url || r.views != null)) {
+        var text = r.views != null ? String(r.views) : ' ';
+        if (r.url) {
+          cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText(text).setLinkUrl(r.url).build());
+        } else {
+          cell.setValue(r.views != null ? r.views : '');
+        }
+        if (r.views != null) total += Number(r.views);
+        thumbs.push(r.thumb || '');
+      } else {
+        cell.setValue('');
+        thumbs.push('');
+      }
+    }
+    // P열(조회수 합계) — 기존 SUM(Q:W) 수식을 대체해 직접 계산한 값을 기록
+    sheet.getRange(sheetRow, COL.views + 1).setValue(total || '');
+    sheet.getRange(sheetRow, COL.thumbs + 1).setValue(JSON.stringify(thumbs));
+  }
+
+  return _json({ success: true });
+}
+
+// 릴스 썸네일 사진 업로드 → 구글 드라이브에 저장 후 공개 보기 링크 반환
+// (인스타그램은 썸네일 자동 수집이 불가능해서, 사용자가 직접 캡쳐/선택한 사진을 저장하는 용도)
+var THUMB_FOLDER_NAME = '공동구매_릴스_썸네일';
+
+function _uploadThumbnail(data) {
+  if (!data || !data.base64) return _json({ error: '업로드할 이미지 데이터가 없습니다.' });
+  try {
+    var folder = _getThumbFolder();
+    var bytes = Utilities.base64Decode(data.base64);
+    var mimeType = data.mimeType || 'image/jpeg';
+    var blob = Utilities.newBlob(bytes, mimeType, 'thumb_' + Date.now() + '.jpg');
+    var file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w400';
+    return _json({ success: true, url: url });
+  } catch (err) {
+    return _json({ error: '이미지 업로드 실패: ' + err.toString() });
+  }
+}
+
+function _getThumbFolder() {
+  var it = DriveApp.getFoldersByName(THUMB_FOLDER_NAME);
+  if (it.hasNext()) return it.next();
+  return DriveApp.createFolder(THUMB_FOLDER_NAME);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
