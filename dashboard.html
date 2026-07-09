@@ -121,6 +121,7 @@ tbody tr:hover td{background:var(--surface-2)}
 .m-sub{font-size:12px;color:var(--text-3);margin-top:3px}
 .m-cls{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;color:var(--text-2);flex-shrink:0}
 .m-cls:hover{background:var(--border)}
+.dbg-pre{font-family:'SF Mono','Fira Code','Courier New',monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px;max-height:60vh;overflow:auto}
 
 /* Scheme modal */
 .sch-g{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
@@ -245,6 +246,7 @@ tbody tr:hover td{background:var(--surface-2)}
     <button class="new-deal-btn" onclick="openDealForm()">＋ 새 공구건</button>
     <span class="conn-pill cp-sample" id="connPill">● 샘플 데이터</span>
     <button class="icon-btn" id="refreshBtn" title="새로고침" onclick="refreshData()">↻</button>
+    <button class="icon-btn" title="디버그: P~V열 원시값 확인" onclick="openDebug()">🐞</button>
     <button class="icon-btn" title="연결 설정" onclick="openCfg()">⚙</button>
     <div class="hdr-date" id="hDate"></div>
     <div class="hdr-user" id="hdrUser">
@@ -326,6 +328,17 @@ tbody tr:hover td{background:var(--surface-2)}
       <div><div class="code-lbl">상품코드</div><div class="code-val" id="mCode"></div></div>
       <button class="cp-btn" id="mCpBtn" onclick="copyCode()">복사</button>
     </div>
+  </div>
+</div>
+
+<!-- 디버그 모달 -->
+<div class="ov" id="debugOv">
+  <div class="modal" style="width:640px;max-height:80vh;overflow-y:auto">
+    <div class="m-top">
+      <div><div class="m-title">디버그: P~V열 원시값</div><div class="m-sub">316행 근처 5개 행 · 조회수(P열) 파싱 확인용</div></div>
+      <button class="m-cls" onclick="closeDebug()">✕</button>
+    </div>
+    <div class="dbg-pre" id="debugBody">불러오는 중...</div>
   </div>
 </div>
 
@@ -779,6 +792,27 @@ function copyCode(){
 }
 function cpTxt(t,el){const prev=el.textContent;const done=()=>{el.textContent='✓';setTimeout(()=>{el.textContent=prev;},1400);};navigator.clipboard?navigator.clipboard.writeText(t).then(done):fbCopy(t,done);}
 function fbCopy(t,cb){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');cb();}catch(e){}document.body.removeChild(ta);}
+
+/* Debug modal — 로그인된 idToken으로 ?debug=1 호출 (시트 값 비인증 노출 없음) */
+async function openDebug(){
+  const url=localStorage.getItem('gp_gas_url');
+  const body=document.getElementById('debugBody');
+  document.getElementById('debugOv').classList.add('open');
+  if(!url){body.textContent='먼저 ⚙ 연결 설정에서 Apps Script Web App URL을 등록하세요.';return;}
+  if(!_gasCredential){body.textContent='로그인이 필요합니다. 새로고침 후 다시 시도하세요.';return;}
+  body.textContent='불러오는 중...';
+  try{
+    const r=await fetch(_gasUrl(url)+'&debug=1');
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const j=await r.json();
+    if(j.error)throw new Error(j.error);
+    body.textContent=JSON.stringify(j,null,2);
+  }catch(e){
+    body.textContent='오류: '+e.message+'\n\n(Apps Script를 debug 코드 추가 후 다시 배포했는지 확인하세요)';
+  }
+}
+function closeDebug(){document.getElementById('debugOv').classList.remove('open');}
+document.getElementById('debugOv').addEventListener('click',e=>{if(e.target===document.getElementById('debugOv'))closeDebug();});
 
 /* Config modal */
 function openCfg(){document.getElementById('gasUrl').value=localStorage.getItem('gp_gas_url')||'';showCfgMsg('','');document.getElementById('cfgOv').classList.add('open');}
