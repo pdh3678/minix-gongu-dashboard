@@ -23,23 +23,74 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 @keyframes spin{to{transform:rotate(360deg)}}
 .hdr-date{font-size:12px;opacity:.65;font-variant-numeric:tabular-nums;white-space:nowrap}
 
-.tabs{background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 24px;position:sticky;top:0;z-index:20}
-.tab-grp{display:flex;align-items:stretch}
-.tab-div{width:1px;background:var(--border);margin:9px 10px}
-.tab{display:flex;align-items:center;gap:6px;padding:0 14px;height:45px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:500;color:var(--text-2);border-bottom:2px solid transparent;transition:color .15s,border-color .15s;white-space:nowrap;font-family:inherit}
-.tab:hover{color:var(--text)}
-.tab.am{color:var(--minix);border-color:var(--minix);font-weight:700}
-.subtabs{background:var(--nbg);border-bottom:1px solid var(--border);display:none;align-items:center;gap:4px;padding:6px 24px}
+.subtabs{background:var(--surface);border:1px solid var(--border);border-radius:99px;display:none;align-items:center;gap:4px;padding:6px 10px;align-self:flex-start}
 .subtabs.open{display:flex}
 .stab{padding:4px 14px;border-radius:14px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .12s}
 .stab:hover{background:var(--border)}
 .stab.sam{background:var(--minix);border-color:var(--minix);color:#fff}
-.tdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.dm{background:var(--minix)}
-.tab-spc{flex:1}
-.ssel{padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:12px;cursor:pointer;font-family:inherit;align-self:center}
+.ssel{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:12px;cursor:pointer;font-family:inherit;align-self:center}
+.ssel option{color:#111827}
 
 .main{padding:20px 24px;display:flex;flex-direction:column;gap:16px;max-width:1440px}
+
+/* ── 레이아웃: 사이드바 + 본문 ── */
+.app-shell{display:flex;min-height:100vh}
+.app-main{flex:1;min-width:0;margin-left:220px;transition:margin-left .18s ease}
+.app-shell.sb-collapsed .app-main{margin-left:64px}
+
+.mobile-menu-btn{display:none}
+
+/* ── 사이드바 ── */
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:220px;background:#15161A;display:flex;flex-direction:column;z-index:60;transition:width .18s ease;overflow:hidden}
+.app-shell.sb-collapsed .sidebar{width:64px}
+.sb-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:18px 16px;flex-shrink:0}
+.app-shell.sb-collapsed .sb-top{justify-content:center}
+.sb-logo{font-size:16px;font-weight:800;color:#fff;letter-spacing:-.3px;white-space:nowrap}
+.sb-logo em{font-style:normal;font-weight:500;color:#8B93A7;margin-left:5px;font-size:11px}
+.app-shell.sb-collapsed .sb-logo{display:none}
+.sb-toggle{width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#C7CAD1;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;font-family:inherit}
+.sb-toggle:hover{background:rgba(255,255,255,.14)}
+
+.sb-nav{flex:1;overflow-y:auto;padding:6px 10px 14px}
+.sb-item-solo,.sb-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;color:#B7BBC6;font-size:13px;font-weight:600;margin-bottom:2px;border-left:3px solid transparent;transition:background .15s,color .15s}
+.sb-item-solo:hover,.sb-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.sb-item-solo.active,.sb-item.active{background:rgba(59,86,229,.18);border-left-color:var(--minix);color:#fff}
+.sb-ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;background:rgba(255,255,255,.08)}
+.sb-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-shell.sb-collapsed .sb-label{display:none}
+.app-shell.sb-collapsed .sb-item-solo,.app-shell.sb-collapsed .sb-item{justify-content:center;padding:8px 0}
+
+.sb-sec{margin-top:4px}
+.sb-sec-hd{width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;border:none;background:rgba(255,255,255,.04);color:#EDEFF3;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:4px}
+.sb-sec-hd:hover{background:rgba(255,255,255,.08)}
+.sb-chev{font-size:9px;color:#8B93A7;transition:transform .15s;flex-shrink:0}
+.sb-sec.closed .sb-chev{transform:rotate(-90deg)}
+.sb-items{display:flex;flex-direction:column;gap:1px;margin-bottom:6px}
+.sb-sec.closed .sb-items{display:none}
+.app-shell.sb-collapsed .sb-sec-hd{display:none}
+.app-shell.sb-collapsed .sb-items{display:flex!important}
+
+.sb-bottom{flex-shrink:0;border-top:1px solid rgba(255,255,255,.08);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.sb-bottom-link{display:flex;align-items:center;gap:10px;color:#B7BBC6;font-size:12px;font-weight:600;text-decoration:none;padding:4px 2px}
+.sb-bottom-link:hover{color:#fff}
+.app-shell.sb-collapsed .sb-bottom-link{justify-content:center}
+.sb-user{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.sb-user-email{font-size:11px;color:#8B93A7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sb-signout{font-size:11px;padding:4px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#C7CAD1;cursor:pointer;font-family:inherit;flex-shrink:0;transition:background .15s}
+.sb-signout:hover{background:rgba(255,255,255,.14)}
+.app-shell.sb-collapsed .sb-user{display:none}
+
+.sb-backdrop{display:none}
+
+@media(max-width:900px){
+  .sidebar{transform:translateX(-100%);transition:transform .22s ease;width:240px!important}
+  .app-shell.sb-mobile-open .sidebar{transform:translateX(0)}
+  .app-shell.sb-collapsed .app-main,.app-main{margin-left:0!important}
+  .sb-toggle{display:none}
+  .mobile-menu-btn{display:flex}
+  .sb-backdrop{display:block;position:fixed;inset:0;background:rgba(17,24,39,.5);z-index:50;opacity:0;pointer-events:none;transition:opacity .18s ease}
+  .app-shell.sb-mobile-open .sb-backdrop{opacity:1;pointer-events:auto}
+}
 
 .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:15px 17px;box-shadow:var(--sh)}
@@ -217,11 +268,6 @@ tbody tr:hover td{background:var(--surface-2)}
 .login-btn-wrap{display:flex;justify-content:center}
 .login-error{font-size:12px;color:#DC2626;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:7px;padding:10px 14px;margin-top:14px;display:none;text-align:left;line-height:1.5}
 .login-notice{font-size:11px;color:var(--text-3);margin-top:18px}
-.hdr-user{display:none;align-items:center;gap:8px}
-.hdr-avatar{width:26px;height:26px;border-radius:50%;object-fit:cover;border:1.5px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15)}
-.hdr-uname{font-size:12px;color:rgba(255,255,255,.8);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hdr-signout{font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:rgba(255,255,255,.75);cursor:pointer;font-family:inherit;transition:background .15s}
-.hdr-signout:hover{background:rgba(255,255,255,.2)}
 </style>
 
 <div id="loginScreen">
@@ -236,52 +282,77 @@ tbody tr:hover td{background:var(--surface-2)}
   </div>
 </div>
 
-<div class="hdr">
-  <div class="hdr-left">
-    <div class="hdr-title">공동구매 대시보드 <span>Minix</span></div>
-    <div class="hdr-sep"></div>
-    <div class="hdr-sub">미닉스 공구 관리</div>
-  </div>
-  <div class="hdr-right">
-    <button class="new-deal-btn" onclick="openDealForm()">＋ 새 공구건</button>
-    <span class="conn-pill cp-sample" id="connPill">● 샘플 데이터</span>
-    <button class="icon-btn" id="refreshBtn" title="새로고침" onclick="refreshData()">↻</button>
-    <button class="icon-btn" title="디버그: P~V열 원시값 확인" onclick="openDebug()">🐞</button>
-    <button class="icon-btn" title="연결 설정" onclick="openCfg()">⚙</button>
-    <div class="hdr-date" id="hDate"></div>
-    <div class="hdr-user" id="hdrUser">
-      <img class="hdr-avatar" id="hdrAvatar" src="" alt="">
-      <span class="hdr-uname" id="hdrUname"></span>
-      <button class="hdr-signout" onclick="signOut()">로그아웃</button>
+<div class="app-shell" id="appShell">
+  <div class="sb-backdrop" onclick="closeMobileSidebar()"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-top">
+      <div class="sb-logo">MINIX <em>공동구매</em></div>
+      <button class="sb-toggle" title="사이드바 접기" onclick="toggleSidebar()">☰</button>
     </div>
-  </div>
-</div>
+    <nav class="sb-nav">
+      <div class="sb-item-solo active" data-view="all" onclick="sbSelect(this,'all')">
+        <span class="sb-ic">📊</span><span class="sb-label">대시보드</span>
+      </div>
+      <div class="sb-sec">
+        <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">브랜드별 실적</span><span class="sb-chev">▾</span></button>
+        <div class="sb-items">
+          <div class="sb-item" data-view="플렌더" onclick="sbSelect(this,'플렌더')"><span class="sb-ic">🌀</span><span class="sb-label">더플렌더</span></div>
+          <div class="sb-item" data-view="시프트" onclick="sbSelect(this,'시프트')"><span class="sb-ic">📦</span><span class="sb-label">더시프트</span></div>
+          <div class="sb-item" data-view="슬림" onclick="sbSelect(this,'슬림')"><span class="sb-ic">🧴</span><span class="sb-label">더슬림</span></div>
+        </div>
+      </div>
+      <div class="sb-sec">
+        <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">공구 관리</span><span class="sb-chev">▾</span></button>
+        <div class="sb-items">
+          <div class="sb-item" onclick="openDealForm()"><span class="sb-ic">＋</span><span class="sb-label">새 공구건 등록</span></div>
+          <div class="sb-item" onclick="focusPerfList()"><span class="sb-ic">📝</span><span class="sb-label">실적 기입 목록</span></div>
+        </div>
+      </div>
+    </nav>
+    <div class="sb-bottom">
+      <a class="sb-bottom-link" href="https://docs.google.com/spreadsheets/d/1WGCIBUdIn5V4HCNVdd5nYUH2R5K2qUaYS-UMeQUzETY/edit" target="_blank" rel="noopener">
+        <span class="sb-ic">🔗</span><span class="sb-label">연동 시트</span>
+      </a>
+      <div class="sb-user">
+        <span class="sb-user-email" id="sbUserEmail">—</span>
+        <button class="sb-signout" onclick="signOut()">로그아웃</button>
+      </div>
+    </div>
+  </aside>
 
-<div class="tabs">
-  <div class="tab-grp">
-    <button class="tab am" data-f="all">전체</button>
-    <button class="tab" data-f="플렌더"><span class="tdot dm"></span>더플렌더</button>
-    <button class="tab" data-f="시프트"><span class="tdot dm"></span>더시프트</button>
-    <button class="tab" data-f="슬림"><span class="tdot dm"></span>더슬림</button>
-  </div>
-  <div class="tab-spc"></div>
-  <select class="ssel" id="statusSel">
-    <option value="all">전체 상태</option>
-    <option value="완료">완료</option>
-    <option value="진행중">진행중</option>
-    <option value="예정">예정</option>
-  </select>
-</div>
-<div class="subtabs" id="subTabs">
-  <span style="font-size:11px;color:var(--text-3);margin-right:6px;font-weight:600">더플렌더</span>
-  <button class="stab sam" data-m="all">전체</button>
-  <button class="stab" data-m="PRO">PRO</button>
-  <button class="stab" data-m="MAX">MAX</button>
-  <button class="stab" data-m="mini">mini</button>
-</div>
+  <div class="app-main">
+    <div class="hdr">
+      <div class="hdr-left">
+        <button class="icon-btn mobile-menu-btn" title="메뉴" onclick="openMobileSidebar()">☰</button>
+        <div class="hdr-title">공동구매 대시보드 <span>Minix</span></div>
+        <div class="hdr-sep"></div>
+        <div class="hdr-sub">미닉스 공구 관리</div>
+      </div>
+      <div class="hdr-right">
+        <button class="new-deal-btn" onclick="openDealForm()">＋ 새 공구건</button>
+        <span class="conn-pill cp-sample" id="connPill">● 샘플 데이터</span>
+        <select class="ssel" id="statusSel">
+          <option value="all">전체 상태</option>
+          <option value="완료">완료</option>
+          <option value="진행중">진행중</option>
+          <option value="예정">예정</option>
+        </select>
+        <button class="icon-btn" id="refreshBtn" title="새로고침" onclick="refreshData()">↻</button>
+        <button class="icon-btn" title="디버그: P~V열 원시값 확인" onclick="openDebug()">🐞</button>
+        <button class="icon-btn" title="연결 설정" onclick="openCfg()">⚙</button>
+        <div class="hdr-date" id="hDate"></div>
+      </div>
+    </div>
 
-<div class="main">
-  <div class="kpi-row" id="kpiRow"></div>
+    <div class="main">
+      <div class="subtabs" id="subTabs">
+        <span style="font-size:11px;color:var(--text-3);margin-right:6px;font-weight:600">더플렌더</span>
+        <button class="stab sam" data-m="all">전체</button>
+        <button class="stab" data-m="PRO">PRO</button>
+        <button class="stab" data-m="MAX">MAX</button>
+        <button class="stab" data-m="mini">mini</button>
+      </div>
+      <div class="kpi-row" id="kpiRow"></div>
   <div class="mid">
     <div class="card">
       <div class="card-hd"><span id="calLbl"></span>
@@ -294,7 +365,7 @@ tbody tr:hover td{background:var(--surface-2)}
       <div class="ev-list" id="evList"></div>
     </div>
   </div>
-  <div class="card">
+  <div class="card" id="perfCard">
     <div class="card-hd">실적 상세</div>
     <div class="tbl-wrap">
       <table><thead><tr>
@@ -311,6 +382,8 @@ tbody tr:hover td{background:var(--surface-2)}
     <div class="card">
       <div class="card-hd">제품별 누적 매출</div>
       <div id="barWrap"></div>
+    </div>
+  </div>
     </div>
   </div>
 </div>
@@ -855,7 +928,7 @@ async function fetchLive(){
       // 토큰 만료 → 재로그인 유도
       sessionStorage.removeItem('gp_user');_gasCredential=null;
       document.getElementById('loginScreen').style.display='flex';
-      document.getElementById('hdrUser').style.display='none';
+      document.getElementById('sbUserEmail').textContent='—';
       setConn('error');return;
     }
     if(j.error)throw new Error(j.error);
@@ -891,25 +964,37 @@ async function refreshData(){
   setTimeout(()=>{btn.classList.remove('spinning');btn.disabled=false;},500);
 }
 
+/* Sidebar */
+function toggleSidebar(){document.getElementById('appShell').classList.toggle('sb-collapsed');}
+function openMobileSidebar(){document.getElementById('appShell').classList.add('sb-mobile-open');}
+function closeMobileSidebar(){document.getElementById('appShell').classList.remove('sb-mobile-open');}
+function toggleSec(btn){btn.parentElement.classList.toggle('closed');}
+
+function sbSelect(el,prod){
+  document.querySelectorAll('.sb-item-solo,.sb-item[data-view]').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active');
+  ST.prod=prod;
+  ST.model='all';
+  // 더플렌더 서브필터
+  const subTabs=document.getElementById('subTabs');
+  if(prod==='플렌더'){
+    subTabs.classList.add('open');
+    document.querySelectorAll('.stab').forEach(s=>s.classList.remove('sam'));
+    document.querySelector('.stab[data-m="all"]').classList.add('sam');
+  } else {
+    subTabs.classList.remove('open');
+  }
+  closeMobileSidebar();
+  render();
+}
+
+function focusPerfList(){
+  const dashItem=document.querySelector('.sb-item-solo[data-view="all"]');
+  sbSelect(dashItem,'all');
+  setTimeout(()=>document.getElementById('perfCard').scrollIntoView({behavior:'smooth',block:'start'}),50);
+}
+
 /* Tabs */
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('am'));
-    ST.prod=tab.dataset.f;
-    ST.model='all';
-    tab.classList.add('am');
-    // 더플렌더 sub-tabs
-    const subTabs=document.getElementById('subTabs');
-    if(ST.prod==='플렌더'){
-      subTabs.classList.add('open');
-      document.querySelectorAll('.stab').forEach(s=>s.classList.remove('sam'));
-      document.querySelector('.stab[data-m="all"]').classList.add('sam');
-    } else {
-      subTabs.classList.remove('open');
-    }
-    render();
-  });
-});
 document.querySelectorAll('.stab').forEach(stab=>{
   stab.addEventListener('click',()=>{
     document.querySelectorAll('.stab').forEach(s=>s.classList.remove('sam'));
@@ -1145,10 +1230,7 @@ function _showLoginErr(msg){
 
 function _enterDashboard(user){
   document.getElementById('loginScreen').style.display='none';
-  const hu=document.getElementById('hdrUser');hu.style.display='flex';
-  const av=document.getElementById('hdrAvatar');
-  if(user.picture){av.src=user.picture;}else{av.style.display='none';}
-  document.getElementById('hdrUname').textContent=user.name||user.email;
+  document.getElementById('sbUserEmail').textContent=user.name||user.email;
   fetchLive();render();
 }
 
@@ -1157,7 +1239,7 @@ function signOut(){
   sessionStorage.removeItem('gp_user');
   if(window.google&&google.accounts)google.accounts.id.disableAutoSelect();
   document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('hdrUser').style.display='none';
+  document.getElementById('sbUserEmail').textContent='—';
 }
 
 // GIS 라이브러리 로드 완료 시 자동 호출
