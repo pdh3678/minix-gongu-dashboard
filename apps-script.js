@@ -260,16 +260,17 @@ function _addDeal(ss, data) {
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
-    sheet.appendRow(['브랜드','제품명','인플루언서명','벤더사','플랫폼','링크',
+    sheet.appendRow(['브랜드','제품명','채널명','채널ID','벤더사','플랫폼','링크',
       '시작일','종료일','오픈시간','상품코드','공동구매가','수수료율',
       '구성','추가옵션1','추가옵션2','선착순이벤트','목표수량','상태','비고']);
   }
+  var scheme = data.s || {};
   sheet.appendRow([
-    data.brand||'', data.product||'', data.influencer||'', data.vendor||'',
+    data.brand||'', data.product||'', data.influencer||'', data.chId||'', data.vendor||'',
     data.platform||'', data.link||'', data.start||'', data.end||'',
-    data.openTime||'', data.code||'', data.sale||'', data.commission||'',
+    data.openTime||'', data.code||'', scheme.sale||'', scheme.comm||'',
     data.composition||'', data.option1||'', data.option2||'',
-    data.firstCome||'', data.targetQty||'', data.status||'예정', data.note||''
+    data.firstCome||'', data.targetQty||'', data.status||'예정', scheme.note||''
   ]);
   return _json({ success: true });
 }

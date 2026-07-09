@@ -75,6 +75,8 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 .ev-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:2px}
 .ev-prod{font-weight:700;font-size:13px}
 .ev-ch{font-size:11px;color:var(--text-2);font-weight:500;margin-bottom:1px}
+.ev-ch a{color:var(--minix);text-decoration:none}
+.ev-ch a:hover{text-decoration:underline}
 .ev-dt{font-size:11px;color:var(--text-3);font-variant-numeric:tabular-nums}
 .ev-mets{display:flex;gap:12px;margin-top:4px;font-size:11px;color:var(--text-3);font-variant-numeric:tabular-nums}
 .ev-mv{font-weight:600;color:var(--text-2)}
@@ -95,6 +97,10 @@ tbody tr{cursor:pointer;transition:background .12s}
 tbody tr:hover td{background:var(--surface-2)}
 .bp{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:2px 6px;border-radius:3px}
 .bm{background:var(--minix-lt);color:var(--minix)}
+.ch-id{font-size:11px;margin-top:1px}
+.ch-id a{color:var(--minix);text-decoration:none}
+.ch-id a:hover{text-decoration:underline}
+.ch-id:not(:has(a)){color:var(--text-3)}
 .vbar-wrap{display:flex;align-items:center;gap:8px}
 .vbar-bg{width:56px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;flex-shrink:0}
 .vbar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,#6470E0,#9B59B6)}
@@ -290,7 +296,7 @@ tbody tr:hover td{background:var(--surface-2)}
     <div class="card-hd">실적 상세</div>
     <div class="tbl-wrap">
       <table><thead><tr>
-        <th>브랜드</th><th>제품</th><th>채널</th><th>기간</th>
+        <th>브랜드</th><th>제품</th><th>채널</th><th>연</th><th>월</th><th>시작일</th><th>종료일</th><th>기간</th>
         <th>릴스 조회수</th><th>판매량</th><th>매출액</th><th>상태</th><th>상품코드</th><th>실적 기입</th>
       </tr></thead><tbody id="tBody"></tbody></table>
     </div>
@@ -311,7 +317,7 @@ tbody tr:hover td{background:var(--surface-2)}
 <div class="ov" id="schOv">
   <div class="modal">
     <div class="m-top">
-      <div><div class="m-brand" id="mBrand"></div><div class="m-title" id="mTitle"></div><div class="m-sub" id="mSub"></div></div>
+      <div><div class="m-brand" id="mBrand"></div><div class="m-title" id="mTitle"></div><div class="ch-id" id="mChLink"></div><div class="m-sub" id="mSub"></div></div>
       <button class="m-cls" onclick="closeSchModal()">✕</button>
     </div>
     <div class="sch-g" id="mScheme"></div>
@@ -397,18 +403,33 @@ tbody tr:hover td{background:var(--surface-2)}
     </div>
 
     <div class="f-sec">채널 정보</div>
-    <div class="fg fg-2">
+    <div class="fg fg-3">
       <div class="f-grp">
-        <label class="f-lbl">인플루언서명 <span class="f-req">*</span></label>
-        <input class="f-inp" type="text" id="fInfluencer" placeholder="@계정명 또는 이름">
+        <label class="f-lbl">채널명 <span class="f-req">*</span></label>
+        <input class="f-inp" type="text" id="fInfluencer" placeholder="예: 민이">
       </div>
+      <div class="f-grp">
+        <label class="f-lbl">플랫폼 <span class="f-req">*</span></label>
+        <select class="f-inp f-sel" id="fPlatform" onchange="onPlatformChange()">
+          <option value="">선택</option>
+          <option value="인스타그램">인스타그램</option>
+          <option value="유튜브">유튜브</option>
+          <option value="기타">기타</option>
+        </select>
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl" id="fChIdLbl">채널 ID</label>
+        <input class="f-inp" type="text" id="fChannelId" placeholder="플랫폼 먼저 선택" oninput="onChannelIdChange()">
+      </div>
+    </div>
+    <div class="fg fg-2" style="margin-top:10px">
       <div class="f-grp">
         <label class="f-lbl">벤더사</label>
         <input class="f-inp" type="text" id="fVendor" placeholder="벤더사명">
       </div>
-      <div class="f-grp full">
-        <label class="f-lbl">링크</label>
-        <input class="f-inp" type="url" id="fLink" placeholder="https://...">
+      <div class="f-grp">
+        <label class="f-lbl">링크 <span class="f-badge">자동</span></label>
+        <input class="f-inp" type="url" id="fLink" placeholder="ID 입력 시 자동 생성 (직접 수정 가능)">
       </div>
     </div>
 
@@ -524,15 +545,16 @@ tbody tr:hover td{background:var(--surface-2)}
 <script>
 'use strict';
 const SAMPLE=[
-  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'@minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:286000,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
-  {id:2,brand:'Minix',product:'더시프트',ch:'@everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:198000,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
-  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'@hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:412000,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
-  {id:4,brand:'Minix',product:'더슬림',ch:'@slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:156000,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
-  {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'@kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:334000,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
-  {id:6,brand:'Minix',product:'더시프트',ch:'@daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:278000,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
-  {id:7,brand:'Minix',product:'더 플렌더 MAX',ch:'@beauty.note',start:'2026-07-02',end:'2026-07-04',status:'예정',views:null,qty:null,rev:null,code:'MX-BLD-002',s:{retail:59900,sale:49900,comm:14,note:'신규 채널 기본 스킴'}},
-  {id:8,brand:'Minix',product:'더슬림',ch:'@fit.foodie',start:'2026-07-08',end:'2026-07-10',status:'예정',views:null,qty:null,rev:null,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
+  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:286000,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
+  {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:198000,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
+  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:412000,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
+  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:156000,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
+  {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'키친퀸',platform:'인스타그램',chId:'kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:334000,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
+  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:278000,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
+  {id:7,brand:'Minix',product:'더 플렌더 MAX',ch:'뷰티노트',platform:'인스타그램',chId:'beauty.note',start:'2026-07-02',end:'2026-07-04',status:'예정',views:null,qty:null,rev:null,code:'MX-BLD-002',s:{retail:59900,sale:49900,comm:14,note:'신규 채널 기본 스킴'}},
+  {id:8,brand:'Minix',product:'더슬림',ch:'핏푸디',platform:'인스타그램',chId:'fit.foodie',start:'2026-07-08',end:'2026-07-10',status:'예정',views:null,qty:null,rev:null,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
 ];
+SAMPLE.forEach(d=>{d.link=buildChannelLink(d.platform,d.chId);});
 let DATA=SAMPLE.map(d=>({...d}));
 
 const _NOW=new Date();
@@ -542,6 +564,17 @@ const won=n=>n==null?'—':'₩'+n.toLocaleString('ko-KR');
 const num=n=>n==null?'—':n.toLocaleString('ko-KR');
 const fmtS=s=>{const d=new Date(s+'T00:00:00');return`${d.getMonth()+1}.${d.getDate()}`};
 const fmtF=s=>{const d=new Date(s+'T00:00:00');return`${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.`};
+const yearOf=s=>s?new Date(s+'T00:00:00').getFullYear():null;
+const monthOf=s=>s?new Date(s+'T00:00:00').getMonth()+1:null;
+const durDays=(s,e)=>{if(!s||!e)return null;const sd=new Date(s+'T00:00:00'),ed=new Date(e+'T00:00:00');return Math.round((ed-sd)/86400000)+1;};
+// 채널 링크: 플랫폼+ID로 프로필 URL 생성 (@ 접두사는 제거)
+function buildChannelLink(platform,id){
+  const v=String(id||'').trim().replace(/^@/,'');
+  if(!v)return'';
+  if(platform==='인스타그램')return`https://www.instagram.com/${v}`;
+  if(platform==='유튜브')return`https://www.youtube.com/@${v}`;
+  return'';
+}
 
 // 제품명 정규화: 공백 제거·소문자 (필터 매칭용)
 const normP=s=>String(s||'').replace(/\s/g,'').toLowerCase();
@@ -596,7 +629,7 @@ function renderKPI(){
   const avgV=done.length?Math.round(tViews/done.length):0;
   const conv=tViews>0&&tQty>0?((tQty/tViews)*100).toFixed(2)+'%':'—';
   document.getElementById('kpiRow').innerHTML=`
-    <div class="kpi"><div class="kpi-lbl">총 매출 (완료)</div><div class="kpi-val cm">${tRev?'₩'+(tRev/1000000).toFixed(1)+'<span class="kpi-unit">M</span>':'—'}</div><div class="kpi-sub">${done.length}건 완료</div></div>
+    <div class="kpi"><div class="kpi-lbl">총 매출 (완료)</div><div class="kpi-val cm">${tRev?won(tRev):'—'}</div><div class="kpi-sub">${done.length}건 완료</div></div>
     <div class="kpi"><div class="kpi-lbl">진행 중</div><div class="kpi-val cw">${act.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">${act.map(d=>d.product).join(' · ')||'없음'}</div></div>
     <div class="kpi"><div class="kpi-lbl">예정</div><div class="kpi-val cn">${plan.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">다가오는 공구</div></div>
     <div class="kpi"><div class="kpi-lbl">평균 릴스 조회수</div><div class="kpi-val cm">${avgV?(avgV/10000).toFixed(1)+'<span class="kpi-unit">만</span>':'—'}</div><div class="kpi-sub">완료 건 기준</div></div>
@@ -636,8 +669,8 @@ function renderEv(){
       <div class="ev-bar" style="background:${brandBarCol(d.brand)}"></div>
       <div class="ev-body">
         <div class="ev-top"><span class="ev-prod">${d.product}</span>${bdg(d.status)}</div>
-        <div class="ev-ch">${d.ch}</div>
-        <div class="ev-dt">${fmtF(d.start)} ~ ${fmtF(d.end)}</div>
+        <div class="ev-ch">${d.ch}${d.chId?` · ${d.link?`<a href="${d.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')}`:''}</div>
+        <div class="ev-dt">${fmtF(d.start)} ~ ${fmtF(d.end)} · ${durDays(d.start,d.end)}일</div>
         ${d.views!=null?`<div class="ev-mets"><span>👁 <span class="ev-mv">${(d.views/10000).toFixed(0)}만</span></span><span>🛒 <span class="ev-mv">${num(d.qty)}개</span></span><span>💰 <span class="ev-mv">${won(d.rev)}</span></span></div>`:''}
       </div>
     </div>`).join(''):'<div style="text-align:center;padding:40px 0;color:var(--text-3)">해당 조건의 공구가 없습니다</div>';
@@ -651,14 +684,18 @@ function renderTbl(){
     <tr onclick="openM(${d.id})">
       <td>${brandPill(d.brand)}</td>
       <td><strong>${d.product}</strong></td>
-      <td>${d.ch}</td>
-      <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
+      <td>${d.ch}${d.chId?`<div class="ch-id">${d.link?`<a href="${d.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')}</div>`:''}</td>
+      <td>${yearOf(d.start)??'—'}</td>
+      <td>${monthOf(d.start)?monthOf(d.start)+'월':'—'}</td>
+      <td>${fmtS(d.start)}</td>
+      <td>${fmtS(d.end)}</td>
+      <td>${durDays(d.start,d.end)?durDays(d.start,d.end)+'일':'—'}</td>
       <td>${d.views!=null?`<div class="vbar-wrap"><div class="vbar-bg"><div class="vbar-fill" style="width:${Math.round(d.views/mx*100)}%"></div></div><span>${(d.views/10000).toFixed(0)}만</span></div>`:'<span style="color:var(--text-3)">—</span>'}</td>
       <td>${num(d.qty)}</td><td><strong>${won(d.rev)}</strong></td>
       <td>${bdg(d.status)}</td>
       <td><span class="pcode" onclick="event.stopPropagation();cpTxt('${d.code}',this)">${d.code||'—'}</span></td>
       <td><button class="tperf-btn${(d.views!=null||d.qty!=null||d.rev!=null)?' has-data':''}" onclick="event.stopPropagation();openPerfForm(${d.id})">${(d.views!=null||d.rev!=null)?'수정':'기입'}</button></td>
-    </tr>`).join(''):`<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-3)">데이터 없음</td></tr>`;
+    </tr>`).join(''):`<tr><td colspan="14" style="text-align:center;padding:40px;color:var(--text-3)">데이터 없음</td></tr>`;
 }
 
 /* Scatter */
@@ -702,7 +739,7 @@ function renderBar(){
   const W=450,H=240,L=50,R=14,T=20,B=48,pw=W-L-R,ph=H-T-B,mx=Math.max(...bars.map(b=>b.val)),bw=Math.floor(pw/bars.length*.55),step=pw/bars.length;
   let s='';
   for(let i=1;i<=4;i++){const gy=T+ph-i/4*ph,gv=mx*i/4;s+=`<line x1="${L}" y1="${gy}" x2="${L+pw}" y2="${gy}" stroke="#F0F2F8" stroke-width="1"/><text x="${L-4}" y="${gy+4}" text-anchor="end" fill="#9399A6" font-size="8">${(gv/1000000).toFixed(1)}M</text>`;}
-  bars.forEach((b,i)=>{const bh=(b.val/mx)*ph,bx=L+i*step+(step-bw)/2,by=T+ph-bh,c='#3B56E5';s+=`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="3" fill="${c}" fill-opacity=".82"/><text x="${bx+bw/2}" y="${by-5}" text-anchor="middle" fill="${c}" font-size="8" font-weight="700">${(b.val/1000000).toFixed(1)}M</text><text x="${bx+bw/2}" y="${T+ph+14}" text-anchor="middle" fill="#5B6375" font-size="9">${b.lb}</text>`;});
+  bars.forEach((b,i)=>{const bh=(b.val/mx)*ph,bx=L+i*step+(step-bw)/2,by=T+ph-bh,c='#3B56E5';s+=`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="3" fill="${c}" fill-opacity=".82"/><text x="${bx+bw/2}" y="${by-5}" text-anchor="middle" fill="${c}" font-size="7.5" font-weight="700">${won(b.val)}</text><text x="${bx+bw/2}" y="${T+ph+14}" text-anchor="middle" fill="#5B6375" font-size="9">${b.lb}</text>`;});
   s+=`<line x1="${L}" y1="${T}" x2="${L}" y2="${T+ph}" stroke="#DDE1EB" stroke-width="1"/><line x1="${L}" y1="${T+ph}" x2="${L+pw}" y2="${T+ph}" stroke="#DDE1EB" stroke-width="1.5"/>`;
   wr.innerHTML=`<svg viewBox="0 0 ${W} ${H}" class="csvg">${s}</svg>`;
 }
@@ -714,7 +751,9 @@ function openM(id){
   document.getElementById('mBrand').style.color=c;
   document.getElementById('mBrand').textContent=`Minix · ${d.product}`;
   document.getElementById('mTitle').textContent=d.ch;
-  document.getElementById('mSub').textContent=`${fmtF(d.start)} ~ ${fmtF(d.end)} · ${d.status}`;
+  document.getElementById('mChLink').innerHTML=d.chId?(d.link?`<a href="${d.link}" target="_blank" rel="noopener">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')):'';
+  const durTxt=durDays(d.start,d.end);
+  document.getElementById('mSub').textContent=`${yearOf(d.start)}년 ${monthOf(d.start)}월 · ${fmtF(d.start)} ~ ${fmtF(d.end)}${durTxt?` (${durTxt}일)`:''} · ${d.status}`;
   document.getElementById('mCode').textContent=d.code||'—';
   const s=d.s||{},disc=s.retail&&s.sale?Math.round((1-s.sale/s.retail)*100):0;
   document.getElementById('mScheme').innerHTML=`
@@ -796,7 +835,8 @@ function adaptGAS(j){
   if(!j.purchases||!Array.isArray(j.purchases))return null;
   return j.purchases.map((p,i)=>({
     id:i+1,brand:p.brand||'',product:p.product||'',ch:p.channel||p.influencer||'',
-    influencer:p.influencer||'',vendor:p.vendor||'',platform:p.platform||'',format:p.format||'',link:p.link||'',
+    influencer:p.influencer||'',vendor:p.vendor||'',platform:p.platform||'',format:p.format||'',
+    chId:p.chId||'',link:p.link||(p.chId?buildChannelLink(p.platform,p.chId):''),
     start:normDate(p.start),end:normDate(p.end),
     openTime:p.openTime||'',composition:p.composition||'',
     option1:p.option1||'',option2:p.option2||'',firstCome:p.firstCome||'',
@@ -867,8 +907,26 @@ function closeDealForm(){
   document.getElementById('fModel').value='';
   document.getElementById('fProduct').value='';
   document.getElementById('modelRow').style.display='none';
+  document.getElementById('fChIdLbl').textContent='채널 ID';
+  document.getElementById('fChannelId').placeholder='플랫폼 먼저 선택';
 }
 document.getElementById('dealOv').addEventListener('click',e=>{if(e.target===document.getElementById('dealOv'))closeDealForm();});
+
+function onPlatformChange(){
+  const p=document.getElementById('fPlatform').value;
+  const lbl=document.getElementById('fChIdLbl');
+  const idInp=document.getElementById('fChannelId');
+  if(p==='인스타그램'){lbl.innerHTML='인스타그램 ID <span class="f-req">*</span>';idInp.placeholder='예: minnie.life (@ 제외)';}
+  else if(p==='유튜브'){lbl.innerHTML='유튜브 ID <span class="f-req">*</span>';idInp.placeholder='예: everyday_fit (@ 제외)';}
+  else if(p==='기타'){lbl.textContent='채널 ID';idInp.placeholder='선택 입력';}
+  else {lbl.textContent='채널 ID';idInp.placeholder='플랫폼 먼저 선택';}
+  onChannelIdChange();
+}
+function onChannelIdChange(){
+  const p=document.getElementById('fPlatform').value;
+  const id=document.getElementById('fChannelId').value;
+  document.getElementById('fLink').value=buildChannelLink(p,id);
+}
 
 function onLineChange(){
   const line=document.getElementById('fLine').value;
@@ -912,20 +970,24 @@ function saveDeal(){
   // product = model if selected (더플렌더 PRO/MAX/mini), else line name
   const product=LINE_HAS_MODELS[line]?(model||line):line;
   const influencer=document.getElementById('fInfluencer').value.trim();
+  const platform=document.getElementById('fPlatform').value;
+  const channelId=document.getElementById('fChannelId').value.trim().replace(/^@/,'');
   const start=document.getElementById('fStart').value;
   const end=document.getElementById('fEnd').value;
   if(!line){alert('품목군을 선택하세요.');return;}
   if(LINE_HAS_MODELS[line]&&!model){alert('제품을 선택하세요.');return;}
-  if(!influencer){alert('인플루언서명을 입력하세요.');return;}
+  if(!influencer){alert('채널명을 입력하세요.');return;}
+  if(!platform){alert('플랫폼을 선택하세요.');return;}
+  if((platform==='인스타그램'||platform==='유튜브')&&!channelId){alert(`${platform} ID를 입력하세요.`);return;}
   if(!start||!end){alert('시작일과 마감일을 입력하세요.');return;}
   if(new Date(start)>new Date(end)){alert('마감일이 시작일보다 빠릅니다.');return;}
 
   const newDeal={
     id:DATA.reduce((mx,d)=>Math.max(mx,d.id),0)+1,
     brand,product,ch:influencer,
-    influencer,
+    influencer,platform,chId:channelId,
     vendor:document.getElementById('fVendor').value.trim(),
-    link:document.getElementById('fLink').value.trim(),
+    link:document.getElementById('fLink').value.trim()||buildChannelLink(platform,channelId),
     start,end,
     openTime:document.getElementById('fOpenTime').value,
     composition:document.getElementById('fComposition').value.trim(),
