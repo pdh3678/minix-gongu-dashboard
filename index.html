@@ -166,11 +166,6 @@ tbody tr{cursor:pointer;transition:background .12s}
 tbody tr:hover td{background:var(--surface-2)}
 .bp{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:2px 6px;border-radius:3px}
 .bm{background:var(--minix-lt);color:var(--minix)}
-.bp-plender{background:#E6F0FF;color:#1D4ED8}
-.bp-shift{background:#FCE7F3;color:#BE185D}
-.bp-air{background:#E0F2FE;color:#0369A1}
-.bp-slim{background:#F3E8FF;color:#7C3AED}
-.bp-etc{background:var(--nbg);color:#374151}
 .bp-vendor{background:var(--nbg);color:#374151;letter-spacing:0;text-transform:none}
 .bp-fmt{background:#EEF2FF;color:#4338CA;letter-spacing:0;text-transform:none}
 
@@ -889,6 +884,27 @@ function flenderModel(p){
   return 'mini';
 }
 
+// 제품별 뱃지/캘린더 막대 색상 — 색상 정의는 이 맵 한 곳에서만 관리 (변경 시 전체에 반영됨)
+const PRODUCT_COLORS={
+  '플렌더PRO':  {bg:'#F3E8FF',fg:'#7C3AED'},
+  '플렌더MAX':  {bg:'#DBEAFE',fg:'#2563EB'},
+  '플렌더mini': {bg:'#DCFCE7',fg:'#16A34A'},
+  '시프트':     {bg:'#FFEDD5',fg:'#EA580C'},
+  '슬림':       {bg:'#CCFBF1',fg:'#0D9488'},
+  '에어드라이': {bg:'#FFE4E6',fg:'#E11D48'},
+  other:        {bg:'#F3F4F6',fg:'#6B7280'}
+};
+// 제품명 → 색상 팔레트 키 (공백 제거 후 매칭)
+function productColorKey(p){
+  if(isFlender(p))return'플렌더'+flenderModel(p);
+  const np=normP(p);
+  if(np==='더시프트')return'시프트';
+  if(np==='더슬림')return'슬림';
+  if(np.includes('에어드라이'))return'에어드라이';
+  return'other';
+}
+function productColor(p){return PRODUCT_COLORS[productColorKey(p)]||PRODUCT_COLORS.other;}
+
 // 제품/브랜드/모델 필터만 적용 (상태 필터 제외)
 function filteredProd(){
   return DATA.filter(d=>{
@@ -1101,12 +1117,17 @@ function sortSales(key){
   render();
 }
 function productBadge(p){
-  if(isFlender(p))return`<span class="bp bp-plender">더 플렌더 ${flenderModel(p)}</span>`;
-  const np=normP(p);
-  if(np==='더시프트')return'<span class="bp bp-shift">더 시프트</span>';
-  if(np.includes('에어드라이'))return'<span class="bp bp-air">더 에어드라이</span>';
-  if(np==='더슬림')return'<span class="bp bp-slim">더 슬림</span>';
-  return`<span class="bp bp-etc">${p||'—'}</span>`;
+  const c=productColor(p);
+  let label;
+  if(isFlender(p))label=`더 플렌더 ${flenderModel(p)}`;
+  else{
+    const np=normP(p);
+    if(np==='더시프트')label='더 시프트';
+    else if(np==='더슬림')label='더 슬림';
+    else if(np.includes('에어드라이'))label='더 에어드라이';
+    else label=p||'—';
+  }
+  return`<span class="bp" style="background:${c.bg};color:${c.fg}">${label}</span>`;
 }
 
 const SALES_CELL={
@@ -1252,14 +1273,7 @@ function calProductLabel(p){
   if(np==='더슬림')return'더 슬림';
   return p;
 }
-function calBarColor(p){
-  if(isFlender(p))return'#DCEAFF';
-  const np=normP(p);
-  if(np==='더시프트')return'#FCE7F3';
-  if(np.includes('에어드라이'))return'#E0F2FE';
-  if(np==='더슬림')return'#F3E8FF';
-  return'#F3F4F6';
-}
+function calBarColor(p){return productColor(p);}
 
 // 월별 주차 계산: 해당 월의 첫 월요일부터 시작, 마지막 주는 다음달로 넘어가도 7일 채움
 function monthWeeks(y,m){
@@ -1342,7 +1356,7 @@ function renderCalMonth(y,m){
       for(let i=gridDays.length-1;i>=0;i--){if(gridDays[i].getTime()<=ed.getTime()){endIdx=i;break;}}
       if(endIdx<0||startIdx>endIdx)return;
       const qtyTxt=d.qty!=null?`(${num(d.qty)})`:'';
-      bars+=`<div class="cal-bar" style="grid-column:${startIdx+3}/${endIdx+4};background:${calBarColor(d.product)}" onclick="openM(${d.id})" title="${d.ch}${qtyTxt}">${d.ch}${qtyTxt}</div>`;
+      bars+=`<div class="cal-bar" style="grid-column:${startIdx+3}/${endIdx+4};background:${calBarColor(d.product).bg};color:${calBarColor(d.product).fg}" onclick="openM(${d.id})" title="${d.ch}${qtyTxt}">${d.ch}${qtyTxt}</div>`;
     });
     rowsHtml+=`<div class="cal-row" style="grid-template-columns:${colsTpl}">${bars}</div>`;
   });
