@@ -58,7 +58,8 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 .cal-rowlbl{display:flex;align-items:center;gap:5px;padding:4px 10px;font-size:11px;font-weight:600;background:var(--surface-2);border-right:1px solid var(--border);position:sticky;z-index:5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-rowlbl:nth-child(1){left:0}
 .cal-rowlbl:nth-child(2){left:90px}
-.cal-bar{grid-row:1;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;align-self:center;margin:3px 2px;transition:filter .1s}
+.cal-lane-sep{border-top:1px dashed var(--border)}
+.cal-bar{border-radius:4px;padding:3px 8px;font-size:10px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;align-self:center;margin:3px 2px;transition:filter .1s}
 .cal-bar:hover{filter:brightness(.95)}
 
 /* ── 대시보드 페이지 ── */
@@ -1390,6 +1391,22 @@ function calProductLabel(p){
 }
 function calBarColor(p){return productColor(p);}
 
+// 같은 제품 안에서 날짜가 겹치는 공구를 레인(서브 행)으로 나눠 배치 — 시작일 순 그리디 배치.
+// items의 각 원소는 {sd,ed,...}(시작/종료 Date)를 가져야 하며, 배치 결과로 x.lane(0-based)이 채워짐.
+// 겹침 판정: 새 공구 시작일이 기존 레인의 마지막 종료일보다 "이후"여야 그 레인에 배치 가능
+// (시작일 == 종료일이면 겹침으로 처리 — 같은 칸에 두 막대가 반씩 들어가지 않게 함)
+function calAssignLanes(items){
+  items.sort((a,b)=>a.sd-b.sd);
+  const laneEndDates=[];
+  items.forEach(x=>{
+    let lane=laneEndDates.findIndex(endDt=>x.sd.getTime()>endDt.getTime());
+    if(lane<0){lane=laneEndDates.length;laneEndDates.push(null);}
+    laneEndDates[lane]=x.ed;
+    x.lane=lane;
+  });
+  return laneEndDates.length;
+}
+
 /* ── 캘린더 연도/월 접기·펼치기 상태 ──
    localStorage는 쓰지 않고 URL 쿼리 파라미터(calOpen)로 유지 → 새로고침해도 상태 보존.
    Set에 들어있는 키는 "펼쳐진" 연도/월을 의미(연도="2025", 월="2025-01") */
@@ -1531,18 +1548,25 @@ function renderCalMonth(y,m){
 
   let rowsHtml='';
   [...rowsMap.values()].sort((a,b)=>a.label.localeCompare(b.label)).forEach(row=>{
-    let bars=`<div class="cal-rowlbl">${brandPill('Minix')}</div><div class="cal-rowlbl">${row.label}</div>`;
-    row.deals.forEach(d=>{
+    // 그리드 위치(startIdx/endIdx) 계산 후 겹치는 공구는 레인(서브 행)을 나눠 배치
+    const withPos=row.deals.map(d=>{
       const sd=new Date(d.start+'T00:00:00'),ed=new Date((d.end||d.start)+'T00:00:00');
       let startIdx=gridDays.findIndex(dt=>dt.getTime()>=sd.getTime());
       if(startIdx<0)startIdx=0;
       let endIdx=-1;
       for(let i=gridDays.length-1;i>=0;i--){if(gridDays[i].getTime()<=ed.getTime()){endIdx=i;break;}}
-      if(endIdx<0||startIdx>endIdx)return;
-      const qtyTxt=d.qty!=null?`(${num(d.qty)})`:'';
-      bars+=`<div class="cal-bar" style="grid-column:${startIdx+3}/${endIdx+4};background:${calBarColor(d.product).bg};color:${calBarColor(d.product).fg}" onclick="openM(${d.id})" title="${d.ch}${qtyTxt}">${d.ch}${qtyTxt}</div>`;
+      return{d,sd,ed,startIdx,endIdx};
+    }).filter(x=>x.endIdx>=0&&x.startIdx<=x.endIdx);
+    const laneCount=calAssignLanes(withPos)||1;
+
+    let bars=`<div class="cal-rowlbl" style="grid-column:1;grid-row:1/-1">${brandPill('Minix')}</div><div class="cal-rowlbl" style="grid-column:2;grid-row:1/-1">${row.label}</div>`;
+    for(let ln=1;ln<laneCount;ln++)bars+=`<div class="cal-lane-sep" style="grid-column:1/-1;grid-row:${ln+1}"></div>`;
+    withPos.forEach(x=>{
+      const qtyTxt=x.d.qty!=null?`(${num(x.d.qty)})`:'';
+      const fullTxt=`${x.d.ch}${qtyTxt}`;
+      bars+=`<div class="cal-bar" style="grid-column:${x.startIdx+3}/${x.endIdx+4};grid-row:${x.lane+1};background:${calBarColor(x.d.product).bg};color:${calBarColor(x.d.product).fg}" onclick="openM(${x.d.id})" title="${fullTxt}">${fullTxt}</div>`;
     });
-    rowsHtml+=`<div class="cal-row" style="grid-template-columns:${colsTpl}">${bars}</div>`;
+    rowsHtml+=`<div class="cal-row" style="grid-template-columns:${colsTpl};grid-template-rows:repeat(${laneCount},minmax(30px,auto))">${bars}</div>`;
   });
 
   const monthKey=y+'-'+_pad2(m);
