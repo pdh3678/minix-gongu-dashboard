@@ -113,7 +113,7 @@ function doGet(e) {
     }
 
     var result = parseMainSheet(sheet, ss);
-    result.deals.forEach(function(p, idx) { p.id = idx + 1; });
+    // id는 parseMainSheet에서 이미 실제 시트 행 번호로 부여됨 (내용 기반 재번호 금지)
 
     return _json({ purchases: result.deals, updatedAt: new Date().toISOString(), codeMatchStats: result.codeStats });
   } catch (err) {
@@ -357,8 +357,11 @@ function parseMainSheet(sheet, ss) {
     }
 
     // 날짜 생성: L/M열은 보통 실제 날짜 셀(Date)이며, 드물게 "M/D" 텍스트 + K(연도)로 입력된 경우도 처리
+    // 다른 행의 날짜는 절대 참조하지 않음 — 오직 이 행의 K/L/M열만 사용
     var startDate = _parseDate(startCell, year);
     var endDate   = _parseDate(endCell, year) || startDate;
+    // 연도 넘김: 같은 행 안에서 종료일의 월이 시작일의 월보다 앞서면(예: 12월→1월) 종료일에 +1년
+    endDate = _fixYearWrap(startDate, endDate);
 
     // 진행상태: N열 우선, 비어있으면 날짜 계산
     var status;
@@ -399,7 +402,7 @@ function parseMainSheet(sheet, ss) {
     var profileLink = schedMatch.link || '';
 
     deals.push({
-      id:         0,
+      id:         i + 1, // 실적통합 시트의 실제 물리 행 번호(1-based) — 채널명 등 내용 기반 키는 절대 사용하지 않음
       brand:      'Minix',
       product:    product,
       channel:    channel,
@@ -446,6 +449,17 @@ function _parseDate(cell, year) {
     if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) return parseInt(year, 10) + '-' + _pad(mo) + '-' + _pad(da);
   }
   return null;
+}
+
+// 연도 넘김 보정: 시작일/종료일이 같은 해로 파싱됐는데 종료월이 시작월보다 앞서면(예: 12월→1월)
+// 실제로는 해를 넘긴 일정으로 보고 종료일 연도를 +1 함. 서로 다른 해로 이미 파싱된 경우는 건드리지 않음
+// (해당 행의 날짜 자체가 잘못 입력된 경우까지 임의로 "고치지" 않기 위함 — 그런 행은 그대로 노출해 발견 가능하게 둠)
+function _fixYearWrap(startDate, endDate) {
+  if (!startDate || !endDate) return endDate;
+  var sy = parseInt(startDate.slice(0, 4), 10), sm = parseInt(startDate.slice(5, 7), 10);
+  var ey = parseInt(endDate.slice(0, 4), 10), em = parseInt(endDate.slice(5, 7), 10);
+  if (sy === ey && em < sm) return (ey + 1) + endDate.slice(4);
+  return endDate;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -546,15 +560,18 @@ function _addCalendarRow(ss, data) {
   return _json({ success: true });
 }
 
-// 제품명+채널명으로 실적통합 시트에서 일치하는 행을 찾음 (0-based 행 인덱스, 못 찾으면 -1)
-function _findDataRow(all, product, channel) {
-  var normTarget = _normProd(product || '') + '__' + _normProd(channel || '');
-  for (var i = DATA_START_ROW; i < all.length; i++) {
-    var np = _normProd(String(all[i][COL.product] || ''));
-    var nc = _normProd(String(all[i][COL.channel] || ''));
-    if (np + '__' + nc === normTarget) return i;
-  }
-  return -1;
+// 클라이언트가 보낸 물리 행 번호(1-based, doGet에서 부여한 id와 동일)로 행을 찾음.
+// 같은 제품+채널 조합이 여러 행에 존재하는 경우가 실제로 매우 흔해서(같은 인플루언서 재진행 등)
+// 내용 기반 매칭(_findDataRow, 구버전)은 항상 첫 번째 일치 행만 찾아 다른 회차를 잘못 덮어쓸 수 있었음.
+// 행 번호를 신뢰하되, 클라이언트 데이터가 오래되어 행이 바뀌었을 가능성에 대비해 제품+채널 일치 여부를 한 번 더 확인함.
+function _rowByNumber(all, row, product, channel) {
+  if (!row) return -1;
+  var idx = row - 1; // 1-based → 0-based
+  if (idx < DATA_START_ROW || idx >= all.length) return -1;
+  var np = _normProd(String(all[idx][COL.product] || ''));
+  var nc = _normProd(String(all[idx][COL.channel] || ''));
+  if (np !== _normProd(product || '') || nc !== _normProd(channel || '')) return -1;
+  return idx;
 }
 
 // 실적 기입 → 실적통합 시트 해당 행 업데이트
@@ -563,8 +580,8 @@ function _addPerf(ss, data) {
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
 
   var all = sheet.getDataRange().getValues();
-  var rowIdx = _findDataRow(all, data.product, data.channel);
-  if (rowIdx < 0) return _json({ error: '일치하는 공구 행을 찾을 수 없습니다.' });
+  var rowIdx = _rowByNumber(all, data.row, data.product, data.channel);
+  if (rowIdx < 0) return _json({ error: '해당 공구 행을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
 
   var sheetRow = rowIdx + 1; // 1-based
   if (data.qty     != null) sheet.getRange(sheetRow, COL.qty     + 1).setValue(data.qty);
@@ -582,8 +599,8 @@ function _saveReels(ss, data) {
   _ensureExtraHeaders(sheet);
 
   var all = sheet.getDataRange().getValues();
-  var rowIdx = _findDataRow(all, data.product, data.channel);
-  if (rowIdx < 0) return _json({ error: '일치하는 공구 행을 찾을 수 없습니다.' });
+  var rowIdx = _rowByNumber(all, data.row, data.product, data.channel);
+  if (rowIdx < 0) return _json({ error: '해당 공구 행을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
   var sheetRow = rowIdx + 1; // 1-based
 
   sheet.getRange(sheetRow, COL.link + 1).setValue(data.link || '');
@@ -626,8 +643,8 @@ function _updateScheme(ss, data) {
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
 
   var all = sheet.getDataRange().getValues();
-  var rowIdx = _findDataRow(all, data.product, data.channel);
-  if (rowIdx < 0) return _json({ error: '일치하는 공구 행을 찾을 수 없습니다.' });
+  var rowIdx = _rowByNumber(all, data.row, data.product, data.channel);
+  if (rowIdx < 0) return _json({ error: '해당 공구 행을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
   var sheetRow = rowIdx + 1; // 1-based
 
   if (data.sale != null) sheet.getRange(sheetRow, COL.salePrice + 1).setValue(data.sale);

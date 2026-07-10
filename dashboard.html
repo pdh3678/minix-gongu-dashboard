@@ -1279,7 +1279,7 @@ function saveMgmtRow(id){
   if(url){
     setLoad(true);
     fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
-      action:'addPerf',data:{brand:d.brand,product:d.product,channel:d.ch,views,qty,revenue:rev,status:d.status},idToken:_gasCredential||''
+      action:'addPerf',data:{row:d.id,brand:d.brand,product:d.product,channel:d.ch,views,qty,revenue:rev,status:d.status},idToken:_gasCredential||''
     })}).then(r=>r.json()).then(j=>{
       if(j.error)throw new Error(j.error);
       d.views=views;d.qty=qty;d.rev=rev;
@@ -1627,10 +1627,10 @@ async function saveSchemeModal(){
     setLoad(true);
     Promise.all([
       fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
-        action:'saveReels',data:{product:d.product,channel:d.ch,link,reels:touchReels?reels:null},idToken:_gasCredential||''
+        action:'saveReels',data:{row:d.id,product:d.product,channel:d.ch,link,reels:touchReels?reels:null},idToken:_gasCredential||''
       })}).then(r=>r.json()),
       fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
-        action:'updateScheme',data:{product:d.product,channel:d.ch,sale,qty,comm,code:codeVal},idToken:_gasCredential||''
+        action:'updateScheme',data:{row:d.id,product:d.product,channel:d.ch,sale,qty,comm,code:codeVal},idToken:_gasCredential||''
       })}).then(r=>r.json())
     ]).then(([r1,r2])=>{
       if(r1.error)throw new Error(r1.error);
@@ -1753,7 +1753,7 @@ async function fetchLive(){
 function adaptGAS(j){
   if(!j.purchases||!Array.isArray(j.purchases))return null;
   return j.purchases.map((p,i)=>({
-    id:i+1,brand:p.brand||'',product:p.product||'',ch:p.channel||p.influencer||'',
+    id:p.id!=null?p.id:i+1,brand:p.brand||'',product:p.product||'',ch:p.channel||p.influencer||'',
     influencer:p.influencer||'',vendor:p.vendor||'',platform:p.platform||'',format:p.format||'',
     chId:p.chId||'',link:p.link||(p.chId?buildChannelLink(p.platform,p.chId):''),
     profileLink:p.profileLink||'',
@@ -2048,7 +2048,7 @@ function savePerf(){
   if(url){
     setLoad(true);
     fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
-      action:'addPerf',data:{brand:d.brand,product:d.product,channel:d.ch,views,qty,revenue:rev,status},idToken:_gasCredential||''
+      action:'addPerf',data:{row:d.id,brand:d.brand,product:d.product,channel:d.ch,views,qty,revenue:rev,status},idToken:_gasCredential||''
     })}).then(r=>r.json()).then(j=>{
       if(j.error)throw new Error(j.error);
       d.views=views;d.qty=qty;d.rev=rev;d.status=status;
