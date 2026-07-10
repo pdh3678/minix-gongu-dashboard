@@ -38,9 +38,10 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 .page-placeholder{padding:70px 20px;text-align:center;color:var(--text-3);font-size:13px;line-height:1.7}
 
 /* ── 공구 캘린더 페이지 ── */
-.cal-year-hd{background:var(--navy);color:#fff;padding:7px 14px;font-size:12px;font-weight:800;border-radius:6px;margin:16px 0 6px}
+.cal-year-hd{background:var(--navy);color:#fff;padding:7px 14px;font-size:12px;font-weight:800;border-radius:6px;margin:16px 0 6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:7px}
 .cal-year-hd:first-child{margin-top:0}
-.cal-month-hd{background:var(--nbg);border:1px solid var(--border);border-bottom:none;border-radius:6px 6px 0 0;padding:6px 14px;font-size:12px;font-weight:800;color:var(--text)}
+.cal-month-hd{background:var(--nbg);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-size:12px;font-weight:800;color:var(--text);cursor:pointer;user-select:none;display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.cal-hd-arrow{font-size:9px;display:inline-block;width:9px}
 .cal-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:0 0 6px 6px;margin-bottom:14px}
 .cal-grid-hd,.cal-row{display:grid;align-items:stretch}
 .cal-lbl2{background:var(--surface-2);border-right:1px solid var(--border);border-bottom:1px solid var(--border);position:sticky;z-index:6}
@@ -1389,6 +1390,66 @@ function calProductLabel(p){
 }
 function calBarColor(p){return productColor(p);}
 
+/* ── 캘린더 연도/월 접기·펼치기 상태 ──
+   localStorage는 쓰지 않고 URL 쿼리 파라미터(calOpen)로 유지 → 새로고침해도 상태 보존.
+   Set에 들어있는 키는 "펼쳐진" 연도/월을 의미(연도="2025", 월="2025-01") */
+const CAL_STATE={years:new Set(),months:new Set()};
+let _calStateLoaded=false,_calScrolled=false;
+
+function calDefaultOpenState(){
+  const today=new Date();
+  const cy=today.getFullYear(),cm=today.getMonth()+1;
+  const years=new Set([String(cy)]);
+  const months=new Set();
+  for(let d=-1;d<=1;d++){
+    const dt=new Date(cy,cm-1+d,1);
+    months.add(dt.getFullYear()+'-'+_pad2(dt.getMonth()+1));
+  }
+  return{years,months};
+}
+function calSaveStateToURL(){
+  const keys=[...CAL_STATE.years,...CAL_STATE.months];
+  const params=new URLSearchParams(location.search);
+  if(keys.length)params.set('calOpen',keys.join(','));else params.delete('calOpen');
+  const qs=params.toString();
+  history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+location.hash);
+}
+function calLoadStateFromURL(){
+  const params=new URLSearchParams(location.search);
+  const raw=params.get('calOpen');
+  if(raw===null){
+    const def=calDefaultOpenState();
+    CAL_STATE.years=def.years;CAL_STATE.months=def.months;
+    calSaveStateToURL();
+    return;
+  }
+  const keys=raw?raw.split(','):[];
+  CAL_STATE.years=new Set(keys.filter(k=>/^\d{4}$/.test(k)));
+  CAL_STATE.months=new Set(keys.filter(k=>/^\d{4}-\d{2}$/.test(k)));
+}
+function calToggleYear(y){
+  const key=String(y);
+  if(CAL_STATE.years.has(key))CAL_STATE.years.delete(key);else CAL_STATE.years.add(key);
+  calSaveStateToURL();
+  renderCalendarPage();
+}
+function calToggleMonth(y,m){
+  const key=y+'-'+_pad2(m);
+  if(CAL_STATE.months.has(key))CAL_STATE.months.delete(key);else CAL_STATE.months.add(key);
+  calSaveStateToURL();
+  renderCalendarPage();
+}
+function calAutoScrollToCurrentMonth(){
+  if(_calScrolled)return;
+  _calScrolled=true;
+  const today=new Date();
+  const key=today.getFullYear()+'-'+_pad2(today.getMonth()+1);
+  requestAnimationFrame(()=>{
+    const el=document.querySelector(`[data-ym="${key}"]`);
+    if(el)el.scrollIntoView({block:'start'});
+  });
+}
+
 // 월별 주차 계산: 해당 월의 첫 월요일부터 시작, 마지막 주는 다음달로 넘어가도 7일 채움
 function monthWeeks(y,m){
   const dim=new Date(y,m,0).getDate();
@@ -1407,6 +1468,7 @@ function monthWeeks(y,m){
 }
 
 function renderCalendarPage(){
+  if(!_calStateLoaded){calLoadStateFromURL();_calStateLoaded=true;}
   const host=document.getElementById('calPageBody');
   const withDates=DATA.filter(d=>d.start);
   if(!withDates.length){host.innerHTML='<div class="page-placeholder">표시할 공구 일정이 없습니다</div>';return;}
@@ -1421,11 +1483,19 @@ function renderCalendarPage(){
 
   let html='',lastYear=null,y=minY,m=minM;
   while(y<maxY||(y===maxY&&m<=maxM)){
-    if(y!==lastYear){html+=`<div class="cal-year-hd">${y}년</div>`;lastYear=y;}
+    if(y!==lastYear){
+      if(lastYear!==null)html+='</div>';
+      const yOpen=CAL_STATE.years.has(String(y));
+      html+=`<div class="cal-year-hd" onclick="calToggleYear(${y})"><span class="cal-hd-arrow">${yOpen?'▾':'▸'}</span>${y}년</div>`;
+      html+=`<div class="cal-year-body" style="display:${yOpen?'block':'none'}">`;
+      lastYear=y;
+    }
     html+=renderCalMonth(y,m);
     m++; if(m>12){m=1;y++;}
   }
+  if(lastYear!==null)html+='</div>';
   host.innerHTML=html;
+  calAutoScrollToCurrentMonth();
 }
 
 function renderCalMonth(y,m){
@@ -1475,11 +1545,15 @@ function renderCalMonth(y,m){
     rowsHtml+=`<div class="cal-row" style="grid-template-columns:${colsTpl}">${bars}</div>`;
   });
 
+  const monthKey=y+'-'+_pad2(m);
+  const mOpen=CAL_STATE.months.has(monthKey);
   return`
-    <div class="cal-month-hd">${y}년 ${m}월</div>
-    <div class="cal-scroll">
-      <div class="cal-grid-hd" style="grid-template-columns:${colsTpl}">${hdA}${hdB}${hdC}</div>
-      ${rowsHtml||'<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px">이 달은 등록된 공구가 없습니다</div>'}
+    <div class="cal-month-hd" onclick="calToggleMonth(${y},${m})" data-ym="${monthKey}"><span class="cal-hd-arrow">${mOpen?'▾':'▸'}</span>${y}년 ${m}월</div>
+    <div class="cal-month-body" style="display:${mOpen?'block':'none'}">
+      <div class="cal-scroll">
+        <div class="cal-grid-hd" style="grid-template-columns:${colsTpl}">${hdA}${hdB}${hdC}</div>
+        ${rowsHtml||'<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px">이 달은 등록된 공구가 없습니다</div>'}
+      </div>
     </div>
   `;
 }
