@@ -1569,7 +1569,7 @@ async function saveSchemeModal(){
     try{
       for(const r of reels){
         if(!r._pendingUpload)continue;
-        const resp=await fetch(_gasUrl(url),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'uploadThumbnail',data:r._pendingUpload,idToken:_gasCredential||''})});
+        const resp=await fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadThumbnail',data:r._pendingUpload,idToken:_gasCredential||''})});
         const j=await resp.json();
         if(j.error)throw new Error(j.error);
         r.thumb=j.url;
@@ -1581,7 +1581,7 @@ async function saveSchemeModal(){
 
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
       action:'saveReels',data:{product:d.product,channel:d.ch,link,reels:touchReels?reels:null},idToken:_gasCredential||''
     })}).then(r=>r.json()).then(j=>{
       if(j.error)throw new Error(j.error);
@@ -1882,7 +1882,7 @@ function saveDeal(){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addSalesRow',data:newDeal,idToken:_gasCredential||''})})
+    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addSalesRow',data:newDeal,idToken:_gasCredential||''})})
       .then(r=>r.json()).then(j=>{
         if(j.error)throw new Error(j.error);
         closeDealForm();fetchLive();
@@ -1946,7 +1946,7 @@ function saveCalRow(){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addCalendarRow',data:{product,channel,start,end,qty},idToken:_gasCredential||''})})
+    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addCalendarRow',data:{product,channel,start,end,qty},idToken:_gasCredential||''})})
       .then(r=>r.json()).then(j=>{
         if(j.error)throw new Error(j.error);
         closeCalRowForm();fetchLive();
@@ -1994,7 +1994,7 @@ function savePerf(){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
       action:'addPerf',data:{brand:d.brand,product:d.product,channel:d.ch,views,qty,revenue:rev,status},idToken:_gasCredential||''
     })}).then(r=>r.json()).then(j=>{
       if(j.error)throw new Error(j.error);
