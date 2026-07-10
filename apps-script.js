@@ -462,6 +462,7 @@ function doPost(e) {
     if (body.action === 'addPerf') return _addPerf(ss, body.data);
     if (body.action === 'addCalendarRow') return _addCalendarRow(ss, body.data);
     if (body.action === 'saveReels') return _saveReels(ss, body.data);
+    if (body.action === 'updateScheme') return _updateScheme(ss, body.data);
     if (body.action === 'uploadThumbnail') return _uploadThumbnail(body.data);
     throw new Error('Unknown action: ' + body.action);
   } catch (err) {
@@ -613,6 +614,32 @@ function _saveReels(ss, data) {
     // P열(조회수 합계) — 기존 SUM(Q:W) 수식을 대체해 직접 계산한 값을 기록
     sheet.getRange(sheetRow, COL.views + 1).setValue(total || '');
     sheet.getRange(sheetRow, COL.thumbs + 1).setValue(JSON.stringify(thumbs));
+  }
+
+  return _json({ success: true });
+}
+
+// 품목별 실적 모달(스킴 편집)에서 공동구매가(G)/판매수량(H)/수수료(J)/상품코드(AC)를 저장
+// 총매출(I)은 수식이 있는 행이면 건드리지 않고, 값 행이면 공구가×판매수량으로 재계산해 기록
+function _updateScheme(ss, data) {
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+
+  var all = sheet.getDataRange().getValues();
+  var rowIdx = _findDataRow(all, data.product, data.channel);
+  if (rowIdx < 0) return _json({ error: '일치하는 공구 행을 찾을 수 없습니다.' });
+  var sheetRow = rowIdx + 1; // 1-based
+
+  if (data.sale != null) sheet.getRange(sheetRow, COL.salePrice + 1).setValue(data.sale);
+  if (data.qty != null) sheet.getRange(sheetRow, COL.qty + 1).setValue(data.qty);
+  if (data.comm != null) sheet.getRange(sheetRow, COL.commission + 1).setValue(data.comm / 100);
+  if (data.code != null) sheet.getRange(sheetRow, COL.code + 1).setValue(data.code);
+
+  var revCell = sheet.getRange(sheetRow, COL.revenue + 1);
+  if (!revCell.getFormula()) {
+    var effSale = data.sale != null ? data.sale : _numOrNull(all[rowIdx][COL.salePrice]);
+    var effQty = data.qty != null ? data.qty : _numOrNull(all[rowIdx][COL.qty]);
+    if (effSale != null && effQty != null) revCell.setValue(effSale * effQty);
   }
 
   return _json({ success: true });

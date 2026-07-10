@@ -88,9 +88,9 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 /* ── 사이드바 ── */
 .sidebar{position:fixed;top:0;left:0;bottom:0;width:220px;background:#15161A;display:flex;flex-direction:column;z-index:60;transition:width .18s ease;overflow:hidden}
 .app-shell.sb-collapsed .sidebar{width:64px}
-.sb-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:18px 16px;flex-shrink:0}
+.sb-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:27px 16px;flex-shrink:0}
 .app-shell.sb-collapsed .sb-top{justify-content:center}
-.sb-logo-img{height:22px;width:auto;object-fit:contain;flex-shrink:0}
+.sb-logo-img{height:33px;width:auto;object-fit:contain;flex-shrink:0}
 .app-shell.sb-collapsed .sb-logo-img{display:none}
 .sb-toggle{width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#C7CAD1;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;font-family:inherit}
 .sb-toggle:hover{background:rgba(255,255,255,.14)}
@@ -212,14 +212,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .dbg-pre{font-family:'SF Mono','Fira Code','Courier New',monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px;max-height:60vh;overflow:auto}
 
 /* Scheme modal */
-.sch-g{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
-.sch-c{background:var(--surface-2);border-radius:7px;padding:12px 14px}
-.sch-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:4px}
-.sch-val{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
 .sch-note{font-size:12px;color:var(--text-2);background:#FFFBEB;border:1px solid #FDE68A;border-left:3px solid #F59E0B;border-radius:6px;padding:10px 12px;margin-bottom:16px}
-.code-row{display:flex;align-items:center;justify-content:space-between;background:#1B2035;border-radius:8px;padding:11px 14px}
+.code-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1B2035;border-radius:8px;padding:11px 14px}
 .code-lbl{font-size:10px;color:#64748B;font-weight:600;margin-bottom:2px}
-.code-val{font-family:'SF Mono','Fira Code',monospace;font-size:14px;font-weight:700;color:#E2E8F0}
+.code-input{display:block;width:100%;background:transparent;border:none;outline:none;font-family:'SF Mono','Fira Code',monospace;font-size:14px;font-weight:700;color:#E2E8F0;padding:0}
+.code-input::placeholder{color:#64748B;font-weight:500}
 .cp-btn{background:#2D3958;color:#94A3B8;border:none;border-radius:5px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;transition:background .15s;font-family:inherit}
 .cp-btn:hover{background:#3D4E6E;color:#E2E8F0}.cp-btn.ok{background:#0A4030;color:#34D399}
 
@@ -287,6 +284,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .tperf-btn{padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-3);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .12s}
 .tperf-btn:hover{background:var(--minix-lt);border-color:var(--minix);color:var(--minix)}
 .tperf-btn.has-data{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.mgmt-inp{width:90px;padding:6px 8px;font-size:12px}
 
 /* ── 폼 모달 공통 ── */
 .form-modal{width:700px;max-height:90vh;overflow-y:auto;padding-bottom:24px}
@@ -511,7 +509,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="card-hd">실적 기입 목록 <span class="card-hd-r" id="mgmtCnt"></span></div>
         <div class="tbl-wrap">
           <table><thead><tr>
-            <th>제품</th><th>채널</th><th>기간</th><th>판매수량</th><th>총매출</th><th>조회수</th><th>실적 기입</th>
+            <th>제품</th><th>채널</th><th>기간</th><th>공구가</th><th>판매수량</th><th>총매출</th><th>조회수</th><th></th>
           </tr></thead><tbody id="mgmtBody"></tbody></table>
         </div>
       </div>
@@ -532,10 +530,26 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <label class="f-lbl">채널 링크</label>
           <input class="f-inp" type="url" id="mLinkInput" placeholder="https://instagram.com/... 또는 https://youtube.com/...">
         </div>
-        <div class="sch-g" id="mScheme"></div>
+        <div class="fg fg-3" style="margin-bottom:14px">
+          <div class="f-grp">
+            <label class="f-lbl">공동구매가 (원)</label>
+            <input class="f-inp" type="number" id="mSaleInput" placeholder="0">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">판매수량</label>
+            <input class="f-inp" type="number" id="mQtyInput" placeholder="0">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">수수료 (%)</label>
+            <input class="f-inp" type="number" step="0.1" id="mCommInput" placeholder="0">
+          </div>
+        </div>
         <div class="sch-note" id="mNote"></div>
         <div class="code-row">
-          <div><div class="code-lbl">상품코드</div><div class="code-val" id="mCode"></div></div>
+          <div style="flex:1;min-width:0">
+            <div class="code-lbl">상품코드</div>
+            <input class="code-input" id="mCodeInput" placeholder="상품코드 입력">
+          </div>
           <button class="cp-btn" id="mCpBtn" onclick="copyCode()">복사</button>
         </div>
       </div>
@@ -1237,7 +1251,7 @@ function renderTbl(){
 /* ── 공구 관리 페이지: 실적 기입 목록 ── */
 // 종료됐지만 판매수량/매출이 비어있는 건
 function pendingPerfDeals(){
-  return DATA.filter(d=>d.status==='완료'&&(d.qty==null||d.rev==null))
+  return DATA.filter(d=>d.status==='완료'&&(d.qty==null||d.qty===0||d.rev==null||d.rev===0))
     .sort((a,b)=>new Date(b.end)-new Date(a.end));
 }
 function renderMgmtPage(){
@@ -1248,11 +1262,35 @@ function renderMgmtPage(){
       <td>${productBadge(d.product)}</td>
       <td>${d.ch}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
-      <td>${num(d.qty)}</td>
-      <td>${won(d.rev)}</td>
-      <td>${d.views!=null?d.views.toFixed(1)+'만':'—'}</td>
-      <td><button class="tperf-btn" onclick="openPerfForm(${d.id})">기입</button></td>
-    </tr>`).join(''):`<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-3)">실적 미기입 건이 없습니다 🎉</td></tr>`;
+      <td>${won(d.s&&d.s.sale)}</td>
+      <td><input class="f-inp mgmt-inp" type="number" id="mgQty${d.id}" value="${d.qty!=null?d.qty:''}" placeholder="0"></td>
+      <td><input class="f-inp mgmt-inp" type="number" id="mgRev${d.id}" value="${d.rev!=null?d.rev:''}" placeholder="0"></td>
+      <td><input class="f-inp mgmt-inp" type="number" step="0.1" id="mgViews${d.id}" value="${d.views!=null?d.views:''}" placeholder="0.0"></td>
+      <td><button class="tperf-btn" onclick="saveMgmtRow(${d.id})">저장</button></td>
+    </tr>`).join(''):`<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-3)">실적 미기입 건이 없습니다 🎉</td></tr>`;
+}
+function saveMgmtRow(id){
+  const d=DATA.find(x=>x.id===id);if(!d)return;
+  const qtyEl=document.getElementById('mgQty'+id),revEl=document.getElementById('mgRev'+id),viewsEl=document.getElementById('mgViews'+id);
+  const qty=qtyEl.value!==''?Number(qtyEl.value):null;
+  const rev=revEl.value!==''?Number(revEl.value):null;
+  const views=viewsEl.value!==''?Number(viewsEl.value):null;
+  const url=localStorage.getItem('gp_gas_url');
+  if(url){
+    setLoad(true);
+    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
+      action:'addPerf',data:{brand:d.brand,product:d.product,channel:d.ch,views,qty,revenue:rev,status:d.status},idToken:_gasCredential||''
+    })}).then(r=>r.json()).then(j=>{
+      if(j.error)throw new Error(j.error);
+      d.views=views;d.qty=qty;d.rev=rev;
+      render();setLoad(false);
+      showToast('저장되었습니다');
+    }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
+  } else {
+    d.views=views;d.qty=qty;d.rev=rev;
+    render();
+    alert('샘플 모드: 로컬에 저장되었습니다. (새로고침 시 초기화)');
+  }
 }
 
 /* ── 공구 캘린더 페이지 ── */
@@ -1386,13 +1424,11 @@ function openM(id){
   document.getElementById('mLinkInput').value=d.link||'';
   const durTxt=durDays(d.start,d.end);
   document.getElementById('mSub').textContent=`${yearOf(d.start)}년 ${monthOf(d.start)}월 · ${fmtF(d.start)} ~ ${fmtF(d.end)}${durTxt?` (${durTxt}일)`:''} · ${d.status}`;
-  document.getElementById('mCode').textContent=d.code||'—';
-  const s=d.s||{},disc=s.retail&&s.sale?Math.round((1-s.sale/s.retail)*100):0;
-  document.getElementById('mScheme').innerHTML=`
-    <div class="sch-c"><div class="sch-lbl">정상가</div><div class="sch-val">${won(s.retail)}</div></div>
-    <div class="sch-c"><div class="sch-lbl">공구가</div><div class="sch-val" style="color:${c}">${won(s.sale)}</div></div>
-    <div class="sch-c"><div class="sch-lbl">채널 수수료</div><div class="sch-val">${s.comm!=null?s.comm+'%':'—'}</div></div>
-    <div class="sch-c"><div class="sch-lbl">할인율</div><div class="sch-val" style="color:var(--ok)">${disc?disc+'%':'—'}</div></div>`;
+  const s=d.s||{};
+  document.getElementById('mSaleInput').value=s.sale!=null?s.sale:'';
+  document.getElementById('mQtyInput').value=d.qty!=null?d.qty:'';
+  document.getElementById('mCommInput').value=s.comm!=null?s.comm:'';
+  document.getElementById('mCodeInput').value=d.code||'';
   document.getElementById('mNote').textContent='📋 '+(s.note||'비고 없음');
   const btn=document.getElementById('mCpBtn');btn.textContent='복사';btn.classList.remove('ok');
   renderReelList();
@@ -1559,6 +1595,14 @@ function resizeImageToDataURL(file,maxW,maxH,quality){
 async function saveSchemeModal(){
   const d=DATA.find(x=>x.id===_modalDealId);if(!d)return;
   const link=document.getElementById('mLinkInput').value.trim();
+  const saleVal=document.getElementById('mSaleInput').value;
+  const qtyVal=document.getElementById('mQtyInput').value;
+  const commVal=document.getElementById('mCommInput').value;
+  const codeVal=document.getElementById('mCodeInput').value.trim();
+  const sale=saleVal!==''?Number(saleVal):null;
+  const qty=qtyVal!==''?Number(qtyVal):null;
+  const comm=commVal!==''?Number(commVal):null;
+
   let reels=_modalReels.filter(r=>r.url||r.views!=null||r.thumb).slice(0,10);
   // 릴스가 원래 없었고 지금도 안 건드렸으면(둘 다 빈 상태) 조회수 합계/Q~Z를 건드리지 않음 — 링크만 저장
   const touchReels=reels.length>0||_modalHadReels;
@@ -1581,16 +1625,25 @@ async function saveSchemeModal(){
 
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
-      action:'saveReels',data:{product:d.product,channel:d.ch,link,reels:touchReels?reels:null},idToken:_gasCredential||''
-    })}).then(r=>r.json()).then(j=>{
-      if(j.error)throw new Error(j.error);
-      d.link=link;if(touchReels){d.reels=reels;d.views=totalViews;}
-      closeSchModal();render();setLoad(false);
+    Promise.all([
+      fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
+        action:'saveReels',data:{product:d.product,channel:d.ch,link,reels:touchReels?reels:null},idToken:_gasCredential||''
+      })}).then(r=>r.json()),
+      fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
+        action:'updateScheme',data:{product:d.product,channel:d.ch,sale,qty,comm,code:codeVal},idToken:_gasCredential||''
+      })}).then(r=>r.json())
+    ]).then(([r1,r2])=>{
+      if(r1.error)throw new Error(r1.error);
+      if(r2.error)throw new Error(r2.error);
+      closeSchModal();
       showToast('저장되었습니다');
+      fetchLive();
     }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
   } else {
     d.link=link;if(touchReels){d.reels=reels;d.views=totalViews;}
+    d.qty=qty;d.code=codeVal;
+    d.s=d.s||{};d.s.sale=sale;d.s.comm=comm;
+    if(sale!=null&&qty!=null)d.rev=sale*qty;
     closeSchModal();render();
     alert('샘플 모드: 로컬에 저장되었습니다. (새로고침 시 초기화)');
   }
@@ -1598,7 +1651,7 @@ async function saveSchemeModal(){
 document.getElementById('schOv').addEventListener('click',e=>{if(e.target===document.getElementById('schOv'))closeSchModal();});
 
 function copyCode(){
-  const code=document.getElementById('mCode').textContent;
+  const code=document.getElementById('mCodeInput').value;
   const btn=document.getElementById('mCpBtn');
   const done=()=>{btn.textContent='✓ 복사됨';btn.classList.add('ok');setTimeout(()=>{btn.textContent='복사';btn.classList.remove('ok');},2000);};
   navigator.clipboard?navigator.clipboard.writeText(code).then(done):fbCopy(code,done);
