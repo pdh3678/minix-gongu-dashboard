@@ -77,6 +77,14 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 .ym-chip{display:inline-flex;align-items:center;gap:5px;background:var(--minix-lt);color:var(--minix);font-size:11px;font-weight:700;padding:3px 6px 3px 10px;border-radius:12px}
 .ym-chip button{background:none;border:none;color:var(--minix);cursor:pointer;font-size:11px;padding:0;line-height:1;font-family:inherit}
 .ym-chip-all{background:var(--nbg);color:var(--text-2);padding:3px 10px}
+.ym-dd{position:relative}
+.ym-dd-btn{padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.ym-dd-btn:hover{background:var(--border)}
+.ym-dd-btn::after{content:'▾';font-size:8px}
+.ym-dd-pop{display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,.14);padding:10px;z-index:80;min-width:130px}
+.ym-dd.open .ym-dd-pop{display:block}
+.ym-dd-pop .ym-chk-list{flex-direction:column;flex-wrap:nowrap;gap:6px;margin-bottom:8px;max-height:220px;overflow-y:auto}
+.ym-dd-pop .ym-mini-row{display:flex;gap:6px}
 
 /* ── 레이아웃: 사이드바 + 본문 ── */
 .app-shell{display:flex;min-height:100vh}
@@ -145,7 +153,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 .kpi-sub{font-size:11px;color:var(--text-3);margin-top:4px}
 .cm{color:var(--minix)}.cok{color:var(--ok)}.cw{color:var(--warn)}.cn{color:var(--text)}
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;box-shadow:var(--sh)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;box-shadow:var(--sh);position:relative;isolation:isolate}
 .card-hd{font-size:13px;font-weight:700;margin-bottom:15px;display:flex;justify-content:space-between;align-items:center}
 .card-hd-r{font-size:11px;font-weight:400;color:var(--text-3)}
 
@@ -446,7 +454,15 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div class="card">
         <div class="card-hd">
           <span>그래프에 포함할 공구건 <span class="card-hd-r" id="dashSelCnt"></span></span>
-          <div style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px;align-items:center">
+            <div class="ym-dd" id="dashYmYearDd">
+              <button class="ym-dd-btn" id="dashYmYearBtn" onclick="toggleYmDd('dashYmYearDd',event)">연도: 전체</button>
+              <div class="ym-dd-pop" id="dashYmYearPop"></div>
+            </div>
+            <div class="ym-dd" id="dashYmMonthDd">
+              <button class="ym-dd-btn" id="dashYmMonthBtn" onclick="toggleYmDd('dashYmMonthDd',event)">월: 전체</button>
+              <div class="ym-dd-pop" id="dashYmMonthPop"></div>
+            </div>
             <button class="btn-cancel" style="padding:5px 12px;font-size:11px" onclick="dashSelectAll()">전체 선택</button>
             <button class="btn-cancel" style="padding:5px 12px;font-size:11px" onclick="dashSelectNone()">전체 해제</button>
           </div>
@@ -1012,6 +1028,62 @@ function renderKPI(){
 }
 
 /* 그래프 대상 공구건 선택 목록 */
+/* "그래프에 포함할 공구건" 목록 전용 연도/월 필터 — 상단 기간 필터(DASH.mode/value)와는 독립적으로 동작하며 필터를 곱해서 적용함.
+   years/months가 null이면 "전체"(항상 전체 매치, 목록이 나중에 바뀌어도 자동으로 전체 유지); 사용자가 하나라도 건드리면 그 시점의 전체 목록으로 구체화됨 */
+const DASH_YM={years:null,months:null};
+function dashSelAvailableYears(){
+  return[...new Set(dashChartCandidates().filter(d=>d.start).map(d=>yearOf(d.start)))].sort((a,b)=>a-b);
+}
+function dashSelYMMatch(d){
+  if(!d.start)return false;
+  const y=yearOf(d.start),m=monthOf(d.start);
+  const yOk=DASH_YM.years===null||DASH_YM.years.has(y);
+  const mOk=DASH_YM.months===null||DASH_YM.months.has(m);
+  return yOk&&mOk;
+}
+function dashSelCandidates(){return dashChartCandidates().filter(dashSelYMMatch);}
+function dashYmLabel(kind){
+  const val=DASH_YM[kind];
+  const unit=kind==='years'?'년':'월',name=kind==='years'?'연도':'월';
+  if(val===null)return`${name}: 전체`;
+  const arr=[...val].sort((a,b)=>a-b);
+  if(!arr.length)return`${name}: 없음`;
+  if(arr.length===1)return arr[0]+unit;
+  return arr[0]+unit+' 외 '+(arr.length-1)+'개';
+}
+function toggleYmDd(ddId,ev){
+  ev.stopPropagation();
+  const el=document.getElementById(ddId);
+  const willOpen=!el.classList.contains('open');
+  document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));
+  if(willOpen)el.classList.add('open');
+}
+document.addEventListener('click',()=>{document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));});
+function dashYmToggle(kindKey,val,checked){
+  if(DASH_YM[kindKey]===null){
+    DASH_YM[kindKey]=new Set(kindKey==='years'?dashSelAvailableYears():[1,2,3,4,5,6,7,8,9,10,11,12]);
+  }
+  if(checked)DASH_YM[kindKey].add(val);else DASH_YM[kindKey].delete(val);
+  renderDashSelectList();renderDashCharts();
+}
+function dashYmAll(kindKey){DASH_YM[kindKey]=null;renderDashSelectList();renderDashCharts();}
+function dashYmNone(kindKey){DASH_YM[kindKey]=new Set();renderDashSelectList();renderDashCharts();}
+function renderDashYmDropdowns(){
+  const years=dashSelAvailableYears();
+  const selYears=DASH_YM.years===null?new Set(years):DASH_YM.years;
+  document.getElementById('dashYmYearBtn').textContent=dashYmLabel('years');
+  document.getElementById('dashYmYearPop').innerHTML=`
+    <div class="ym-chk-list">${years.map(y=>`<label class="ym-chk"><input type="checkbox" ${selYears.has(y)?'checked':''} onchange="dashYmToggle('years',${y},this.checked)">${y}년</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>
+    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashYmAll('years')">전체</button><button class="ym-mini-btn" onclick="dashYmNone('years')">해제</button></div>`;
+
+  const months=[1,2,3,4,5,6,7,8,9,10,11,12];
+  const selMonths=DASH_YM.months===null?new Set(months):DASH_YM.months;
+  document.getElementById('dashYmMonthBtn').textContent=dashYmLabel('months');
+  document.getElementById('dashYmMonthPop').innerHTML=`
+    <div class="ym-chk-list">${months.map(mo=>`<label class="ym-chk"><input type="checkbox" ${selMonths.has(mo)?'checked':''} onchange="dashYmToggle('months',${mo},this.checked)">${mo}월</label>`).join('')}</div>
+    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashYmAll('months')">전체</button><button class="ym-mini-btn" onclick="dashYmNone('months')">해제</button></div>`;
+}
+
 function renderDashboard(){
   const cands=dashChartCandidates();
   DASH.selected=new Set(cands.map(d=>d.id));
@@ -1020,7 +1092,8 @@ function renderDashboard(){
   renderDashCharts();
 }
 function renderDashSelectList(){
-  const cands=dashChartCandidates();
+  renderDashYmDropdowns();
+  const cands=dashSelCandidates();
   document.getElementById('dashSelBody').innerHTML=cands.length?cands.map(d=>`
     <tr>
       <td><input type="checkbox" ${DASH.selected.has(d.id)?'checked':''} onchange="toggleDashSel(${d.id},this.checked)"></td>
@@ -1030,21 +1103,24 @@ function renderDashSelectList(){
       <td>${d.views.toFixed(1)}만</td>
       <td>${won(d.rev)}</td>
     </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3)">조회수·매출이 모두 있는 공구건이 없습니다</td></tr>';
-  document.getElementById('dashSelCnt').textContent=`${DASH.selected.size}/${cands.length}건 선택`;
+  const visSel=cands.filter(d=>DASH.selected.has(d.id)).length;
+  document.getElementById('dashSelCnt').textContent=`${visSel}/${cands.length}건 선택`;
 }
 function toggleDashSel(id,checked){
   if(checked)DASH.selected.add(id);else DASH.selected.delete(id);
-  document.getElementById('dashSelCnt').textContent=`${DASH.selected.size}/${dashChartCandidates().length}건 선택`;
+  const cands=dashSelCandidates();
+  const visSel=cands.filter(d=>DASH.selected.has(d.id)).length;
+  document.getElementById('dashSelCnt').textContent=`${visSel}/${cands.length}건 선택`;
   renderDashCharts();
 }
-function dashSelectAll(){dashChartCandidates().forEach(d=>DASH.selected.add(d.id));renderDashSelectList();renderDashCharts();}
-function dashSelectNone(){DASH.selected.clear();renderDashSelectList();renderDashCharts();}
+function dashSelectAll(){dashSelCandidates().forEach(d=>DASH.selected.add(d.id));renderDashSelectList();renderDashCharts();}
+function dashSelectNone(){dashSelCandidates().forEach(d=>DASH.selected.delete(d.id));renderDashSelectList();renderDashCharts();}
 
 /* Chart.js: 산점도 + 기간별 추이 라인차트 */
 let _scChartInst=null,_trendChartInst=null;
 function renderDashCharts(){
   if(typeof Chart==='undefined')return; // CDN 로드 실패 시 조용히 건너뜀
-  const pts=dashChartCandidates().filter(d=>DASH.selected.has(d.id));
+  const pts=dashSelCandidates().filter(d=>DASH.selected.has(d.id));
 
   const scEl=document.getElementById('scChart');
   if(_scChartInst)_scChartInst.destroy();
