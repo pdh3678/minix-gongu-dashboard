@@ -511,6 +511,7 @@ function _addSalesRow(ss, data) {
   row[COL.code]        = data.code || '';
   row[COL.targetQty]   = data.targetQty != null ? data.targetQty : '';
   row[COL.composition] = data.composition || '';
+  row[COL.link]        = data.link || '';
   for (var i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = '';
 
   sheet.appendRow(row);

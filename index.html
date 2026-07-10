@@ -546,7 +546,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div class="sch-col-l">
         <div class="f-grp" style="margin-bottom:14px">
           <label class="f-lbl">채널 링크</label>
-          <input class="f-inp" type="url" id="mLinkInput" placeholder="https://instagram.com/... 또는 https://youtube.com/...">
+          <div style="display:flex;gap:6px">
+            <input class="f-inp" type="url" id="mLinkInput" placeholder="https://instagram.com/... 또는 https://youtube.com/..." style="flex:1">
+            <button type="button" class="btn-cancel" style="padding:0 14px;font-size:12px;white-space:nowrap" onclick="openModalLink()">열기</button>
+          </div>
         </div>
         <div class="fg fg-3" style="margin-bottom:14px">
           <div class="f-grp">
@@ -895,6 +898,13 @@ function buildChannelLink(platform,id){
   if(platform==='유튜브')return`https://www.youtube.com/@${v}`;
   return'';
 }
+// instagram.com/... 처럼 프로토콜이 빠진 링크에 https://를 자동으로 붙여줌
+function normalizeUrl(u){
+  const s=String(u||'').trim();
+  if(!s)return'';
+  if(/^https?:\/\//i.test(s))return s;
+  return'https://'+s.replace(/^\/+/,'');
+}
 
 // 제품명 정규화: 공백 제거·소문자 (필터 매칭용)
 const normP=s=>String(s||'').replace(/\s/g,'').toLowerCase();
@@ -1224,7 +1234,14 @@ function productBadge(p){
 
 const SALES_CELL={
   product:d=>productBadge(d.product),
-  channel:d=>`${d.profileLink?`<a href="${d.profileLink}" target="_blank" rel="noopener" class="ch-name-link" onclick="event.stopPropagation()">${d.ch}</a>`:d.ch}${d.chId?`<span class="ch-id">${d.link?`<a href="${d.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')}</span>`:''}`,
+  channel:d=>{
+    // 채널명 링크 우선순위: ①모달/새 공구건 폼에서 직접 입력한 채널 링크 ②브랜드별 일정 시트 매칭 프로필 링크 ③링크 없음(일반 텍스트)
+    const chLink=normalizeUrl(d.link)||normalizeUrl(d.profileLink);
+    const name=chLink?`<a href="${chLink}" target="_blank" rel="noopener" class="ch-name-link" onclick="event.stopPropagation()">${d.ch}</a>`:d.ch;
+    const idLink=normalizeUrl(d.link);
+    const idPart=d.chId?`<span class="ch-id">${idLink?`<a href="${idLink}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')}</span>`:'';
+    return name+idPart;
+  },
   vendor:d=>d.vendor?`<span class="bp bp-vendor">${d.vendor}</span>`:'<span style="color:var(--text-3)">—</span>',
   platform:d=>d.platform||'—',
   price:d=>won(d.s&&d.s.sale),
@@ -1823,6 +1840,12 @@ async function saveSchemeModal(){
   }
 }
 document.getElementById('schOv').addEventListener('click',e=>{if(e.target===document.getElementById('schOv'))closeSchModal();});
+
+function openModalLink(){
+  const url=normalizeUrl(document.getElementById('mLinkInput').value);
+  if(!url){showToast('입력된 링크가 없습니다');return;}
+  window.open(url,'_blank','noopener');
+}
 
 function copyCode(){
   const code=document.getElementById('mCodeInput').value;
