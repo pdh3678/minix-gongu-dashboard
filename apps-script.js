@@ -1,6 +1,7 @@
 /**
  * 미닉스 공동구매 자동화 대시보드 — Google Apps Script 연동 코드
  * 데이터 소스: "앳홈 공동구매 총괄 시트" → 실적통합 탭 (한 행 = 공구 1건, 미닉스+톰+기타 브랜드 혼재 → 미닉스만 필터링)
+ * 캘린더 "프로모션/이벤트 일정"은 같은 스프레드시트의 "캘린더이벤트" 탭에 별도 저장 (실적통합과 무관, 실적/KPI 집계 제외)
  *
  * ★ 배포 방법 (반드시 "앳홈 공동구매 총괄 시트"에서 배포):
  * 1. 해당 스프레드시트 → 확장 프로그램 → Apps Script
@@ -60,6 +61,12 @@ var ALLOWED_DOMAIN = 'athomecorp.com';
 // (톰/프로티원 등 타 브랜드 행은 자동으로 걸러집니다)
 var MINIX_ALIASES = { '미닉스': true, 'minix': true, 'Minix': true, 'MINIX': true };
 
+// 캘린더 "프로모션/이벤트 일정" 전용 시트 — 실적통합과 완전히 분리되어 실적/KPI/품목별 실적에 집계되지 않음
+// 탭이 없으면 최초 저장 시 _ensureEventSheet가 헤더까지 자동 생성함
+var EVENT_SHEET = '캘린더이벤트';
+var EVENT_COL = { name: 0, start: 1, end: 2, note: 3 }; // A 이벤트명 / B 시작일 / C 종료일 / D 메모
+var EVENT_DATA_START_ROW = 1; // 0-based index — 1행(index 0)은 헤더, 2행부터 데이터
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 인증 ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -115,7 +122,9 @@ function doGet(e) {
     var result = parseMainSheet(sheet, ss);
     // id는 parseMainSheet에서 이미 실제 시트 행 번호로 부여됨 (내용 기반 재번호 금지)
 
-    return _json({ purchases: result.deals, updatedAt: new Date().toISOString(), codeMatchStats: result.codeStats });
+    var calendarEvents = _loadCalendarEvents(ss);
+
+    return _json({ purchases: result.deals, calendarEvents: calendarEvents, updatedAt: new Date().toISOString(), codeMatchStats: result.codeStats });
   } catch (err) {
     return _json({ error: err.toString(), purchases: [] });
   }
@@ -474,7 +483,9 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     if (body.action === 'addSalesRow') return _addSalesRow(ss, body.data);
     if (body.action === 'addPerf') return _addPerf(ss, body.data);
-    if (body.action === 'addCalendarRow') return _addCalendarRow(ss, body.data);
+    if (body.action === 'addCalendarEvent') return _addCalendarEvent(ss, body.data);
+    if (body.action === 'updateCalendarEvent') return _updateCalendarEvent(ss, body.data);
+    if (body.action === 'deleteCalendarEvent') return _deleteCalendarEvent(ss, body.data);
     if (body.action === 'saveReels') return _saveReels(ss, body.data);
     if (body.action === 'updateScheme') return _updateScheme(ss, body.data);
     if (body.action === 'uploadThumbnail') return _uploadThumbnail(body.data);
@@ -533,31 +544,100 @@ function _ensureExtraHeaders(sheet) {
   }
 }
 
-// 공구 캘린더 "+ 행 추가" → 실적통합 시트에 새 행 추가
-// (브랜드/제품명/채널명/시작일/종료일/판매수량만 채우고 나머지는 비워둠 — 이후 실적 기입으로 보완)
-function _addCalendarRow(ss, data) {
-  var sheet = ss.getSheetByName(MAIN_SHEET);
-  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 캘린더 "프로모션/이벤트 일정" (캘린더이벤트 시트) ──
+// 공동구매 실적과는 무관한 특별 프로모션/이벤트(세일즈 페스타, 라이브 방송 등)를
+// 캘린더에만 표시하기 위한 별도 데이터 — 실적통합 시트는 절대 건드리지 않음
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  var startDate = data.start ? new Date(data.start) : null;
-  var endDate   = data.end   ? new Date(data.end)   : startDate;
-  var today = new Date(); today.setHours(0, 0, 0, 0);
-  var status = '예정';
-  if (endDate && endDate < today) status = '완료';
-  else if (startDate && startDate <= today) status = '진행중';
+// 시트가 없으면 헤더(이벤트명/시작일/종료일/메모)까지 포함해 최초 저장 시 자동 생성
+function _ensureEventSheet(ss) {
+  var sheet = ss.getSheetByName(EVENT_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(EVENT_SHEET);
+    sheet.getRange(1, 1, 1, 4).setValues([['이벤트명', '시작일', '종료일', '메모']]);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+  }
+  return sheet;
+}
 
-  var row = [];
-  row[COL.brand]   = '미닉스';
-  row[COL.product] = data.product || '';
-  row[COL.channel] = data.channel || '';
-  row[COL.qty]     = data.qty != null ? data.qty : '';
-  row[COL.year]    = startDate ? startDate.getFullYear() : '';
-  row[COL.startMD] = startDate || '';
-  row[COL.endMD]   = endDate   || '';
-  row[COL.status]  = status;
-  for (var i = 0; i < row.length; i++) if (row[i] === undefined) row[i] = '';
+function _eventDateStr(cell) {
+  if (cell instanceof Date && !isNaN(cell.getTime())) {
+    return cell.getFullYear() + '-' + _pad(cell.getMonth() + 1) + '-' + _pad(cell.getDate());
+  }
+  var s = String(cell || '').trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
+}
 
-  sheet.appendRow(row);
+// doGet에서 호출 — 시트가 아직 없으면(한 번도 저장 안 됨) 그냥 빈 배열 반환 (여기서 시트를 생성하지 않음)
+function _loadCalendarEvents(ss) {
+  var sheet = ss.getSheetByName(EVENT_SHEET);
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  var events = [];
+  for (var i = EVENT_DATA_START_ROW; i < data.length; i++) {
+    var row = data[i];
+    var name = String(row[EVENT_COL.name] || '').trim();
+    var start = _eventDateStr(row[EVENT_COL.start]);
+    if (!name || !start) continue;
+    events.push({
+      id: i + 1, // 캘린더이벤트 시트의 실제 물리 행 번호(1-based)
+      name: name,
+      start: start,
+      end: _eventDateStr(row[EVENT_COL.end]) || start,
+      note: String(row[EVENT_COL.note] || '').trim()
+    });
+  }
+  return events;
+}
+
+// 클라이언트가 모달을 연 시점의 이벤트명(origName)이 현재 시트 값과 일치하는지 확인
+// (실적통합의 _rowByNumber와 같은 목적 — 그 사이 행이 삭제/이동됐으면 엉뚱한 행을 고치지 않도록 방어)
+function _eventRowValid(sheet, row, origName) {
+  if (!row || row <= EVENT_DATA_START_ROW || row > sheet.getLastRow()) return false;
+  var actual = String(sheet.getRange(row, EVENT_COL.name + 1).getValue() || '').trim();
+  return actual === String(origName || '').trim();
+}
+
+function _addCalendarEvent(ss, data) {
+  var name = String((data && data.name) || '').trim();
+  var start = data && data.start ? new Date(data.start) : null;
+  if (!name) return _json({ error: '이벤트명을 입력하세요.' });
+  if (!start) return _json({ error: '시작일을 입력하세요.' });
+  var end = data.end ? new Date(data.end) : start;
+
+  var sheet = _ensureEventSheet(ss);
+  sheet.appendRow([name, start, end, data.note || '']);
+  return _json({ success: true });
+}
+
+function _updateCalendarEvent(ss, data) {
+  var sheet = ss.getSheetByName(EVENT_SHEET);
+  if (!sheet) return _json({ error: '캘린더이벤트 시트를 찾을 수 없습니다.' });
+  if (!_eventRowValid(sheet, data.row, data.origName)) {
+    return _json({ error: '해당 이벤트를 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
+  }
+  var name = String((data && data.name) || '').trim();
+  var start = data && data.start ? new Date(data.start) : null;
+  if (!name) return _json({ error: '이벤트명을 입력하세요.' });
+  if (!start) return _json({ error: '시작일을 입력하세요.' });
+  var end = data.end ? new Date(data.end) : start;
+
+  var row = data.row;
+  sheet.getRange(row, EVENT_COL.name + 1).setValue(name);
+  sheet.getRange(row, EVENT_COL.start + 1).setValue(start);
+  sheet.getRange(row, EVENT_COL.end + 1).setValue(end);
+  sheet.getRange(row, EVENT_COL.note + 1).setValue(data.note || '');
+  return _json({ success: true });
+}
+
+function _deleteCalendarEvent(ss, data) {
+  var sheet = ss.getSheetByName(EVENT_SHEET);
+  if (!sheet) return _json({ error: '캘린더이벤트 시트를 찾을 수 없습니다.' });
+  if (!_eventRowValid(sheet, data.row, data.origName)) {
+    return _json({ error: '해당 이벤트를 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
+  }
+  sheet.deleteRow(data.row);
   return _json({ success: true });
 }
 

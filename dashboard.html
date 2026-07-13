@@ -62,6 +62,9 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .cal-lane-sep{border-top:1px dashed var(--border)}
 .cal-bar{border-radius:4px;padding:3px 8px;font-size:10px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;align-self:center;margin:3px 2px;transition:filter .1s}
 .cal-bar:hover{filter:brightness(.95)}
+.cal-row-promo{background:#FFFBEB;border-bottom:2px solid var(--border)}
+.cal-rowlbl-promo{color:#B45309}
+.cal-bar-promo{background:#FEF3C7;color:#B45309;border-left:3px solid #B45309;font-weight:700}
 
 /* ── 대시보드 페이지 ── */
 .dash-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -424,7 +427,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     <!-- ① 공구 캘린더 페이지 -->
     <div class="main page" id="page-calendar">
       <div class="card">
-        <div class="card-hd">공구 캘린더 <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="openCalRowForm()">＋ 행 추가</button></div>
+        <div class="card-hd">공구 캘린더 <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="openPromoForm()">＋ 프로모션 추가</button></div>
         <div id="calPageBody"></div>
       </div>
     </div>
@@ -808,55 +811,35 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
   </div>
 </div>
 
-<!-- 캘린더 행 추가 모달 -->
-<div class="ov" id="calRowOv">
+<!-- 캘린더 프로모션/이벤트 일정 모달 -->
+<div class="ov" id="promoOv">
   <div class="modal">
     <div class="m-top">
-      <div><div class="m-title">캘린더 행 추가</div><div class="m-sub">실적통합 시트에 새 행이 추가됩니다</div></div>
-      <button class="m-cls" onclick="closeCalRowForm()">✕</button>
+      <div><div class="m-title" id="promoTitle">프로모션 일정 추가</div><div class="m-sub">캘린더에만 표시되며 실적·KPI·품목별 실적에는 집계되지 않습니다</div></div>
+      <button class="m-cls" onclick="closePromoForm()">✕</button>
     </div>
     <div class="fg fg-2">
-      <div class="f-grp">
-        <label class="f-lbl">품목군 <span class="f-req">*</span></label>
-        <select class="f-inp f-sel" id="fcLine" onchange="onCalLineChange()">
-          <option value="">선택</option>
-          <option value="더플렌더">더 플렌더</option>
-          <option value="더시프트">더 시프트</option>
-          <option value="더에어드라이">더 에어드라이</option>
-          <option value="더슬림">더 슬림</option>
-        </select>
-      </div>
-      <div class="f-grp" id="calModelRow" style="display:none">
-        <label class="f-lbl">모델 <span class="f-req">*</span></label>
-        <select class="f-inp f-sel" id="fcModel">
-          <option value="">선택</option>
-          <option value="더 플렌더 PRO">PRO</option>
-          <option value="더 플렌더 MAX">MAX</option>
-          <option value="더 플렌더 mini">mini</option>
-        </select>
-      </div>
-    </div>
-    <div class="fg fg-2" style="margin-top:10px">
       <div class="f-grp full">
-        <label class="f-lbl">채널명 <span class="f-req">*</span></label>
-        <input class="f-inp" type="text" id="fcChannel" placeholder="예: 살림잼2차">
+        <label class="f-lbl">이벤트명 <span class="f-req">*</span></label>
+        <input class="f-inp" type="text" id="fpName" placeholder="예: 미닉스 세일즈 페스타">
       </div>
       <div class="f-grp">
         <label class="f-lbl">시작일 <span class="f-req">*</span></label>
-        <input class="f-inp" type="date" id="fcStart">
+        <input class="f-inp" type="date" id="fpStart">
       </div>
       <div class="f-grp">
         <label class="f-lbl">마감일 <span class="f-req">*</span></label>
-        <input class="f-inp" type="date" id="fcEnd">
+        <input class="f-inp" type="date" id="fpEnd">
       </div>
       <div class="f-grp full">
-        <label class="f-lbl">수량</label>
-        <input class="f-inp" type="number" id="fcQty" placeholder="예: 500">
+        <label class="f-lbl">메모</label>
+        <input class="f-inp" type="text" id="fpNote" placeholder="선택 입력">
       </div>
     </div>
     <div class="form-footer">
-      <button class="btn-cancel" onclick="closeCalRowForm()">취소</button>
-      <button class="btn-primary" onclick="saveCalRow()">저장</button>
+      <button class="btn-cancel" id="promoDelBtn" style="display:none;margin-right:auto;color:#DC2626;border-color:#FCA5A5" onclick="deletePromo()">삭제</button>
+      <button class="btn-cancel" onclick="closePromoForm()">취소</button>
+      <button class="btn-primary" onclick="savePromo()">저장</button>
     </div>
   </div>
 </div>
@@ -880,6 +863,12 @@ const SAMPLE=[
 ];
 SAMPLE.forEach(d=>{d.link=buildChannelLink(d.platform,d.chId);});
 let DATA=SAMPLE.map(d=>({...d}));
+
+// 캘린더 "프로모션/이벤트 일정" — 공구 실적과 완전히 분리된 별도 데이터 (실적/KPI/품목별 실적에 집계되지 않음)
+const SAMPLE_EVENTS=[
+  {id:1,name:'미닉스 세일즈 페스타',start:'2026-06-15',end:'2026-06-21',note:'전 품목 라이브 방송 진행'},
+];
+let EVENTS=SAMPLE_EVENTS.map(e=>({...e}));
 
 const _NOW=new Date();
 const ST={prod:'all',model:'all',status:'all'};
@@ -1506,10 +1495,11 @@ function renderCalendarPage(){
   if(!_calStateLoaded){calLoadStateFromURL();_calStateLoaded=true;}
   const host=document.getElementById('calPageBody');
   const withDates=DATA.filter(d=>d.start);
-  if(!withDates.length){host.innerHTML='<div class="page-placeholder">표시할 공구 일정이 없습니다</div>';return;}
+  const eventsWithDates=EVENTS.filter(e=>e.start);
+  if(!withDates.length&&!eventsWithDates.length){host.innerHTML='<div class="page-placeholder">표시할 공구 일정이 없습니다</div>';return;}
 
   let minY=Infinity,minM=13,maxY=-Infinity,maxM=0;
-  withDates.forEach(d=>{
+  withDates.concat(eventsWithDates).forEach(d=>{
     const sy=yearOf(d.start),sm=monthOf(d.start);
     const ey=yearOf(d.end||d.start)||sy,em=monthOf(d.end||d.start)||sm;
     if(sy<minY||(sy===minY&&sm<minM)){minY=sy;minM=sm;}
@@ -1564,7 +1554,7 @@ function renderCalMonth(y,m){
     rowsMap.get(key).deals.push(d);
   });
 
-  let rowsHtml='';
+  let rowsHtml=renderCalPromoRow(EVENTS,monthStart,monthEnd,gridDays,colsTpl);
   [...rowsMap.values()].sort((a,b)=>a.label.localeCompare(b.label)).forEach(row=>{
     // 그리드 위치(startIdx/endIdx) 계산 후 겹치는 공구는 레인(서브 행)을 나눠 배치
     const withPos=row.deals.map(d=>{
@@ -1598,6 +1588,28 @@ function renderCalMonth(y,m){
       </div>
     </div>
   `;
+}
+
+// 프로모션/이벤트 일정 레인 — 항상 제품 행보다 위(달의 최상단)에 표시, 제품 팔레트와 무관한 고정 색상(.cal-bar-promo)
+function renderCalPromoRow(events,monthStart,monthEnd,gridDays,colsTpl){
+  const withPos=events.filter(e=>e.start).map(e=>{
+    const sd=new Date(e.start+'T00:00:00'),ed=new Date((e.end||e.start)+'T00:00:00');
+    if(ed<monthStart||sd>monthEnd)return null;
+    let startIdx=gridDays.findIndex(dt=>dt.getTime()>=sd.getTime());
+    if(startIdx<0)startIdx=0;
+    let endIdx=-1;
+    for(let i=gridDays.length-1;i>=0;i--){if(gridDays[i].getTime()<=ed.getTime()){endIdx=i;break;}}
+    return{d:e,sd,ed,startIdx,endIdx};
+  }).filter(x=>x&&x.endIdx>=0&&x.startIdx<=x.endIdx);
+  if(!withPos.length)return'';
+  const laneCount=calAssignLanes(withPos)||1;
+
+  let bars=`<div class="cal-rowlbl cal-rowlbl-promo" style="grid-column:1;grid-row:1/-1">★</div><div class="cal-rowlbl cal-rowlbl-promo" style="grid-column:2;grid-row:1/-1">프로모션</div>`;
+  for(let ln=1;ln<laneCount;ln++)bars+=`<div class="cal-lane-sep" style="grid-column:1/-1;grid-row:${ln+1}"></div>`;
+  withPos.forEach(x=>{
+    bars+=`<div class="cal-bar cal-bar-promo" style="grid-column:${x.startIdx+3}/${x.endIdx+4};grid-row:${x.lane+1}" onclick="openPromoEdit(${x.d.id})" title="${x.d.name}">★ ${x.d.name}</div>`;
+  });
+  return`<div class="cal-row cal-row-promo" style="grid-template-columns:${colsTpl};grid-template-rows:repeat(${laneCount},minmax(30px,auto))">${bars}</div>`;
 }
 
 /* Scheme modal */
@@ -1935,6 +1947,7 @@ async function fetchLive(){
     const adapted=adaptGAS(j);
     if(adapted&&adapted.length){
       DATA.splice(0,DATA.length,...adapted);
+      EVENTS.splice(0,EVENTS.length,...adaptGASEvents(j));
       setConn('live');render();
       if(j.codeMatchStats){
         const cs=j.codeMatchStats;
@@ -1962,6 +1975,18 @@ function adaptGAS(j){
     views:p.views!=null?Number(p.views):null,qty:p.qty!=null?Number(p.qty):null,rev:p.revenue!=null?Number(p.revenue):null,
     code:p.code||'',reels:Array.isArray(p.reels)?p.reels:[],
     s:{retail:p.retail!=null?Number(p.retail):null,sale:p.sale!=null?Number(p.sale):null,comm:p.commission!=null?Number(p.commission):null,note:p.note||''}
+  }));
+}
+
+// 캘린더 "프로모션/이벤트 일정" — 공구 데이터(DATA)와 완전히 분리된 EVENTS 배열로 적재
+function adaptGASEvents(j){
+  if(!j.calendarEvents||!Array.isArray(j.calendarEvents))return[];
+  return j.calendarEvents.map((e,i)=>({
+    id:e.id!=null?e.id:i+1,
+    name:e.name||'',
+    start:normDate(e.start),
+    end:normDate(e.end||e.start),
+    note:e.note||''
   }));
 }
 function normDate(v){if(!v)return'';if(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v))return v;const d=new Date(v);if(!isNaN(d))return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;return String(v);}
@@ -2146,24 +2171,32 @@ function saveDeal(){
   }
 }
 
-/* ── 캘린더 행 추가 ── */
-function openCalRowForm(){
-  document.getElementById('fcLine').value='';
-  document.getElementById('fcModel').value='';
-  document.getElementById('calModelRow').style.display='none';
-  document.getElementById('fcChannel').value='';
-  document.getElementById('fcStart').value='';
-  document.getElementById('fcEnd').value='';
-  document.getElementById('fcQty').value='';
-  document.getElementById('calRowOv').classList.add('open');
-}
-function closeCalRowForm(){document.getElementById('calRowOv').classList.remove('open');}
-document.getElementById('calRowOv').addEventListener('click',e=>{if(e.target===document.getElementById('calRowOv'))closeCalRowForm();});
+/* ── 캘린더 프로모션/이벤트 일정 (실적통합과 무관 — 캘린더 표시 전용) ── */
+let _promoEditId=null,_promoEditName='';
 
-function onCalLineChange(){
-  const line=document.getElementById('fcLine').value;
-  document.getElementById('calModelRow').style.display=LINE_HAS_MODELS[line]?'':'none';
+function openPromoForm(){
+  _promoEditId=null;_promoEditName='';
+  document.getElementById('promoTitle').textContent='프로모션 일정 추가';
+  document.getElementById('fpName').value='';
+  document.getElementById('fpStart').value='';
+  document.getElementById('fpEnd').value='';
+  document.getElementById('fpNote').value='';
+  document.getElementById('promoDelBtn').style.display='none';
+  document.getElementById('promoOv').classList.add('open');
 }
+function openPromoEdit(id){
+  const ev=EVENTS.find(x=>x.id===id);if(!ev)return;
+  _promoEditId=id;_promoEditName=ev.name;
+  document.getElementById('promoTitle').textContent='프로모션 일정 수정';
+  document.getElementById('fpName').value=ev.name;
+  document.getElementById('fpStart').value=ev.start;
+  document.getElementById('fpEnd').value=ev.end;
+  document.getElementById('fpNote').value=ev.note||'';
+  document.getElementById('promoDelBtn').style.display='';
+  document.getElementById('promoOv').classList.add('open');
+}
+function closePromoForm(){document.getElementById('promoOv').classList.remove('open');_promoEditId=null;_promoEditName='';}
+document.getElementById('promoOv').addEventListener('click',e=>{if(e.target===document.getElementById('promoOv'))closePromoForm();});
 
 function _calcStatus(start,end){
   const today=new Date();today.setHours(0,0,0,0);
@@ -2173,40 +2206,59 @@ function _calcStatus(start,end){
   return'예정';
 }
 
-function saveCalRow(){
-  const line=document.getElementById('fcLine').value;
-  const model=document.getElementById('fcModel').value;
-  const product=LINE_HAS_MODELS[line]?model:line;
-  const channel=document.getElementById('fcChannel').value.trim();
-  const start=document.getElementById('fcStart').value;
-  const end=document.getElementById('fcEnd').value;
-  const qty=document.getElementById('fcQty').value?Number(document.getElementById('fcQty').value):null;
-  if(!line){alert('품목군을 선택하세요.');return;}
-  if(LINE_HAS_MODELS[line]&&!model){alert('모델을 선택하세요.');return;}
-  if(!channel){alert('채널명을 입력하세요.');return;}
+function savePromo(){
+  const name=document.getElementById('fpName').value.trim();
+  const start=document.getElementById('fpStart').value;
+  const end=document.getElementById('fpEnd').value;
+  const note=document.getElementById('fpNote').value.trim();
+  if(!name){alert('이벤트명을 입력하세요.');return;}
   if(!start||!end){alert('시작일과 마감일을 입력하세요.');return;}
   if(new Date(start)>new Date(end)){alert('마감일이 시작일보다 빠릅니다.');return;}
 
-  const newRow={
-    id:DATA.reduce((mx,d)=>Math.max(mx,d.id),0)+1,
-    brand:'Minix',product,ch:channel,start,end,
-    status:_calcStatus(start,end),
-    qty,views:null,rev:null,code:'',s:{retail:null,sale:null,comm:null,note:''}
-  };
+  const payload={name,start,end,note};
+  const isEdit=_promoEditId!=null;
+  if(isEdit){payload.row=_promoEditId;payload.origName=_promoEditName;}
 
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addCalendarRow',data:{product,channel,start,end,qty},idToken:_gasCredential||''})})
+    const action=isEdit?'updateCalendarEvent':'addCalendarEvent';
+    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action,data:payload,idToken:_gasCredential||''})})
       .then(r=>r.json()).then(j=>{
         if(j.error)throw new Error(j.error);
-        closeCalRowForm();fetchLive();
+        closePromoForm();fetchLive();
       }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
   } else {
-    DATA.push(newRow);
-    closeCalRowForm();
+    if(isEdit){
+      const ev=EVENTS.find(x=>x.id===_promoEditId);
+      if(ev)Object.assign(ev,{name,start,end,note});
+    } else {
+      EVENTS.push({id:EVENTS.reduce((mx,x)=>Math.max(mx,x.id),0)+1,name,start,end,note});
+    }
+    closePromoForm();
     render();
     alert('샘플 모드: 로컬에 저장되었습니다. (새로고침 시 초기화)');
+  }
+}
+
+function deletePromo(){
+  if(_promoEditId==null)return;
+  if(!confirm('이 프로모션 일정을 삭제하시겠습니까?'))return;
+  const row=_promoEditId,origName=_promoEditName;
+
+  const url=localStorage.getItem('gp_gas_url');
+  if(url){
+    setLoad(true);
+    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteCalendarEvent',data:{row,origName},idToken:_gasCredential||''})})
+      .then(r=>r.json()).then(j=>{
+        if(j.error)throw new Error(j.error);
+        closePromoForm();fetchLive();
+      }).catch(e=>{alert('삭제 실패: '+e.message);setLoad(false);});
+  } else {
+    const idx=EVENTS.findIndex(x=>x.id===row);
+    if(idx>=0)EVENTS.splice(idx,1);
+    closePromoForm();
+    render();
   }
 }
 
