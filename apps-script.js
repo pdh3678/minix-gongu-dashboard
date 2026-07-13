@@ -758,20 +758,28 @@ function _saveReels(ss, data) {
         // 통째로 저장되지 않는 것을 막기 위해 슬롯 단위로 격리
         try {
           if (r.url) {
-            cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText(text).setLinkUrl(r.url).build());
+            // setLinkUrl(url) 1개짜리 인자 오버로드 대신, 오프셋을 명시하는 3개짜리 인자로 명확히 지정
+            var rtv = SpreadsheetApp.newRichTextValue().setText(text).setLinkUrl(0, text.length, r.url).build();
+            // 진단용: 실제로 셀에 쓰기 전에 "빌드된 값" 자체가 정상인지 먼저 확인 — 원인 확인 후 제거 예정
+            Logger.log('[릴스 슬롯 빌드확인] slot=' + i + ' 빌드된 text=' + rtv.getText() + ' link=' + rtv.getLinkUrl(0, text.length));
+            cell.setRichTextValue(rtv);
           } else {
             cell.setValue(r.views != null ? r.views : '');
           }
+          SpreadsheetApp.flush();
         } catch (linkErr) {
           cell.setValue(text);
+          SpreadsheetApp.flush();
           Logger.log('릴스 링크 저장 실패 (텍스트만 저장): row=' + sheetRow + ' slot=' + i + ' url=' + r.url + ' err=' + linkErr);
         }
         // 같은 실행 안에서 방금 쓴 값이 실제로 반영됐는지 즉시 재확인
         // (P/AG는 정상 저장되는데 Q~Z만 비어있는 원인이 쓰기 실패인지, 쓴 뒤 다른 프로세스가
         // 되돌리는 건지 구분하기 위한 진단용 — 원인 확인 후 제거 예정)
         var _verify = sheet.getRange(sheetRow, REEL_COL_START + i).getRichTextValue();
+        var _verifyPlain = sheet.getRange(sheetRow, REEL_COL_START + i).getValue();
         Logger.log('[릴스 슬롯 검증] row=' + sheetRow + ' slot=' + i + '(col=' + (REEL_COL_START + i) + ') 쓰려던 값=' + text +
-          '/' + r.url + ' 쓰기 직후 실제 값=' + (_verify ? _verify.getText() : '(null)') + ' link=' + (_verify ? _verify.getLinkUrl() : '(null)'));
+          '/' + r.url + ' 쓰기 직후 richText=' + (_verify ? _verify.getText() : '(null)') + ' link=' + (_verify ? _verify.getLinkUrl() : '(null)') +
+          ' 쓰기 직후 plainValue=' + JSON.stringify(_verifyPlain));
         if (r.views != null) total += Number(r.views);
         thumbs.push(r.thumb || '');
         savedCount++;
