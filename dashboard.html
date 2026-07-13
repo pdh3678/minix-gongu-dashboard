@@ -1757,6 +1757,7 @@ function applyThumbFile(i,file){
     if(!_modalReels[i])return;
     _modalReels[i].thumb=res.dataUrl;
     _modalReels[i]._pendingUpload={base64:res.base64,mimeType:res.mimeType};
+    console.log('[1.썸네일 선택] slot=',i,'_pendingUpload 세팅됨 (base64 length=',res.base64.length,')');
     refreshReelThumb(i);
   }).catch(()=>alert('이미지 처리 중 오류가 발생했습니다.'));
 }
@@ -1820,6 +1821,7 @@ async function saveSchemeModal(){
   const touchReels=reels.length>0||_modalHadReels;
   const url=localStorage.getItem('gp_gas_url');
 
+  console.log('[0.업로드 시작 전] pendingUpload 있는 슬롯 수=',reels.filter(r=>r._pendingUpload).length,'url설정됨=',!!url);
   if(url && reels.some(r=>r._pendingUpload)){
     setLoad(true);
     try{
@@ -1827,19 +1829,22 @@ async function saveSchemeModal(){
         if(!r._pendingUpload)continue;
         const resp=await fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadThumbnail',data:r._pendingUpload,idToken:_gasCredential||''})});
         const j=await resp.json();
+        console.log('[2.uploadThumbnail 응답]',JSON.stringify(j));
         if(j.error)throw new Error(j.error);
         r.thumb=j.url;
+        console.log('[3.r.thumb 할당 완료] r.thumb=',r.thumb);
       }
     }catch(e){alert('썸네일 업로드 실패: '+e.message);setLoad(false);return;}
   }
   reels=reels.map(r=>({url:r.url,views:r.views,thumb:r.thumb})); // 내부 전용 필드(_pendingUpload) 제거
+  console.log('[4.최종 reels(썸네일 포함)]',JSON.stringify(reels));
   const totalViews=reels.length?reels.reduce((s,r)=>s+(r.views||0),0):null;
 
   if(url){
     setLoad(true);
     const reelsReqBody={row:d.id,product:d.product,channel:d.ch,link,reels:touchReels?reels:null};
     const schemeReqBody={row:d.id,product:d.product,channel:d.ch,sale,qty,comm,code:codeVal};
-    console.log('[saveReels] 요청 body:',reelsReqBody);
+    console.log('[5.saveReels 요청 body]',JSON.stringify(reelsReqBody));
     console.log('[updateScheme] 요청 body:',schemeReqBody);
     Promise.all([
       fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReels',data:reelsReqBody,idToken:_gasCredential||''})}).then(r=>r.json()),
@@ -1965,6 +1970,9 @@ async function fetchLive(){
       setConn('error');return;
     }
     if(j.error)throw new Error(j.error);
+    const _withReels=(j.purchases||[]).filter(p=>Array.isArray(p.reels)&&p.reels.length);
+    console.log('[6.fetchLive 응답] 릴스 있는 공구건 수=',_withReels.length,
+      _withReels.length?JSON.stringify(_withReels.map(p=>({id:p.id,product:p.product,channel:p.channel,reels:p.reels}))):'');
     const adapted=adaptGAS(j);
     if(adapted&&adapted.length){
       DATA.splice(0,DATA.length,...adapted);
