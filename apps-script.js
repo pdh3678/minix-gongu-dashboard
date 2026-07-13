@@ -884,3 +884,33 @@ function authorizeDrive() {
   var folders = DriveApp.getFoldersByName("테스트");
   Logger.log("드라이브 권한 OK");
 }
+
+// 337행(이제이쿡)에 릴스 1건을 저장하는 실제 doPost 흐름(_saveReels)을 그대로 실행 —
+// Cloud 로그가 꺼져있어도 에디터에서 직접 실행하면 하단 "실행 로그" 창에 Logger.log가 바로 찍힘.
+// _saveReels 내부의 [릴스 Q~Z 사전확인]/[릴스 Q~Z 보호범위 확인]/[릴스 슬롯 검증] 로그로
+// Q~Z만 저장 안 되는 원인(기존 수식/보호범위/쓰기 자체 실패 여부)을 확인하기 위한 테스트
+function testReelsSave() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var testData = {
+    row: 337,
+    product: '더 플렌더 MAX',
+    channel: '이제이쿡',
+    link: 'https://www.instagram.com/ej_cook_/',
+    reels: [
+      {
+        url: 'https://www.instagram.com/reel/TEST_REEL_ID/',
+        views: 7.8,
+        thumb: 'https://drive.google.com/thumbnail?id=1VF4bq3mf5WEVyXE6dRQskpoxiIt3bVN1&sz=w400'
+      }
+    ]
+  };
+
+  Logger.log('=== testReelsSave 시작: row=' + testData.row + ' product=' + testData.product + ' channel=' + testData.channel + ' ===');
+  var result = _saveReels(ss, testData);
+  Logger.log('=== testReelsSave 응답: ' + result.getContent() + ' ===');
+
+  // 저장 직후 실제로 시트에 반영됐는지 doGet과 같은 방식으로 한 번 더 확인
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var verify = _debugReelsRaw(sheet, testData.row);
+  Logger.log('=== testReelsSave 저장 후 시트 상태: ' + JSON.stringify(verify) + ' ===');
+}
