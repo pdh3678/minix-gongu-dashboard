@@ -1,8 +1,9 @@
 <title>공동구매 자동화 대시보드</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
 <style>
 :root{--bg:#EEF1F8;--surface:#FFF;--surface-2:#F5F7FB;--minix:#3B56E5;--minix-lt:#EEF1FD;--navy:#1B2B6B;--text:#111827;--text-2:#5B6375;--text-3:#9399A6;--border:#DDE1EB;--border-s:#C4CADB;--ok:#0A7C5E;--ok-bg:#E6F7F3;--warn:#B45309;--warn-bg:#FEF3C7;--nbg:#F3F4F6;--sh:0 1px 3px rgba(17,24,39,.07);--r:8px}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic','Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
 
 .hdr{background:var(--navy);color:#fff;padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .hdr-left{display:flex;align-items:center;gap:12px;min-width:0}
@@ -150,13 +151,13 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 #salesKpiRow{grid-template-columns:repeat(3,1fr)}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:15px 17px;box-shadow:var(--sh)}
 .kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-3);margin-bottom:5px}
-.kpi-val{font-size:24px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi-val{font-size:24px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
 .kpi-unit{font-size:13px;font-weight:400;letter-spacing:0}
 .kpi-sub{font-size:11px;color:var(--text-3);margin-top:4px}
 .cm{color:var(--minix)}.cok{color:var(--ok)}.cw{color:var(--warn)}.cn{color:var(--text)}
 
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;box-shadow:var(--sh);position:relative;isolation:isolate}
-.card-hd{font-size:13px;font-weight:700;margin-bottom:15px;display:flex;justify-content:space-between;align-items:center}
+.card-hd{font-size:13px;font-weight:600;margin-bottom:15px;display:flex;justify-content:space-between;align-items:center}
 .card-hd-r{font-size:11px;font-weight:400;color:var(--text-3)}
 
 
@@ -169,7 +170,7 @@ body{font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSys
 
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-thead th{text-align:left;padding:8px 12px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3);border-bottom:2px solid var(--border);white-space:nowrap;background:var(--surface-2)}
+thead th{text-align:left;padding:8px 12px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3);border-bottom:2px solid var(--border);white-space:nowrap;background:var(--surface-2)}
 tbody td{padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
 tbody tr:last-child td{border-bottom:none}
 tbody tr{cursor:pointer;transition:background .12s}
@@ -233,7 +234,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .sch-modal-wide{width:min(78vw,900px);max-height:88vh;overflow-y:auto}
 .sch-2col{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
 @media(max-width:760px){.sch-2col{grid-template-columns:1fr}}
-.reel-mgr-hd{font-size:13px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.reel-mgr-hd{font-size:13px;font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
 .reel-gallery-hint{font-size:10px;color:var(--text-3);margin-bottom:6px}
 .reel-gallery{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px}
 .reel-gallery-slot{aspect-ratio:1;border-radius:6px;overflow:hidden;display:block;background:var(--nbg);text-decoration:none}
