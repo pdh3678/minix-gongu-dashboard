@@ -1658,6 +1658,7 @@ function reelThumbFallback(){
 // 썸네일 이미지 로드 실패 시 값을 지우고 기본 카드로 되돌림
 function reelThumbError(i){
   if(!_modalReels[i])return;
+  console.error('[릴스 썸네일 로드 실패] slot=',i,'url=',_modalReels[i].thumb);
   _modalReels[i].thumb='';
   delete _modalReels[i]._pendingUpload;
   refreshReelThumb(i);
