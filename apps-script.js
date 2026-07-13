@@ -15,7 +15,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'reels-fix-2026-07-13-04-numberformat';
+var SCRIPT_VERSION = 'reels-fix-2026-07-13-05-thumbproxy';
 
 // 메인 데이터 시트명 — 실제 탭명으로 수정하세요 (대소문자·띄어쓰기 포함)
 // ※ "앳홈 공동구매 총괄 시트"의 실제 탭명은 '실적통합' (통합실적 아님)
@@ -101,6 +101,12 @@ function doGet(e) {
   try {
     var idToken = (e && e.parameter) ? (e.parameter.idToken || '') : '';
     if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED' });
+
+    // 썸네일 프록시: 개별 Drive 파일을 사용자에게 직접 공유하는 대신, 스크립트 소유자 권한으로
+    // 파일을 읽어 그대로 내려줌 — 조직 정책(링크 공유 차단)과 무관하게 항상 접근 가능
+    if (e && e.parameter && e.parameter.thumb) {
+      return DriveApp.getFileById(e.parameter.thumb).getBlob();
+    }
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -808,21 +814,10 @@ function _uploadThumbnail(data) {
     var blob = Utilities.newBlob(bytes, mimeType, 'thumb_' + Date.now() + '.jpg');
     var file = folder.createFile(blob);
 
-    var shareWarning = null;
-    try {
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (shareErr) {
-      try {
-        file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
-      } catch (domainErr) {
-        shareWarning = '공유 설정 실패(조직 정책)';
-      }
-    }
-
-    var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w400';
-    var result = { success: true, url: url };
-    if (shareWarning) result.warning = shareWarning;
-    return _json(result);
+    // 조직 정책이 "링크가 있는 모든 사용자" 공유를 막고 있어 개별 파일 공유는 신뢰할 수 없음(403).
+    // 대신 파일은 비공개로 두고, doGet의 ?thumb=<fileId> 프록시로 스크립트 소유자 권한으로 내려줌.
+    var url = ScriptApp.getService().getUrl() + '?thumb=' + file.getId();
+    return _json({ success: true, url: url });
   } catch (err) {
     return _json({ error: '이미지 업로드 실패: ' + err.toString() });
   }
