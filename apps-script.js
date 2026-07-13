@@ -15,7 +15,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'reels-fix-2026-07-13-02';
+var SCRIPT_VERSION = 'reels-fix-2026-07-13-03-diag';
 
 // 메인 데이터 시트명 — 실제 탭명으로 수정하세요 (대소문자·띄어쓰기 포함)
 // ※ "앳홈 공동구매 총괄 시트"의 실제 탭명은 '실적통합' (통합실적 아님)
@@ -727,6 +727,25 @@ function _saveReels(ss, data) {
   // (원래 릴스가 없던 건에서 링크만 고치고 저장한 경우 기존 조회수 데이터를 실수로 지우지 않기 위함)
   var savedCount = 0;
   if (data.reels != null) {
+    // 진단용: Q~Z에 수식(배열수식 스필 포함)이나 보호 범위가 걸려있는지 사전 확인 — 원인 확인 후 제거 예정
+    try {
+      var _rangeQZ = sheet.getRange(sheetRow, REEL_COL_START, 1, REEL_SLOT_COUNT);
+      var _formulas = _rangeQZ.getFormulas()[0];
+      Logger.log('[릴스 Q~Z 사전확인] row=' + sheetRow + ' 기존수식=' + JSON.stringify(_formulas));
+      var _prot = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+      var _protInfo = [];
+      for (var _p = 0; _p < _prot.length; _p++) {
+        var _pr = _prot[_p].getRange();
+        if (_pr.getRow() <= sheetRow && sheetRow <= _pr.getLastRow() &&
+            _pr.getColumn() <= REEL_COL_START && REEL_COL_START <= _pr.getLastColumn()) {
+          _protInfo.push(_prot[_p].getDescription() + '(' + _pr.getA1Notation() + ')');
+        }
+      }
+      Logger.log('[릴스 Q~Z 보호범위 확인] row=' + sheetRow + ' 겹치는 보호범위=' + JSON.stringify(_protInfo));
+    } catch (diagErr) {
+      Logger.log('[릴스 Q~Z 사전확인 실패] ' + diagErr);
+    }
+
     var reels = data.reels;
     var thumbs = [];
     var total = 0;
@@ -747,6 +766,12 @@ function _saveReels(ss, data) {
           cell.setValue(text);
           Logger.log('릴스 링크 저장 실패 (텍스트만 저장): row=' + sheetRow + ' slot=' + i + ' url=' + r.url + ' err=' + linkErr);
         }
+        // 같은 실행 안에서 방금 쓴 값이 실제로 반영됐는지 즉시 재확인
+        // (P/AG는 정상 저장되는데 Q~Z만 비어있는 원인이 쓰기 실패인지, 쓴 뒤 다른 프로세스가
+        // 되돌리는 건지 구분하기 위한 진단용 — 원인 확인 후 제거 예정)
+        var _verify = sheet.getRange(sheetRow, REEL_COL_START + i).getRichTextValue();
+        Logger.log('[릴스 슬롯 검증] row=' + sheetRow + ' slot=' + i + '(col=' + (REEL_COL_START + i) + ') 쓰려던 값=' + text +
+          '/' + r.url + ' 쓰기 직후 실제 값=' + (_verify ? _verify.getText() : '(null)') + ' link=' + (_verify ? _verify.getLinkUrl() : '(null)'));
         if (r.views != null) total += Number(r.views);
         thumbs.push(r.thumb || '');
         savedCount++;
