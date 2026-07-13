@@ -856,7 +856,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='reels-fix-2026-07-13-03-diag';
+const DASHBOARD_VERSION='reels-fix-2026-07-13-04-numberformat';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -1624,7 +1624,6 @@ let _modalDealId=null,_modalChannel='',_modalReels=[],_modalHadReels=false,_acti
 
 function openM(id){
   const d=DATA.find(x=>x.id===id);if(!d)return;
-  console.log('[openM] 오픈 id=',id,'d.reels=',d.reels,'d===DATA요소 동일객체?',DATA.includes(d));
   _modalDealId=id;_modalChannel=d.ch||'';_activeReelIdx=null;
   _modalHadReels=!!(d.reels&&d.reels.length);
   _modalReels=(d.reels&&d.reels.length?d.reels:[]).map(r=>({url:r.url||'',views:r.views!=null?r.views:null,thumb:r.thumb||''})).slice(0,10);
@@ -1856,10 +1855,9 @@ async function saveSchemeModal(){
       d.qty=qty;d.code=codeVal;
       d.s=d.s||{};d.s.sale=sale;d.s.comm=comm;
       if(sale!=null&&qty!=null)d.rev=sale*qty;
-      console.log('[저장 후 로컬 반영]','id=',d.id,'touchReels=',touchReels,'d.reels=',d.reels,'d===DATA요소 동일객체?',DATA.includes(d));
       closeSchModal();
       showToast(touchReels?`저장됨 · 릴스 ${r1.count||0}개`:'저장되었습니다');
-      fetchLive().then(()=>console.log('[fetchLive 완료 후] id=',d.id,'DATA에서 재조회한 reels=',DATA.find(x=>x.id===d.id)?.reels));
+      fetchLive();
     }).catch(e=>{console.error('[저장 실패]',e);alert('저장 실패: '+e.message);setLoad(false);});
   } else {
     d.link=link;if(touchReels){d.reels=reels;d.views=totalViews;}

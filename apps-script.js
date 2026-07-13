@@ -15,7 +15,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'reels-fix-2026-07-13-03-diag';
+var SCRIPT_VERSION = 'reels-fix-2026-07-13-04-numberformat';
 
 // 메인 데이터 시트명 — 실제 탭명으로 수정하세요 (대소문자·띄어쓰기 포함)
 // ※ "앳홈 공동구매 총괄 시트"의 실제 탭명은 '실적통합' (통합실적 아님)
@@ -727,25 +727,6 @@ function _saveReels(ss, data) {
   // (원래 릴스가 없던 건에서 링크만 고치고 저장한 경우 기존 조회수 데이터를 실수로 지우지 않기 위함)
   var savedCount = 0;
   if (data.reels != null) {
-    // 진단용: Q~Z에 수식(배열수식 스필 포함)이나 보호 범위가 걸려있는지 사전 확인 — 원인 확인 후 제거 예정
-    try {
-      var _rangeQZ = sheet.getRange(sheetRow, REEL_COL_START, 1, REEL_SLOT_COUNT);
-      var _formulas = _rangeQZ.getFormulas()[0];
-      Logger.log('[릴스 Q~Z 사전확인] row=' + sheetRow + ' 기존수식=' + JSON.stringify(_formulas));
-      var _prot = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
-      var _protInfo = [];
-      for (var _p = 0; _p < _prot.length; _p++) {
-        var _pr = _prot[_p].getRange();
-        if (_pr.getRow() <= sheetRow && sheetRow <= _pr.getLastRow() &&
-            _pr.getColumn() <= REEL_COL_START && REEL_COL_START <= _pr.getLastColumn()) {
-          _protInfo.push(_prot[_p].getDescription() + '(' + _pr.getA1Notation() + ')');
-        }
-      }
-      Logger.log('[릴스 Q~Z 보호범위 확인] row=' + sheetRow + ' 겹치는 보호범위=' + JSON.stringify(_protInfo));
-    } catch (diagErr) {
-      Logger.log('[릴스 Q~Z 사전확인 실패] ' + diagErr);
-    }
-
     var reels = data.reels;
     var thumbs = [];
     var total = 0;
@@ -758,32 +739,24 @@ function _saveReels(ss, data) {
         // 통째로 저장되지 않는 것을 막기 위해 슬롯 단위로 격리
         try {
           if (r.url) {
-            // setLinkUrl(url) 1개짜리 인자 오버로드 대신, 오프셋을 명시하는 3개짜리 인자로 명확히 지정
+            // "7.8"처럼 숫자로만 보이는 텍스트에 링크를 걸면 시트가 셀을 자동으로 숫자 타입으로
+            // 인식해 리치텍스트/하이퍼링크 정보를 통째로 버림 — 텍스트 서식을 먼저 강제해야 함
+            cell.setNumberFormat('@');
             var rtv = SpreadsheetApp.newRichTextValue().setText(text).setLinkUrl(0, text.length, r.url).build();
-            // 진단용: 실제로 셀에 쓰기 전에 "빌드된 값" 자체가 정상인지 먼저 확인 — 원인 확인 후 제거 예정
-            Logger.log('[릴스 슬롯 빌드확인] slot=' + i + ' 빌드된 text=' + rtv.getText() + ' link=' + rtv.getLinkUrl(0, text.length));
             cell.setRichTextValue(rtv);
           } else {
             cell.setValue(r.views != null ? r.views : '');
           }
-          SpreadsheetApp.flush();
         } catch (linkErr) {
+          cell.setNumberFormat('@');
           cell.setValue(text);
-          SpreadsheetApp.flush();
           Logger.log('릴스 링크 저장 실패 (텍스트만 저장): row=' + sheetRow + ' slot=' + i + ' url=' + r.url + ' err=' + linkErr);
         }
-        // 같은 실행 안에서 방금 쓴 값이 실제로 반영됐는지 즉시 재확인
-        // (P/AG는 정상 저장되는데 Q~Z만 비어있는 원인이 쓰기 실패인지, 쓴 뒤 다른 프로세스가
-        // 되돌리는 건지 구분하기 위한 진단용 — 원인 확인 후 제거 예정)
-        var _verify = sheet.getRange(sheetRow, REEL_COL_START + i).getRichTextValue();
-        var _verifyPlain = sheet.getRange(sheetRow, REEL_COL_START + i).getValue();
-        Logger.log('[릴스 슬롯 검증] row=' + sheetRow + ' slot=' + i + '(col=' + (REEL_COL_START + i) + ') 쓰려던 값=' + text +
-          '/' + r.url + ' 쓰기 직후 richText=' + (_verify ? _verify.getText() : '(null)') + ' link=' + (_verify ? _verify.getLinkUrl() : '(null)') +
-          ' 쓰기 직후 plainValue=' + JSON.stringify(_verifyPlain));
         if (r.views != null) total += Number(r.views);
         thumbs.push(r.thumb || '');
         savedCount++;
       } else {
+        cell.setNumberFormat('General');
         cell.setValue('');
         thumbs.push('');
       }
