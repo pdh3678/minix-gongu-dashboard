@@ -854,6 +854,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 'use strict';
+// 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
+// fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
+const DASHBOARD_VERSION='reels-fix-2026-07-13-02';
+console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
   {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:19.8,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
@@ -1832,20 +1836,29 @@ async function saveSchemeModal(){
 
   if(url){
     setLoad(true);
+    const reelsReqBody={row:d.id,product:d.product,channel:d.ch,link,reels:touchReels?reels:null};
+    const schemeReqBody={row:d.id,product:d.product,channel:d.ch,sale,qty,comm,code:codeVal};
+    console.log('[saveReels] 요청 body:',reelsReqBody);
+    console.log('[updateScheme] 요청 body:',schemeReqBody);
     Promise.all([
-      fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
-        action:'saveReels',data:{row:d.id,product:d.product,channel:d.ch,link,reels:touchReels?reels:null},idToken:_gasCredential||''
-      })}).then(r=>r.json()),
-      fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
-        action:'updateScheme',data:{row:d.id,product:d.product,channel:d.ch,sale,qty,comm,code:codeVal},idToken:_gasCredential||''
-      })}).then(r=>r.json())
+      fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReels',data:reelsReqBody,idToken:_gasCredential||''})}).then(r=>r.json()),
+      fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'updateScheme',data:schemeReqBody,idToken:_gasCredential||''})}).then(r=>r.json())
     ]).then(([r1,r2])=>{
-      if(r1.error)throw new Error(r1.error);
-      if(r2.error)throw new Error(r2.error);
+      console.log('[saveReels] 응답:',r1);
+      console.log('[updateScheme] 응답:',r2);
+      // success 값을 실제로 검증 — error가 있으면 절대 성공 토스트를 띄우지 않고 catch로 던짐
+      if(!r1 || r1.success!==true || r1.error)throw new Error(r1&&r1.error||'saveReels 응답에 success:true가 없습니다');
+      if(!r2 || r2.success!==true || r2.error)throw new Error(r2&&r2.error||'updateScheme 응답에 success:true가 없습니다');
+      // fetchLive()가 끝나기 전에 모달을 다시 열어도 빈 상태로 보이지 않도록, 서버 응답을 기다리는 대신
+      // 방금 저장한 값을 로컬 DATA에도 바로 반영해둠 (서버 재조회는 아래 fetchLive()가 이어서 보정)
+      d.link=link;if(touchReels){d.reels=reels;d.views=totalViews;}
+      d.qty=qty;d.code=codeVal;
+      d.s=d.s||{};d.s.sale=sale;d.s.comm=comm;
+      if(sale!=null&&qty!=null)d.rev=sale*qty;
       closeSchModal();
-      showToast('저장되었습니다');
+      showToast(touchReels?`저장됨 · 릴스 ${r1.count||0}개`:'저장되었습니다');
       fetchLive();
-    }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
+    }).catch(e=>{console.error('[저장 실패]',e);alert('저장 실패: '+e.message);setLoad(false);});
   } else {
     d.link=link;if(touchReels){d.reels=reels;d.views=totalViews;}
     d.qty=qty;d.code=codeVal;
@@ -1939,6 +1952,10 @@ async function fetchLive(){
   try{
     const r=await fetch(_gasUrl(url));if(!r.ok)throw new Error(`HTTP ${r.status}`);
     const j=await r.json();
+    console.log('[fetchLive] 응답 버전(Apps Script):',j.version||'(버전 필드 없음 — 구버전 배포본)');
+    if(j.version&&j.version!==DASHBOARD_VERSION){
+      console.warn(`[버전 불일치] 프론트=${DASHBOARD_VERSION} / 배포된 Apps Script=${j.version} — Apps Script를 최신 코드로 재배포했는지 확인하세요.`);
+    }
     if(j.error==='AUTH_REQUIRED'){
       // 토큰 만료 → 재로그인 유도
       sessionStorage.removeItem('gp_user');_gasCredential=null;

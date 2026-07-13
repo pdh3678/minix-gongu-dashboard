@@ -13,6 +13,10 @@
 // ── CONFIGURATION ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
+// 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
+var SCRIPT_VERSION = 'reels-fix-2026-07-13-02';
+
 // 메인 데이터 시트명 — 실제 탭명으로 수정하세요 (대소문자·띄어쓰기 포함)
 // ※ "앳홈 공동구매 총괄 시트"의 실제 탭명은 '실적통합' (통합실적 아님)
 var MAIN_SHEET = '실적통합';
@@ -119,12 +123,18 @@ function doGet(e) {
       return _json(_debugViewsRaw(sheet));
     }
 
+    // 디버그 모드: ?debug=reels&row=123 으로 호출 시 해당 행의 Q~Z(릴스 URL/조회수)와
+    // AG(썸네일 JSON) 원본 상태를 그대로 반환 — 릴스 저장이 실제로 시트에 반영됐는지 확인용
+    if (e && e.parameter && e.parameter.debug === 'reels' && e.parameter.row) {
+      return _json(_debugReelsRaw(sheet, parseInt(e.parameter.row, 10)));
+    }
+
     var result = parseMainSheet(sheet, ss);
     // id는 parseMainSheet에서 이미 실제 시트 행 번호로 부여됨 (내용 기반 재번호 금지)
 
     var calendarEvents = _loadCalendarEvents(ss);
 
-    return _json({ purchases: result.deals, calendarEvents: calendarEvents, updatedAt: new Date().toISOString(), codeMatchStats: result.codeStats });
+    return _json({ purchases: result.deals, calendarEvents: calendarEvents, updatedAt: new Date().toISOString(), codeMatchStats: result.codeStats, version: SCRIPT_VERSION });
   } catch (err) {
     return _json({ error: err.toString(), purchases: [] });
   }
@@ -152,6 +162,33 @@ function _debugViewsRaw(sheet) {
     rows.push({ row: i + 1, brand: row[COL.brand], product: row[COL.product], cols: vals });
   }
   return { debug: true, sheetName: sheet.getName(), totalDataRows: data.length, rows: rows };
+}
+
+// ── 디버그: 특정 행의 릴스 저장 상태(Q~Z 하이퍼링크 + AG 썸네일 JSON) 원본 그대로 반환 ──
+// 저장 직후 이 값들이 비어있으면 쓰기(doPost/_saveReels) 문제, 값은 있는데 대시보드에 안 보이면
+// 읽기(parseMainSheet)/프론트 문제로 원인을 좁힐 수 있음
+function _debugReelsRaw(sheet, row) {
+  if (!row || row < DATA_START_ROW + 1 || row > sheet.getLastRow()) {
+    return { debug: true, error: '잘못된 행 번호: ' + row + ' (유효 범위 ' + (DATA_START_ROW + 1) + '~' + sheet.getLastRow() + ')' };
+  }
+  var rowVals = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var richRow = sheet.getRange(row, REEL_COL_START, 1, REEL_SLOT_COUNT).getRichTextValues()[0];
+  var slots = [];
+  for (var i = 0; i < REEL_SLOT_COUNT; i++) {
+    var rc = richRow[i];
+    slots.push({ col: String.fromCharCode(81 + i), text: rc ? rc.getText() : '', linkUrl: rc ? rc.getLinkUrl() : null });
+  }
+  var thumbsRaw = rowVals[COL.thumbs];
+  var thumbs;
+  try { thumbs = JSON.parse(thumbsRaw || '[]'); } catch (e) { thumbs = { parseError: String(e), raw: thumbsRaw }; }
+  return {
+    debug: true, row: row,
+    product: rowVals[COL.product], channel: rowVals[COL.channel],
+    viewsTotal_P: rowVals[COL.views],
+    reelSlots_Q_to_Z: slots,
+    thumbsJson_AG_raw: thumbsRaw,
+    thumbsJson_AG_parsed: thumbs
+  };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -688,6 +725,7 @@ function _saveReels(ss, data) {
 
   // data.reels가 배열로 명시된 경우에만 Q~Z/P/썸네일을 갱신함
   // (원래 릴스가 없던 건에서 링크만 고치고 저장한 경우 기존 조회수 데이터를 실수로 지우지 않기 위함)
+  var savedCount = 0;
   if (data.reels != null) {
     var reels = data.reels;
     var thumbs = [];
@@ -697,13 +735,21 @@ function _saveReels(ss, data) {
       var r = reels[i];
       if (r && (r.url || r.views != null)) {
         var text = r.views != null ? String(r.views) : ' ';
-        if (r.url) {
-          cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText(text).setLinkUrl(r.url).build());
-        } else {
-          cell.setValue(r.views != null ? r.views : '');
+        // setLinkUrl은 URL 형식이 이상하면 예외를 던짐 — 한 슬롯 실패로 나머지 릴스/합계/썸네일까지
+        // 통째로 저장되지 않는 것을 막기 위해 슬롯 단위로 격리
+        try {
+          if (r.url) {
+            cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText(text).setLinkUrl(r.url).build());
+          } else {
+            cell.setValue(r.views != null ? r.views : '');
+          }
+        } catch (linkErr) {
+          cell.setValue(text);
+          Logger.log('릴스 링크 저장 실패 (텍스트만 저장): row=' + sheetRow + ' slot=' + i + ' url=' + r.url + ' err=' + linkErr);
         }
         if (r.views != null) total += Number(r.views);
         thumbs.push(r.thumb || '');
+        savedCount++;
       } else {
         cell.setValue('');
         thumbs.push('');
@@ -714,7 +760,7 @@ function _saveReels(ss, data) {
     sheet.getRange(sheetRow, COL.thumbs + 1).setValue(JSON.stringify(thumbs));
   }
 
-  return _json({ success: true });
+  return _json({ success: true, count: savedCount });
 }
 
 // 품목별 실적 모달(스킴 편집)에서 공동구매가(G)/판매수량(H)/수수료(J)/상품코드(AC)를 저장
@@ -755,9 +801,22 @@ function _uploadThumbnail(data) {
     var mimeType = data.mimeType || 'image/jpeg';
     var blob = Utilities.newBlob(bytes, mimeType, 'thumb_' + Date.now() + '.jpg');
     var file = folder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    var shareWarning = null;
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (shareErr) {
+      try {
+        file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (domainErr) {
+        shareWarning = '공유 설정 실패(조직 정책)';
+      }
+    }
+
     var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w400';
-    return _json({ success: true, url: url });
+    var result = { success: true, url: url };
+    if (shareWarning) result.warning = shareWarning;
+    return _json(result);
   } catch (err) {
     return _json({ error: '이미지 업로드 실패: ' + err.toString() });
   }
@@ -789,4 +848,14 @@ function _numOrNull(v) {
 
 function _normProd(s) {
   return String(s || '').replace(/[\s ]/g, '').toLowerCase();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 권한 승인용 (에디터에서 직접 실행) ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Apps Script 에디터에서 이 함수를 한 번 실행하면 Drive 권한 승인 창이 뜸
+function authorizeDrive() {
+  var folders = DriveApp.getFoldersByName("테스트");
+  Logger.log("드라이브 권한 OK");
 }
