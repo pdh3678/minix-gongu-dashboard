@@ -15,7 +15,7 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .hdr-sep{width:1px;height:18px;background:rgba(255,255,255,.2);flex-shrink:0}
 .hdr-sub{font-size:12px;opacity:.6;white-space:nowrap}
 .hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.conn-pill{font-size:11px;padding:3px 9px;border-radius:99px;white-space:nowrap;transition:background .2s}
+.conn-pill{font-size:11px;padding:3px 9px;border-radius:99px;white-space:nowrap;transition:background .2s;cursor:pointer}
 .cp-sample{background:rgba(255,255,255,.1);color:rgba(255,255,255,.65)}
 .cp-live{background:rgba(10,124,94,.35);color:#A7F3D0}
 .cp-error{background:rgba(220,38,38,.3);color:#FCA5A5}
@@ -195,6 +195,10 @@ th.sortable.sorted .sort-ic{opacity:1;color:var(--minix)}
 /* 토스트 */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);background:#1B2035;color:#fff;font-size:12px;font-weight:600;padding:10px 18px;border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,.3);opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:300}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.relogin-banner{position:fixed;top:0;left:0;right:0;background:#7C2D12;color:#FEF3C7;font-size:13px;font-weight:600;padding:10px 16px;display:none;align-items:center;justify-content:center;gap:12px;z-index:1500;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.relogin-banner.show{display:flex}
+.relogin-banner button{background:#F59E0B;color:#1B2035;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer}
+.relogin-banner button:hover{background:#FBBF24}
 .ch-name-link{color:inherit;text-decoration:none}
 .ch-name-link:hover{text-decoration:underline}
 .ch-id{font-size:11px;display:inline-block;margin-left:5px}
@@ -237,9 +241,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .cp-btn{background:#2D3958;color:#94A3B8;border:none;border-radius:5px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;transition:background .15s;font-family:inherit}
 .cp-btn:hover{background:#3D4E6E;color:#E2E8F0}.cp-btn.ok{background:#0A4030;color:#34D399}
 
-.sch-modal-wide{width:min(78vw,900px);max-height:88vh;overflow-y:auto}
-.sch-2col{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+.sch-modal-wide{width:min(85vw,980px);max-height:88vh;overflow-y:auto}
+.sch-2col{display:grid;grid-template-columns:1.15fr 1fr;gap:26px;align-items:start}
 @media(max-width:760px){.sch-2col{grid-template-columns:1fr}}
+.m-delete-btn{margin-top:22px;padding:14px 0 0;border:none;border-top:1px solid var(--border);background:none;color:#DC2626;font-size:12px;font-weight:600;cursor:pointer;text-align:left;width:100%}
+.m-delete-btn:hover{color:#B91C1C;text-decoration:underline}
 .reel-mgr-hd{font-size:13px;font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
 .reel-gallery-hint{font-size:10px;color:var(--text-3);margin-bottom:6px}
 .reel-gallery{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px}
@@ -361,6 +367,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
   </div>
 </div>
 
+<div class="relogin-banner" id="reloginBanner">
+  <span>⚠ 로그인 세션이 만료되었습니다. 다시 로그인해주세요.</span>
+  <button onclick="_showReloginScreen()">다시 로그인</button>
+</div>
+
 <div class="app-shell" id="appShell">
   <div class="sb-backdrop" onclick="closeMobileSidebar()"></div>
   <aside class="sidebar" id="sidebar">
@@ -413,7 +424,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
       <div class="hdr-right">
         <button class="new-deal-btn" onclick="openDealForm()">＋ 새 공구건</button>
-        <span class="conn-pill cp-sample" id="connPill">● 샘플 데이터</span>
+        <span class="conn-pill cp-sample" id="connPill" onclick="refreshData()" title="클릭 시 재연결">● 샘플 데이터</span>
         <select class="ssel" id="statusSel">
           <option value="all">전체 상태</option>
           <option value="완료">완료</option>
@@ -551,35 +562,147 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     </div>
     <div class="sch-2col">
       <div class="sch-col-l">
-        <div class="f-grp" style="margin-bottom:14px">
-          <label class="f-lbl">채널 링크</label>
-          <div style="display:flex;gap:6px">
-            <input class="f-inp" type="url" id="mLinkInput" placeholder="https://instagram.com/... 또는 https://youtube.com/..." style="flex:1">
-            <button type="button" class="btn-cancel" style="padding:0 14px;font-size:12px;white-space:nowrap" onclick="openModalLink()">열기</button>
+        <div class="f-sec" style="margin-top:0">기본 정보</div>
+        <div class="fg fg-3">
+          <div class="f-grp">
+            <label class="f-lbl">연 <span class="f-badge">자동</span></label>
+            <input class="f-inp" type="number" id="mYear" readonly>
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">월</label>
+            <select class="f-inp f-sel" id="mMonth">
+              <option value="">선택</option>
+              <option value="1">1월</option><option value="2">2월</option><option value="3">3월</option>
+              <option value="4">4월</option><option value="5">5월</option><option value="6">6월</option>
+              <option value="7">7월</option><option value="8">8월</option><option value="9">9월</option>
+              <option value="10">10월</option><option value="11">11월</option><option value="12">12월</option>
+            </select>
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">품목군 <span class="f-req">*</span></label>
+            <select class="f-inp f-sel" id="mLine" onchange="mOnLineChange()">
+              <option value="">선택</option>
+              <option value="더플렌더">더 플렌더</option>
+              <option value="더시프트">더 시프트</option>
+              <option value="더에어드라이">더 에어드라이</option>
+              <option value="더슬림">더 슬림</option>
+            </select>
           </div>
         </div>
-        <div class="fg fg-3" style="margin-bottom:14px">
+        <div class="fg fg-2" id="mModelRow" style="display:none;margin-top:10px">
           <div class="f-grp">
-            <label class="f-lbl">공동구매가 (원)</label>
+            <label class="f-lbl">제품 <span class="f-req">*</span></label>
+            <select class="f-inp f-sel" id="mModel" onchange="mOnModelChange()">
+              <option value="">선택</option>
+              <option value="더플렌더PRO">더플렌더PRO</option>
+              <option value="더플렌더MAX">더플렌더MAX</option>
+              <option value="더플렌더mini">더플렌더mini</option>
+            </select>
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">제품명 <span class="f-badge">참고</span></label>
+            <input class="f-inp" type="text" id="mProduct" readonly>
+          </div>
+        </div>
+
+        <div class="f-sec">채널 정보</div>
+        <div class="fg fg-3">
+          <div class="f-grp">
+            <label class="f-lbl">채널명 <span class="f-req">*</span></label>
+            <input class="f-inp" type="text" id="mInfluencer">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">플랫폼 <span class="f-req">*</span></label>
+            <select class="f-inp f-sel" id="mPlatform" onchange="mOnPlatformChange()">
+              <option value="">선택</option>
+              <option value="인스타그램">인스타그램</option>
+              <option value="유튜브">유튜브</option>
+              <option value="기타">기타</option>
+            </select>
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl" id="mChIdLbl">채널 ID</label>
+            <input class="f-inp" type="text" id="mChannelId" placeholder="입력 시 링크 자동 생성" oninput="mOnChannelIdChange()">
+          </div>
+        </div>
+        <div class="fg fg-2" style="margin-top:10px">
+          <div class="f-grp">
+            <label class="f-lbl">벤더사</label>
+            <input class="f-inp" type="text" id="mVendor">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">링크</label>
+            <div style="display:flex;gap:6px">
+              <input class="f-inp" type="url" id="mLinkInput" placeholder="https://..." style="flex:1">
+              <button type="button" class="btn-cancel" style="padding:0 14px;font-size:12px;white-space:nowrap" onclick="openModalLink()">열기</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="f-sec">일정</div>
+        <div class="fg fg-3">
+          <div class="f-grp">
+            <label class="f-lbl">시작일 <span class="f-req">*</span></label>
+            <input class="f-inp" type="date" id="mStart" onchange="mOnDateChange()">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">마감일 <span class="f-req">*</span></label>
+            <input class="f-inp" type="date" id="mEnd" onchange="mOnDateChange()">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">기간 <span class="f-badge">자동</span></label>
+            <input class="f-inp" type="text" id="mDuration" readonly>
+          </div>
+        </div>
+
+        <div class="f-sec">상품 정보</div>
+        <div class="fg fg-4">
+          <div class="f-grp">
+            <label class="f-lbl">상품코드</label>
+            <div style="display:flex;gap:6px">
+              <input class="f-inp" type="text" id="mCodeInput" placeholder="상품코드" style="flex:1">
+              <button type="button" class="btn-cancel" id="mCpBtn" style="padding:0 12px;font-size:12px;white-space:nowrap" onclick="copyCode()">복사</button>
+            </div>
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">공구가 (원)</label>
             <input class="f-inp" type="number" id="mSaleInput" placeholder="0">
           </div>
+          <div class="f-grp">
+            <label class="f-lbl">수수료율 (%)</label>
+            <input class="f-inp" type="number" step="0.1" id="mCommInput" placeholder="0">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">포맷</label>
+            <select class="f-inp f-sel" id="mFormat">
+              <option value="">선택</option>
+              <option value="릴스">릴스</option>
+              <option value="유튜브">유튜브</option>
+              <option value="게시물">게시물</option>
+            </select>
+          </div>
+        </div>
+        <div class="fg fg-2" style="margin-top:10px">
+          <div class="f-grp">
+            <label class="f-lbl">구성</label>
+            <input class="f-inp" type="text" id="mComposition" placeholder="예: 본품 1개 + 증정품">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">목표수량 (개)</label>
+            <input class="f-inp" type="number" id="mTargetQty" placeholder="0">
+          </div>
+        </div>
+
+        <div class="f-sec">실적</div>
+        <div class="fg fg-2">
           <div class="f-grp">
             <label class="f-lbl">판매수량</label>
             <input class="f-inp" type="number" id="mQtyInput" placeholder="0">
           </div>
-          <div class="f-grp">
-            <label class="f-lbl">수수료 (%)</label>
-            <input class="f-inp" type="number" step="0.1" id="mCommInput" placeholder="0">
-          </div>
         </div>
         <div class="sch-note" id="mNote"></div>
-        <div class="code-row">
-          <div style="flex:1;min-width:0">
-            <div class="code-lbl">상품코드</div>
-            <input class="code-input" id="mCodeInput" placeholder="상품코드 입력">
-          </div>
-          <button class="cp-btn" id="mCpBtn" onclick="copyCode()">복사</button>
-        </div>
+
+        <button type="button" class="m-delete-btn" onclick="confirmDeleteDeal()">🗑 이 공구건 삭제</button>
       </div>
       <div class="sch-col-r">
         <div class="reel-mgr-hd">릴스 관리 <span class="card-hd-r" id="reelTotalViews"></span></div>
@@ -877,6 +1000,11 @@ const SAMPLE_EVENTS=[
 ];
 let EVENTS=SAMPLE_EVENTS.map(e=>({...e}));
 
+// 브랜드 시트(1/2/3) 기준 데이터 — "품목별 실적" 표와 "공구 캘린더"의 일정 소스.
+// 실적통합(DATA)에서 실적 수치(판매수량/매출/조회수/릴스)를 "출처" 연결고리로 조인해 채워서 내려받음.
+// 매칭되는 실적통합 행이 없으면 실적 필드는 비어있는 채로 브랜드 시트 원본 정보만 표시됨.
+let BRAND_DATA=[];
+
 const _NOW=new Date();
 const ST={prod:'all',model:'all',status:'all'};
 const DASH={mode:'all',value:'',selected:new Set()};
@@ -945,8 +1073,9 @@ function productColorKey(p){
 function productColor(p){return PRODUCT_COLORS[productColorKey(p)]||PRODUCT_COLORS.other;}
 
 // 제품/브랜드/모델 필터만 적용 (상태 필터 제외)
-function filteredProd(){
-  return DATA.filter(d=>{
+// src 생략 시 DATA(실적통합) 기준 — 품목별 실적 표는 filteredProd(BRAND_DATA)로 브랜드 시트 기준 필터링
+function filteredProd(src){
+  return(src||DATA).filter(d=>{
     if(ST.prod==='all')return true;
     if(ST.prod==='플렌더'){
       if(!isFlender(d.product))return false;
@@ -961,8 +1090,8 @@ function filteredProd(){
   });
 }
 // 상태 필터까지 적용 (KPI·캘린더·차트용)
-function filtered(){
-  return filteredProd().filter(d=>{
+function filtered(src){
+  return filteredProd(src).filter(d=>{
     if(ST.status!=='all'&&d.status!==ST.status)return false;
     return true;
   });
@@ -1257,7 +1386,7 @@ const SALES_CELL={
 /* ── 브랜드별 실적: 연도/월 다중선택 필터 ── */
 const SALES_YM={years:new Set(),months:new Set(),_initialized:false};
 function salesAvailableYears(){
-  return[...new Set(DATA.filter(d=>d.start).map(d=>yearOf(d.start)))].sort((a,b)=>a-b);
+  return[...new Set(BRAND_DATA.filter(d=>d.start).map(d=>yearOf(d.start)))].sort((a,b)=>a-b);
 }
 function salesYMMatch(d){
   if(!d.start)return false;
@@ -1301,7 +1430,7 @@ function renderYMFilterBar(){
 
 /* 실적 상세 표 상단 KPI (연도/월 필터 반영) */
 function renderSalesKpi(){
-  const f=filtered().filter(salesYMMatch);
+  const f=filtered(BRAND_DATA).filter(salesYMMatch);
   const tRev=f.reduce((s,d)=>s+(d.rev||0),0);
   const tQty=f.reduce((s,d)=>s+(d.qty||0),0);
   const withViews=f.filter(d=>d.views!=null);
@@ -1322,7 +1451,7 @@ function renderTbl(){
     return`<th class="sortable${sorted?' sorted':''}${colClass(c)}" onclick="sortSales('${c.key}')">${c.lb}<span class="sort-ic">${arrow}</span></th>`;
   }).join('');
 
-  const f=filtered().filter(salesYMMatch);
+  const f=filtered(BRAND_DATA).filter(salesYMMatch);
   if(SALES_SORT.key){
     const acc=SALES_ACC[SALES_SORT.key];
     f.sort((a,b)=>{
@@ -1370,9 +1499,9 @@ function saveMgmtRow(id){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
+    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
       action:'addPerf',data:{row:d.id,brand:d.brand,product:d.product,channel:d.ch,views,qty,revenue:rev,status:d.status},idToken:_gasCredential||''
-    })}).then(r=>r.json()).then(j=>{
+    })}).then(j=>{
       if(j.error)throw new Error(j.error);
       d.views=views;d.qty=qty;d.rev=rev;
       render();setLoad(false);
@@ -1501,7 +1630,8 @@ function monthWeeks(y,m){
 function renderCalendarPage(){
   if(!_calStateLoaded){calLoadStateFromURL();_calStateLoaded=true;}
   const host=document.getElementById('calPageBody');
-  const withDates=DATA.filter(d=>d.start);
+  // 공구 일정은 브랜드 시트(BRAND_DATA) 기준 — 프로모션 일정(EVENTS)은 그대로 별도 표시
+  const withDates=BRAND_DATA.filter(d=>d.start);
   const eventsWithDates=EVENTS.filter(e=>e.start);
   if(!withDates.length&&!eventsWithDates.length){host.innerHTML='<div class="page-placeholder">표시할 공구 일정이 없습니다</div>';return;}
 
@@ -1552,7 +1682,7 @@ function renderCalMonth(y,m){
 
   const monthStart=gridDays[0],monthEnd=gridDays[gridDays.length-1];
   const rowsMap=new Map();
-  DATA.forEach(d=>{
+  BRAND_DATA.forEach(d=>{
     if(!d.start)return;
     const sd=new Date(d.start+'T00:00:00'),ed=new Date((d.end||d.start)+'T00:00:00');
     if(ed<monthStart||sd>monthEnd)return;
@@ -1622,30 +1752,113 @@ function renderCalPromoRow(events,monthStart,monthEnd,gridDays,colsTpl){
 /* Scheme modal */
 let _modalDealId=null,_modalChannel='',_modalReels=[],_modalHadReels=false,_activeReelIdx=null;
 
+// 저장된 제품명(모델별로 구분 안 된 경우 포함)에서 품목군/제품 드롭다운 값을 역으로 유추
+// (기존 데이터는 "더 플렌더 PRO"처럼 공백이 있고, 새 폼은 "더플렌더PRO"처럼 붙여 쓰므로 normP로 정규화해서 비교)
+function _lineModelFromProduct(p){
+  if(isFlender(p))return{line:'더플렌더',model:'더플렌더'+flenderModel(p)};
+  const np=normP(p);
+  if(np==='더시프트')return{line:'더시프트',model:''};
+  if(np==='더슬림')return{line:'더슬림',model:''};
+  if(np.includes('에어드라이')||np==='미니건조기')return{line:'더에어드라이',model:''};
+  return{line:'',model:p||''};
+}
+
+function _refreshModalHeader(d){
+  document.getElementById('mBrand').style.color='var(--minix)';
+  document.getElementById('mBrand').textContent=`Minix · ${d.product}`;
+  document.getElementById('mTitle').textContent=d.ch;
+  const durTxt=durDays(d.start,d.end);
+  document.getElementById('mSub').textContent=`${yearOf(d.start)}년 ${monthOf(d.start)}월 · ${fmtF(d.start)} ~ ${fmtF(d.end)}${durTxt?` (${durTxt}일)`:''} · ${d.status}`;
+}
+
 function openM(id){
   const d=DATA.find(x=>x.id===id);if(!d)return;
   _modalDealId=id;_modalChannel=d.ch||'';_activeReelIdx=null;
   _modalHadReels=!!(d.reels&&d.reels.length);
   _modalReels=(d.reels&&d.reels.length?d.reels:[]).map(r=>({url:r.url||'',views:r.views!=null?r.views:null,thumb:r.thumb||''})).slice(0,10);
 
-  const c='var(--minix)';
-  document.getElementById('mBrand').style.color=c;
-  document.getElementById('mBrand').textContent=`Minix · ${d.product}`;
-  document.getElementById('mTitle').textContent=d.ch;
+  _refreshModalHeader(d);
+
+  // 기본 정보
+  const {line,model}=_lineModelFromProduct(d.product);
+  document.getElementById('mLine').value=line;
+  document.getElementById('mModelRow').style.display=LINE_HAS_MODELS[line]?'':'none';
+  document.getElementById('mModel').value=model;
+  document.getElementById('mProduct').value=d.product||'';
+
+  // 채널 정보 — 채널ID는 실적통합에 별도 저장되지 않아 복원 불가(빈 값으로 시작, 건드리지 않으면 기존 링크 유지)
+  document.getElementById('mInfluencer').value=d.ch||d.influencer||'';
+  document.getElementById('mPlatform').value=d.platform||'';
+  document.getElementById('mChannelId').value='';
+  mOnPlatformChange(); // 라벨/placeholder만 갱신(채널ID가 비어있어 링크는 안 건드림)
+  document.getElementById('mVendor').value=d.vendor||'';
   document.getElementById('mLinkInput').value=d.link||'';
-  const durTxt=durDays(d.start,d.end);
-  document.getElementById('mSub').textContent=`${yearOf(d.start)}년 ${monthOf(d.start)}월 · ${fmtF(d.start)} ~ ${fmtF(d.end)}${durTxt?` (${durTxt}일)`:''} · ${d.status}`;
+
+  // 일정
+  document.getElementById('mStart').value=d.start||'';
+  document.getElementById('mEnd').value=d.end||'';
+  mOnDateChange();
+
+  // 상품 정보
   const s=d.s||{};
-  document.getElementById('mSaleInput').value=s.sale!=null?s.sale:'';
-  document.getElementById('mQtyInput').value=d.qty!=null?d.qty:'';
-  document.getElementById('mCommInput').value=s.comm!=null?s.comm:'';
   document.getElementById('mCodeInput').value=d.code||'';
+  document.getElementById('mSaleInput').value=s.sale!=null?s.sale:'';
+  document.getElementById('mCommInput').value=s.comm!=null?s.comm:'';
+  document.getElementById('mFormat').value=d.format||'';
+  document.getElementById('mComposition').value=d.composition||'';
+  document.getElementById('mTargetQty').value=d.targetQty!=null?d.targetQty:'';
+
+  // 실적
+  document.getElementById('mQtyInput').value=d.qty!=null?d.qty:'';
+
   document.getElementById('mNote').textContent='📋 '+(s.note||'비고 없음');
   const btn=document.getElementById('mCpBtn');btn.textContent='복사';btn.classList.remove('ok');
   renderReelList();
   document.getElementById('schOv').classList.add('open');
 }
 function closeSchModal(){document.getElementById('schOv').classList.remove('open');}
+
+function mOnLineChange(){
+  const line=document.getElementById('mLine').value;
+  const modelRow=document.getElementById('mModelRow');
+  const mModel=document.getElementById('mModel');
+  const mProd=document.getElementById('mProduct');
+  if(LINE_HAS_MODELS[line]){
+    modelRow.style.display='';
+    mModel.value='';mProd.value='';
+  } else {
+    modelRow.style.display='none';
+    mProd.value=line;
+  }
+}
+function mOnModelChange(){
+  document.getElementById('mProduct').value=document.getElementById('mModel').value||'';
+}
+function mOnPlatformChange(){
+  const p=document.getElementById('mPlatform').value;
+  const lbl=document.getElementById('mChIdLbl');
+  const idInp=document.getElementById('mChannelId');
+  if(p==='인스타그램'){lbl.innerHTML='인스타그램 ID';idInp.placeholder='예: minnie.life (@ 제외, 입력 시 링크 자동 생성)';}
+  else if(p==='유튜브'){lbl.innerHTML='유튜브 ID';idInp.placeholder='예: everyday_fit (@ 제외, 입력 시 링크 자동 생성)';}
+  else {lbl.textContent='채널 ID';idInp.placeholder='선택 입력';}
+  mOnChannelIdChange();
+}
+// 기존 데이터는 채널ID를 따로 저장하지 않으므로, 비어있으면 기존 링크를 그대로 두고
+// 실제로 뭔가 입력했을 때만 링크를 새로 생성함(새 공구건 폼과 다른 점)
+function mOnChannelIdChange(){
+  const p=document.getElementById('mPlatform').value;
+  const id=document.getElementById('mChannelId').value;
+  if(id.trim())document.getElementById('mLinkInput').value=buildChannelLink(p,id);
+}
+function mOnDateChange(){
+  const s=document.getElementById('mStart').value;
+  const e=document.getElementById('mEnd').value;
+  if(s)document.getElementById('mYear').value=new Date(s+'T00:00:00').getFullYear();
+  if(s&&e){
+    const d=durDays(s,e);
+    document.getElementById('mDuration').value=d&&d>0?`${d}일`:'—';
+  }
+}
 
 /* ── 릴스 관리 (모달 우측) ── */
 // 저장된 썸네일은 doGet의 ?thumb=<fileId> 프록시 URL이라 idToken을 붙여야 접근 가능.
@@ -1812,75 +2025,144 @@ function resizeImageToDataURL(file,maxW,maxH,quality){
   });
 }
 
+// 모달의 현재 입력값을 d(원본 딜)와 비교해 "실제로 바뀐 필드만" 담은 객체를 만듦.
+// updateDeal 액션은 여기 담긴 키만 시트에 반영하고, 나머지 열은 건드리지 않음.
+function _collectModalChanges(d){
+  const line=document.getElementById('mLine').value;
+  const model=document.getElementById('mModel').value;
+  const product=LINE_HAS_MODELS[line]?(model||''):line;
+  const influencer=document.getElementById('mInfluencer').value.trim();
+  const platform=document.getElementById('mPlatform').value;
+  const vendor=document.getElementById('mVendor').value.trim();
+  const link=document.getElementById('mLinkInput').value.trim();
+  const start=document.getElementById('mStart').value;
+  const end=document.getElementById('mEnd').value;
+  const code=document.getElementById('mCodeInput').value.trim();
+  const saleVal=document.getElementById('mSaleInput').value;
+  const commVal=document.getElementById('mCommInput').value;
+  const format=document.getElementById('mFormat').value;
+  const composition=document.getElementById('mComposition').value.trim();
+  const targetQtyVal=document.getElementById('mTargetQty').value;
+  const qtyVal=document.getElementById('mQtyInput').value;
+
+  const sale=saleVal!==''?Number(saleVal):null;
+  const comm=commVal!==''?Number(commVal):null;
+  const targetQty=targetQtyVal!==''?Number(targetQtyVal):null;
+  const qty=qtyVal!==''?Number(qtyVal):null;
+
+  const s=d.s||{};
+  const cur={
+    product:d.product||'',channel:d.ch||'',platform:d.platform||'',vendor:d.vendor||'',link:d.link||'',
+    start:d.start||'',end:d.end||'',code:d.code||'',sale:s.sale!=null?s.sale:null,comm:s.comm!=null?s.comm:null,
+    format:d.format||'',composition:d.composition||'',targetQty:d.targetQty!=null?d.targetQty:null,qty:d.qty!=null?d.qty:null
+  };
+  const next={product,channel:influencer,platform,vendor,link,start,end,code,sale,comm,format,composition,targetQty,qty};
+
+  const changes={};
+  for(const k in next){if(next[k]!==cur[k])changes[k]=next[k];}
+  return {changes,next};
+}
+
 async function saveSchemeModal(){
   const d=DATA.find(x=>x.id===_modalDealId);if(!d)return;
-  const link=document.getElementById('mLinkInput').value.trim();
-  const saleVal=document.getElementById('mSaleInput').value;
-  const qtyVal=document.getElementById('mQtyInput').value;
-  const commVal=document.getElementById('mCommInput').value;
-  const codeVal=document.getElementById('mCodeInput').value.trim();
-  const sale=saleVal!==''?Number(saleVal):null;
-  const qty=qtyVal!==''?Number(qtyVal):null;
-  const comm=commVal!==''?Number(commVal):null;
+  if(!document.getElementById('mLine').value){alert('품목군을 선택하세요.');return;}
+  if(LINE_HAS_MODELS[document.getElementById('mLine').value]&&!document.getElementById('mModel').value){alert('제품을 선택하세요.');return;}
+  if(!document.getElementById('mInfluencer').value.trim()){alert('채널명을 입력하세요.');return;}
+  if(!document.getElementById('mPlatform').value){alert('플랫폼을 선택하세요.');return;}
+  const mStart=document.getElementById('mStart').value,mEnd=document.getElementById('mEnd').value;
+  if(!mStart||!mEnd){alert('시작일과 마감일을 입력하세요.');return;}
+  if(new Date(mStart)>new Date(mEnd)){alert('마감일이 시작일보다 빠릅니다.');return;}
+
+  const {changes,next}=_collectModalChanges(d);
 
   let reels=_modalReels.filter(r=>r.url||r.views!=null||r.thumb).slice(0,10);
   // 릴스가 원래 없었고 지금도 안 건드렸으면(둘 다 빈 상태) 조회수 합계/Q~Z를 건드리지 않음 — 링크만 저장
   const touchReels=reels.length>0||_modalHadReels;
   const url=localStorage.getItem('gp_gas_url');
 
-  console.log('[0.업로드 시작 전] pendingUpload 있는 슬롯 수=',reels.filter(r=>r._pendingUpload).length,'url설정됨=',!!url);
+  console.log('[변경된 필드]',changes);
+
   if(url && reels.some(r=>r._pendingUpload)){
     setLoad(true);
     try{
       for(const r of reels){
         if(!r._pendingUpload)continue;
-        const resp=await fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadThumbnail',data:r._pendingUpload,idToken:_gasCredential||''})});
-        const j=await resp.json();
-        console.log('[2.uploadThumbnail 응답]',JSON.stringify(j));
+        const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadThumbnail',data:r._pendingUpload,idToken:_gasCredential||''})});
         if(j.error)throw new Error(j.error);
         r.thumb=j.url;
-        console.log('[3.r.thumb 할당 완료] r.thumb=',r.thumb);
       }
     }catch(e){alert('썸네일 업로드 실패: '+e.message);setLoad(false);return;}
   }
   reels=reels.map(r=>({url:r.url,views:r.views,thumb:r.thumb})); // 내부 전용 필드(_pendingUpload) 제거
-  console.log('[4.최종 reels(썸네일 포함)]',JSON.stringify(reels));
   const totalViews=reels.length?reels.reduce((s,r)=>s+(r.views||0),0):null;
 
   if(url){
+    if(Object.keys(changes).length===0 && !touchReels){closeSchModal();showToast('변경된 내용이 없습니다');return;}
     setLoad(true);
-    const reelsReqBody={row:d.id,product:d.product,channel:d.ch,link,reels:touchReels?reels:null};
-    const schemeReqBody={row:d.id,product:d.product,channel:d.ch,sale,qty,comm,code:codeVal};
-    console.log('[5.saveReels 요청 body]',JSON.stringify(reelsReqBody));
-    console.log('[updateScheme] 요청 body:',schemeReqBody);
-    Promise.all([
-      fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReels',data:reelsReqBody,idToken:_gasCredential||''})}).then(r=>r.json()),
-      fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'updateScheme',data:schemeReqBody,idToken:_gasCredential||''})}).then(r=>r.json())
-    ]).then(([r1,r2])=>{
-      console.log('[saveReels] 응답:',r1);
-      console.log('[updateScheme] 응답:',r2);
-      // success 값을 실제로 검증 — error가 있으면 절대 성공 토스트를 띄우지 않고 catch로 던짐
-      if(!r1 || r1.success!==true || r1.error)throw new Error(r1&&r1.error||'saveReels 응답에 success:true가 없습니다');
-      if(!r2 || r2.success!==true || r2.error)throw new Error(r2&&r2.error||'updateScheme 응답에 success:true가 없습니다');
-      // fetchLive()가 끝나기 전에 모달을 다시 열어도 빈 상태로 보이지 않도록, 서버 응답을 기다리는 대신
-      // 방금 저장한 값을 로컬 DATA에도 바로 반영해둠 (서버 재조회는 아래 fetchLive()가 이어서 보정)
-      d.link=link;if(touchReels){d.reels=reels;d.views=totalViews;}
-      d.qty=qty;d.code=codeVal;
-      d.s=d.s||{};d.s.sale=sale;d.s.comm=comm;
-      if(sale!=null&&qty!=null)d.rev=sale*qty;
+    (async()=>{
+      // updateDeal을 먼저 반영한 뒤 saveReels를 보내야 함 — saveReels는 서버에서 product+channel이
+      // 그 행 값과 일치하는지 확인하는데, 같은 저장에서 제품/채널명이 함께 바뀌면 병렬 요청 시
+      // 순서에 따라 그 검증이 새 값/헌 값 중 무엇과 비교되는지 뒤섞일 수 있어(경쟁 조건) 순차 처리함.
+      if(Object.keys(changes).length){
+        const r1=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'updateDeal',data:{row:d.id,changes},idToken:_gasCredential||''})});
+        if(!r1||r1.success!==true||r1.error)throw new Error((r1&&r1.error)||'updateDeal 응답에 success:true가 없습니다');
+      }
+      if(touchReels){
+        const r2=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReels',data:{row:d.id,product:next.product,channel:next.channel,link:next.link,reels},idToken:_gasCredential||''})});
+        if(!r2||r2.success!==true||r2.error)throw new Error((r2&&r2.error)||'saveReels 응답에 success:true가 없습니다');
+      }
+    })().then(()=>{
+      // fetchLive()가 끝나기 전에 모달/테이블/캘린더가 빈 상태로 보이지 않도록, 방금 저장한 값을 로컬 DATA에도 바로 반영
+      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,start:next.start,end:next.end,code:next.code,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,status:_calcStatus(next.start,next.end)});
+      d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;
+      if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
+      if(touchReels){d.reels=reels;d.views=totalViews;}
+      _refreshModalHeader(d); // 헤더(제목/기간)를 즉시 갱신
+      render();
       closeSchModal();
-      showToast(touchReels?`저장됨 · 릴스 ${r1.count||0}개`:'저장되었습니다');
+      showToast('저장되었습니다');
       fetchLive();
     }).catch(e=>{console.error('[저장 실패]',e);alert('저장 실패: '+e.message);setLoad(false);});
   } else {
-    d.link=link;if(touchReels){d.reels=reels;d.views=totalViews;}
-    d.qty=qty;d.code=codeVal;
-    d.s=d.s||{};d.s.sale=sale;d.s.comm=comm;
-    if(sale!=null&&qty!=null)d.rev=sale*qty;
+    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,start:next.start,end:next.end,code:next.code,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,status:_calcStatus(next.start,next.end)});
+    d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;
+    if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
+    if(touchReels){d.reels=reels;d.views=totalViews;}
+    _refreshModalHeader(d);
     closeSchModal();render();
     alert('샘플 모드: 로컬에 저장되었습니다. (새로고침 시 초기화)');
   }
 }
+
+// 삭제 확인 다이얼로그 — 채널명/제품명과 함께 연결된 릴스 개수를 안내
+function confirmDeleteDeal(){
+  const d=DATA.find(x=>x.id===_modalDealId);if(!d)return;
+  const reelCount=(d.reels&&d.reels.length)||0;
+  const msg=`이 공구건을 삭제할까요?\n\n${d.product} · ${d.ch}\n\n브랜드 시트와 실적통합에서 함께 삭제되며 되돌릴 수 없습니다.`+
+    (reelCount?`\n연결된 릴스 데이터 ${reelCount}개도 삭제됩니다.`:'');
+  if(!confirm(msg))return;
+  deleteDeal(d);
+}
+
+function deleteDeal(d){
+  const url=localStorage.getItem('gp_gas_url');
+  if(!url){
+    const idx=DATA.indexOf(d);if(idx>=0)DATA.splice(idx,1);
+    closeSchModal();render();
+    alert('샘플 모드: 로컬에서만 삭제되었습니다. (새로고침 시 초기화)');
+    return;
+  }
+  setLoad(true);
+  _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteDeal',data:{row:d.id,product:d.product,channel:d.ch},idToken:_gasCredential||''})})
+    .then(j=>{
+      if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'삭제 응답에 success:true가 없습니다');
+      const idx=DATA.indexOf(d);if(idx>=0)DATA.splice(idx,1);
+      closeSchModal();render();setLoad(false);
+      showToast('삭제됨');
+      fetchLive();
+    }).catch(e=>{console.error('[삭제 실패]',e);alert('삭제 실패: '+e.message);setLoad(false);});
+}
+
 document.getElementById('schOv').addEventListener('click',e=>{if(e.target===document.getElementById('schOv'))closeSchModal();});
 
 function openModalLink(){
@@ -1953,30 +2235,39 @@ async function saveCfg(){
 }
 
 /* Live fetch */
-function setConn(s){const el=document.getElementById('connPill');const m={sample:['● 샘플 데이터','cp-sample'],live:['● 실시간 연결','cp-live'],error:['● 연결 오류','cp-error'],loading:['◌ 로딩 중...','cp-loading']};const[t,c]=m[s]||m.sample;el.textContent=t;el.className='conn-pill '+c;}
+// 연결 상태: 마지막 성공 시각(_lastLiveAt)과 연속 실패 횟수(_connFailStreak)를 추적해서
+// 뱃지가 실제 상태를 반영하게 함. 실패 1회는 "재연결 중"(아직 희망적), 2회 연속이어야 "연결 오류"로 전환.
+let _lastLiveAt=null, _connFailStreak=0;
+function setConn(s){
+  const el=document.getElementById('connPill');
+  const m={sample:['● 샘플 데이터','cp-sample'],live:['● 실시간 연결','cp-live'],error:['● 연결 오류','cp-error'],loading:['◌ 로딩 중...','cp-loading'],retrying:['◌ 재연결 중...','cp-loading']};
+  const[t,c]=m[s]||m.sample;el.textContent=t;el.className='conn-pill '+c;
+  el.title=(_lastLiveAt?('마지막 동기화: '+new Date(_lastLiveAt).toLocaleTimeString('ko-KR')+' · '):'')+'클릭 시 재연결';
+}
+function _connOk(){_connFailStreak=0;_lastLiveAt=Date.now();}
+// 실패 시 바로 "연결 오류"로 튀지 않고, 2회 연속 실패해야 전환 — 일시적 blip으로 뱃지가 깜빡이는 걸 방지
+function _connFail(){_connFailStreak++;setConn(_connFailStreak>=2?'error':'retrying');}
 function setLoad(on){document.getElementById('loadOv').classList[on?'add':'remove']('open');}
 
-async function fetchLive(){
+async function fetchLive(forceFresh){
   const url=localStorage.getItem('gp_gas_url');
   if(!url){setConn('sample');return;}
   // 아직 GIS 로그인 credential이 없으면 대기 (auto_select가 곧 발급해줌)
   if(!_gasCredential){setConn('sample');return;}
   setConn('loading');setLoad(true);
   try{
-    const r=await fetch(_gasUrl(url));if(!r.ok)throw new Error(`HTTP ${r.status}`);
-    const j=await r.json();
-    console.log('[fetchLive] 응답 버전(Apps Script):',j.version||'(버전 필드 없음 — 구버전 배포본)');
+    // 수동 새로고침(forceFresh)은 서버의 90초 캐시를 건너뛰고 항상 최신 데이터를 받아옴
+    const j=await _gasFetch(_gasUrl(url)+(forceFresh?'&nocache=1':''),{});
+    console.log('[fetchLive] 응답 버전(Apps Script):',j.version||'(버전 필드 없음 — 구버전 배포본)',j.cached?'(캐시됨, '+j.execMs+'ms)':'(새로 계산, '+j.execMs+'ms)');
     if(j.version&&j.version!==DASHBOARD_VERSION){
       console.warn(`[버전 불일치] 프론트=${DASHBOARD_VERSION} / 배포된 Apps Script=${j.version} — Apps Script를 최신 코드로 재배포했는지 확인하세요.`);
     }
     if(j.error==='AUTH_REQUIRED'){
-      // 토큰 만료 → 재로그인 유도
-      sessionStorage.removeItem('gp_user');_gasCredential=null;
-      document.getElementById('loginScreen').style.display='flex';
-      document.getElementById('sbUserEmail').textContent='—';
-      setConn('error');return;
+      // _gasFetch가 이미 토큰 자동 갱신+재시도를 한 번 시도한 뒤에도 실패한 경우 — 배너는 _gasFetch가 띄움
+      _connFail();return;
     }
     if(j.error)throw new Error(j.error);
+    _hideReloginBanner();
     const _withReels=(j.purchases||[]).filter(p=>Array.isArray(p.reels)&&p.reels.length);
     console.log('[6.fetchLive 응답] 릴스 있는 공구건 수=',_withReels.length,
       _withReels.length?JSON.stringify(_withReels.map(p=>({id:p.id,product:p.product,channel:p.channel,reels:p.reels}))):'');
@@ -1984,7 +2275,8 @@ async function fetchLive(){
     if(adapted&&adapted.length){
       DATA.splice(0,DATA.length,...adapted);
       EVENTS.splice(0,EVENTS.length,...adaptGASEvents(j));
-      setConn('live');render();
+      BRAND_DATA.splice(0,BRAND_DATA.length,...adaptGASBrand(j));
+      _connOk();setConn('live');render();
       if(j.codeMatchStats){
         const cs=j.codeMatchStats;
         console.log(`[상품코드/링크 매칭] ${cs.matched}/${cs.total}건 성공 (미매칭 ${cs.unmatched}건)`);
@@ -1993,7 +2285,7 @@ async function fetchLive(){
         if(cs.total>0)showToast(`상품코드 매칭: ${cs.matched}/${cs.total}건 성공`);
       }
     }else throw new Error('데이터가 비어있습니다');
-  }catch(e){console.error(e);setConn('error');}
+  }catch(e){console.error(e);_connFail();}
   finally{setLoad(false);}
 }
 
@@ -2014,6 +2306,28 @@ function adaptGAS(j){
   }));
 }
 
+// 브랜드 시트 기준 데이터(BRAND_DATA) — adaptGAS와 동일한 형태(deal shape)로 맞춰서
+// SALES_COLS/SALES_ACC/SALES_CELL, calProductKey/calBarColor, openM 등을 그대로 재사용할 수 있게 함.
+// 실적통합과 매칭된 행은 mainId에 그 실적통합 row id가 들어있고, id도 동일하게 맞춰서
+// (품목별 실적 표·캘린더에서) 클릭 시 기존 스킴/릴스 모달이 그대로 열리게 함.
+function adaptGASBrand(j){
+  if(!j.brandDeals||!Array.isArray(j.brandDeals))return[];
+  return j.brandDeals.map(b=>({
+    id:b.id,mainId:b.mainId!=null?b.mainId:null,
+    brand:b.brand||'Minix',product:b.product||'',ch:b.channel||'',influencer:b.channel||'',
+    vendor:b.vendor||'',platform:'',format:b.format||'',chId:'',
+    link:b.link||'',profileLink:'',
+    start:normDate(b.start),end:normDate(b.end),
+    composition:b.composition||'',
+    targetQty:b.targetQty!=null?Number(b.targetQty):null,
+    status:b.status||'예정',
+    views:b.views!=null?Number(b.views):null,qty:b.qty!=null?Number(b.qty):null,rev:b.revenue!=null?Number(b.revenue):null,
+    code:b.code||'',reels:Array.isArray(b.reels)?b.reels:[],
+    sheetName:b.sheetName||'',row:b.row||null,
+    s:{retail:null,sale:b.sale!=null?Number(b.sale):null,comm:b.commission!=null?Number(b.commission):null,note:''}
+  }));
+}
+
 // 캘린더 "프로모션/이벤트 일정" — 공구 데이터(DATA)와 완전히 분리된 EVENTS 배열로 적재
 function adaptGASEvents(j){
   if(!j.calendarEvents||!Array.isArray(j.calendarEvents))return[];
@@ -2029,7 +2343,7 @@ function normDate(v){if(!v)return'';if(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$
 
 async function refreshData(){
   const btn=document.getElementById('refreshBtn');btn.classList.add('spinning');btn.disabled=true;
-  await fetchLive();
+  await fetchLive(true); // 수동 새로고침(새로고침 버튼·연결뱃지 클릭)은 서버 캐시를 건너뜀
   setTimeout(()=>{btn.classList.remove('spinning');btn.disabled=false;},500);
 }
 
@@ -2194,10 +2508,12 @@ function saveDeal(){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addSalesRow',data:newDeal,idToken:_gasCredential||''})})
-      .then(r=>r.json()).then(j=>{
+    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addSalesRow',data:newDeal,idToken:_gasCredential||''})})
+      .then(j=>{
         if(j.error)throw new Error(j.error);
         closeDealForm();fetchLive();
+        const brandLoc=j.brandSheet?`${j.brandSheet} ${j.brandRow}행`:'브랜드 시트 기록 실패(수동 확인 필요)';
+        showToast(`등록 완료 — 실적통합 ${j.mainRow}행 / ${brandLoc}`);
       }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
   } else {
     DATA.push(newDeal);
@@ -2259,8 +2575,8 @@ function savePromo(){
   if(url){
     setLoad(true);
     const action=isEdit?'updateCalendarEvent':'addCalendarEvent';
-    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action,data:payload,idToken:_gasCredential||''})})
-      .then(r=>r.json()).then(j=>{
+    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action,data:payload,idToken:_gasCredential||''})})
+      .then(j=>{
         if(j.error)throw new Error(j.error);
         closePromoForm();fetchLive();
       }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
@@ -2285,8 +2601,8 @@ function deletePromo(){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteCalendarEvent',data:{row,origName},idToken:_gasCredential||''})})
-      .then(r=>r.json()).then(j=>{
+    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteCalendarEvent',data:{row,origName},idToken:_gasCredential||''})})
+      .then(j=>{
         if(j.error)throw new Error(j.error);
         closePromoForm();fetchLive();
       }).catch(e=>{alert('삭제 실패: '+e.message);setLoad(false);});
@@ -2333,9 +2649,9 @@ function savePerf(){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    fetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
+    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
       action:'addPerf',data:{row:d.id,brand:d.brand,product:d.product,channel:d.ch,views,qty,revenue:rev,status},idToken:_gasCredential||''
-    })}).then(r=>r.json()).then(j=>{
+    })}).then(j=>{
       if(j.error)throw new Error(j.error);
       d.views=views;d.qty=qty;d.rev=rev;d.status=status;
       closePerfForm();render();setLoad(false);
@@ -2358,11 +2674,79 @@ function _decodeJwt(token){
   ));
 }
 
-// GAS URL에 idToken 쿼리 파라미터 추가
+// GAS URL에 idToken 쿼리 파라미터 추가(있으면 교체, 없으면 붙임) — 토큰 자동 갱신 후 재시도할 때도 재사용
 function _gasUrl(base){
-  if(!_gasCredential)return base;
-  return base+(base.includes('?')?'&':'?')+'idToken='+encodeURIComponent(_gasCredential);
+  const stripped=base.replace(/([?&])idToken=[^&]*&?/,'$1').replace(/[?&]$/,'');
+  if(!_gasCredential)return stripped;
+  return stripped+(stripped.includes('?')?'&':'?')+'idToken='+encodeURIComponent(_gasCredential);
 }
+
+// 네트워크 오류/일시 실패(5xx)는 지수 백오프로 최대 2회 재시도.
+// 응답이 AUTH_REQUIRED(idToken 만료, ~1시간)면 토큰을 자동 갱신해서 1회만 재시도하고,
+// 갱신까지 실패한 경우에만 재로그인 배너를 띄움. opts.body가 있으면(POST) 그 안의 idToken도 갱신해서 다시 보냄.
+async function _gasFetch(url,opts,_authRetried){
+  const MAX_RETRY=2;
+  let res,lastErr;
+  for(let attempt=0;attempt<=MAX_RETRY;attempt++){
+    try{
+      res=await fetch(url,opts);
+      if(res.status>=500)throw new Error('HTTP '+res.status);
+      lastErr=null;break;
+    }catch(e){
+      lastErr=e;
+      if(attempt===MAX_RETRY)break;
+      await new Promise(r=>setTimeout(r,300*Math.pow(2,attempt))); // 300ms, 600ms
+    }
+  }
+  if(lastErr)throw lastErr;
+  const j=await res.json();
+  if(j&&j.error==='AUTH_REQUIRED'&&!_authRetried){
+    const refreshed=await _refreshIdToken();
+    if(refreshed){
+      let retriedUrl=url,retriedOpts=opts;
+      if(url.includes('idToken='))retriedUrl=_gasUrl(url);
+      if(opts&&opts.body){
+        try{
+          const b=JSON.parse(opts.body);b.idToken=_gasCredential||'';
+          retriedOpts=Object.assign({},opts,{body:JSON.stringify(b)});
+        }catch(e){}
+      }
+      return _gasFetch(retriedUrl,retriedOpts,true);
+    }
+    _showReloginBanner();
+  }
+  return j;
+}
+
+// 만료된 idToken을 GIS의 자동 로그인(One Tap 무표시 모드)으로 조용히 갱신 시도.
+// prompt()의 notification 콜백만으로는 성공 여부가 애매해서, handleGoogleSignIn이 실제로
+// _gasCredential을 바꿔줄 때까지 짧게 폴링하고, 그래도 안 바뀌면(거부/미표시/타임아웃) 실패로 간주.
+let _refreshingToken=false;
+function _refreshIdToken(){
+  return new Promise(resolve=>{
+    if(!(window.google&&google.accounts&&google.accounts.id)){resolve(false);return;}
+    const prevCred=_gasCredential;
+    let settled=false;
+    _refreshingToken=true;
+    const finish=ok=>{if(settled)return;settled=true;_refreshingToken=false;resolve(ok);};
+    try{
+      google.accounts.id.prompt(n=>{
+        const declined=n&&((n.isNotDisplayed&&n.isNotDisplayed())||(n.isSkippedMoment&&n.isSkippedMoment())||(n.isDismissedMoment&&n.isDismissedMoment()));
+        if(declined)finish(false);
+      });
+    }catch(e){finish(false);return;}
+    const start=Date.now();
+    (function poll(){
+      if(_gasCredential&&_gasCredential!==prevCred){finish(true);return;}
+      if(Date.now()-start>5000){finish(false);return;}
+      setTimeout(poll,200);
+    })();
+  });
+}
+
+function _showReloginBanner(){document.getElementById('reloginBanner').classList.add('show');}
+function _hideReloginBanner(){document.getElementById('reloginBanner').classList.remove('show');}
+function _showReloginScreen(){_hideReloginBanner();document.getElementById('loginScreen').style.display='flex';}
 
 // GIS 콜백: 로그인 완료 or 자동 갱신 시 호출
 function handleGoogleSignIn(response){
@@ -2376,9 +2760,11 @@ function handleGoogleSignIn(response){
   const isNewLogin=!_gasCredential; // 처음 로그인인지 여부
   _gasCredential=response.credential; // ID 토큰 보관
   sessionStorage.setItem('gp_user',JSON.stringify({email,name:payload.name,picture:payload.picture}));
+  _hideReloginBanner();
   if(isNewLogin){
     _enterDashboard(payload); // 처음 로그인 → 전체 진입
-  } else {
+  } else if(!_refreshingToken){
+    // _refreshIdToken()에 의한 갱신이면 그 호출부(_gasFetch)가 알아서 원래 요청을 재시도하므로 여기서 또 fetchLive를 부르지 않음
     fetchLive(); // auto_select 자동 갱신 → 데이터만 다시 로드
   }
 }
