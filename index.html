@@ -1463,11 +1463,16 @@ function renderTbl(){
     f.sort((a,b)=>new Date(b.end)-new Date(a.end));
   }
 
+  // [모달진단] 지금 실제로 그려지는 목록의 (인덱스, id, 채널, 제품) 전체 — 클릭 시 로그와 대조용
+  console.log('[모달진단] renderTbl 목록('+f.length+'건):',f.map((d,i)=>({idx:i,id:d.id,ch:d.ch,product:d.product})));
+
   document.getElementById('tBody').innerHTML=f.length?f.map(d=>`
-    <tr onclick="openM(${d.id})">
+    <tr data-id="${d.id}" data-ch="${_escAttr(d.ch)}" data-product="${_escAttr(d.product)}" onclick="openM(${d.id},this)">
       ${SALES_COLS.map(c=>`<td class="${colClass(c)}">${SALES_CELL[c.key](d)}</td>`).join('')}
     </tr>`).join(''):`<tr><td colspan="${SALES_COLS.length}" style="text-align:center;padding:40px;color:var(--text-3)">데이터 없음</td></tr>`;
 }
+// 속성값에 쓰인 큰따옴표가 HTML을 깨뜨리지 않도록 최소 이스케이프(진단용 data-* 속성 전용)
+function _escAttr(s){return String(s||'').replace(/"/g,'&quot;');}
 
 /* ── 공구 관리 페이지: 실적 기입 목록 ── */
 // 종료됐지만 판매수량/매출이 비어있는 건
@@ -1771,8 +1776,14 @@ function _refreshModalHeader(d){
   document.getElementById('mSub').textContent=`${yearOf(d.start)}년 ${monthOf(d.start)}월 · ${fmtF(d.start)} ~ ${fmtF(d.end)}${durTxt?` (${durTxt}일)`:''} · ${d.status}`;
 }
 
-function openM(id){
-  const d=DATA.find(x=>x.id===id);if(!d)return;
+function openM(id,srcEl){
+  const d=DATA.find(x=>x.id===id);
+  if(srcEl){
+    // [모달진단] (a)행의 data-id (b)행에 화면 표시된 채널/제품 (c)모달이 조회해온 건의 id/채널/제품
+    console.log('[모달진단] 클릭 data-id='+srcEl.dataset.id+' 표시행(채널/제품)='+srcEl.dataset.ch+'/'+srcEl.dataset.product+
+      ' → 조회결과='+(d?(d.id+'/'+(d.ch||d.influencer||'')+'/'+(d.product||'')):'없음(매칭 실패, 모달 안 열림)'));
+  }
+  if(!d)return;
   _modalDealId=id;_modalChannel=d.ch||'';_activeReelIdx=null;
   _modalHadReels=!!(d.reels&&d.reels.length);
   _modalReels=(d.reels&&d.reels.length?d.reels:[]).map(r=>({url:r.url||'',views:r.views!=null?r.views:null,thumb:r.thumb||''})).slice(0,10);

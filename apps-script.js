@@ -154,6 +154,10 @@ function doGet(e) {
     var fromCache = !!payload;
 
     if (!payload) {
+      // 브랜드 시트 ↔ 실적통합 연결고리를 UUID 기반으로 자동 전환 — 아직 구버전(행번호 기반) 출처가
+      // 남아있으면 브랜드 시트 행이 삽입/삭제될 때마다 조인이 밀려서 엉뚱한 행과 매칭됨
+      _autoMigrateLegacyLinks(ss);
+
       var result = parseMainSheet(sheet, ss);
       // id는 parseMainSheet에서 이미 실제 시트 행 번호로 부여됨 (내용 기반 재번호 금지)
 
@@ -502,6 +506,10 @@ function _readBrandSheets(ss, perfMap) {
       // dealId(UUID)가 있으면 그걸로 조인(행이 밀려도 안전), 아직 없는(구버전) 행만 행 번호로 폴백
       var sourceKey = dealId ? (sheetName + '!' + dealId) : (sheetName + '!' + rowNum);
       var perf = (perfMap && perfMap[sourceKey]) || null;
+      // 행 번호 폴백으로 찾은 결과는 그 사이 브랜드 시트 행이 삽입/삭제돼 밀렸으면 완전히 다른
+      // 채널(심하면 다른 모델)의 실적통합 행을 가리킬 수 있음 — 채널명이 실제로 일치할 때만 신뢰하고,
+      // 다르면 미매칭으로 처리(품목별 실적 표를 클릭했을 때 엉뚱한 건의 모달이 뜨는 걸 방지)
+      if (perf && !dealId && _normChannel(perf.channel) !== _normChannel(channel)) perf = null;
 
       var year = _numOrNull(row[SCHED_COL.year]);
       var startDate = _parseDate(row[SCHED_COL.start], year);
@@ -1090,7 +1098,10 @@ function _isUuidToken(s) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s || '');
 }
 
-function _resolveSource(ss, sourceRef) {
+// expectedChannel: 구버전(행 번호 기반) 폴백 경로에서만 사용 — 그 사이 브랜드 시트 행이 밀렸을 수
+// 있으므로, 채널명이 실제로 일치하는지 검증하고 다르면 그 연결을 신뢰하지 않음(null 반환). 이게 없으면
+// 완전히 다른 인플루언서/모델의 행과 잘못 연결된 걸 그대로 믿고 보여주거나 덮어쓰게 됨.
+function _resolveSource(ss, sourceRef, expectedChannel) {
   var s = String(sourceRef || '').trim();
   if (!s) return null;
   var idx = s.lastIndexOf('!');
@@ -1113,6 +1124,10 @@ function _resolveSource(ss, sourceRef) {
   // 구버전 폴백: 순수 행 번호(마이그레이션 전)
   var rowNum = parseInt(token, 10);
   if (isNaN(rowNum) || rowNum <= SCHED_START_ROW || rowNum > sheet.getLastRow()) return null;
+  if (expectedChannel) {
+    var candidateChannel = String(sheet.getRange(rowNum, SCHED_COL.channel + 1).getValue() || '').trim();
+    if (_normChannel(candidateChannel) !== _normChannel(expectedChannel)) return null;
+  }
   var existingDealId = String(sheet.getRange(rowNum, SCHED_COL.dealId + 1).getValue() || '').trim();
   return { sheet: sheet, row: rowNum, dealId: existingDealId || null };
 }
@@ -1132,6 +1147,8 @@ function _updateDeal(ss, data) {
   if (!MINIX_ALIASES[brandCell]) {
     return _json({ error: '해당 행이 더 이상 유효한 공구 행이 아닙니다. 새로고침 후 다시 시도해주세요.' });
   }
+  // 브랜드 시트 연결 검증용 — 아래에서 채널명을 바꿔 쓰기 전에, 원래 채널명을 먼저 저장해둠
+  var originalChannel = String(sheet.getRange(row, COL.channel + 1).getValue() || '').trim();
 
   var c = data.changes || {};
   var newStart = c.start !== undefined ? (c.start ? new Date(c.start) : null) : undefined;
@@ -1165,7 +1182,7 @@ function _updateDeal(ss, data) {
 
   // 브랜드 시트 쪽도 같이 반영 — 출처(AH)를 UUID로 다시 찾으므로 행 번호가 밀렸어도 안전
   var sourceRef = String(sheet.getRange(row, COL.source + 1).getValue() || '').trim();
-  var resolved = sourceRef ? _resolveSource(ss, sourceRef) : null;
+  var resolved = sourceRef ? _resolveSource(ss, sourceRef, originalChannel) : null;
   if (resolved) {
     var bs = resolved.sheet, brow = resolved.row;
     var BRAND_SIMPLE_COLS = {
@@ -1224,8 +1241,9 @@ function _deleteDeal(ss, data) {
     return _json({ error: '해당 행이 더 이상 유효한 공구 행이 아닙니다. 새로고침 후 다시 시도해주세요.' });
   }
 
+  var expectedChannel = String(sheet.getRange(row, COL.channel + 1).getValue() || '').trim();
   var sourceRef = String(sheet.getRange(row, COL.source + 1).getValue() || '').trim();
-  var resolved = sourceRef ? _resolveSource(ss, sourceRef) : null;
+  var resolved = sourceRef ? _resolveSource(ss, sourceRef, expectedChannel) : null;
 
   sheet.deleteRow(row);
   if (resolved) {
@@ -1397,21 +1415,41 @@ function migrateToUuidLinks() {
     var token = sourceRef.slice(idx + 1);
     if (_isUuidToken(token)) { alreadyUuid++; continue; }
 
-    var resolved = _resolveSource(ss, sourceRef); // 아직 구버전 형식이므로 행 번호 폴백 경로로 현재 행을 찾음
+    // 행 번호 폴백 경로로 현재 행을 찾되, 채널명이 실제로 일치하는 경우에만 신뢰함 — 그 사이 브랜드
+    // 시트 행이 삽입/삭제돼 밀렸다면, 채널명이 다른 엉뚱한(예: 다른 모델) 행을 그대로 "UUID로 확정"
+    // 해버려 잘못된 연결을 영구히 고정시킬 수 있기 때문(완료 기준: 이런 행은 반드시 미전환으로 남겨서
+    // 사람이 fixBrokenSource()로 직접 확인하게 함).
+    var expectedChannel = String(all[r][COL.channel] || '').trim();
+    var resolved = _resolveSource(ss, sourceRef, expectedChannel);
     if (resolved && resolved.dealId) {
       var newRef = resolved.sheet.getName() + '!' + resolved.dealId;
       mainSheet.getRange(r + 1, COL.source + 1).setValue(newRef);
       converted++;
     } else {
       unresolved++;
-      unresolvedList.push({ row: r + 1, source: sourceRef });
-      Logger.log('[전환 실패] 실적통합 행 ' + (r + 1) + ' 출처=' + sourceRef + ' — 브랜드 시트에서 해당 행을 찾지 못함(행이 그 사이 삭제됐을 수 있음)');
+      unresolvedList.push({ row: r + 1, source: sourceRef, channel: expectedChannel });
+      Logger.log('[전환 실패] 실적통합 행 ' + (r + 1) + ' 채널=' + expectedChannel + ' 출처=' + sourceRef + ' — 브랜드 시트에서 채널명이 일치하는 해당 행을 찾지 못함(행이 삭제됐거나, 그 사이 밀려서 다른 채널의 행과 연결돼 있었을 수 있음 — fixBrokenSource()로 직접 확인 필요)');
     }
   }
 
   Logger.log('=== migrateToUuidLinks 완료: 공구ID 신규발급 ' + assigned + '건 / 출처 전환 ' + converted + '건 / 이미 UUID ' + alreadyUuid + '건 / 전환 실패 ' + unresolved + '건 ===');
   if (unresolvedList.length) Logger.log('전환 실패 목록(JSON): ' + JSON.stringify(unresolvedList));
   return { assigned: assigned, converted: converted, alreadyUuid: alreadyUuid, unresolved: unresolved, unresolvedList: unresolvedList };
+}
+
+// doGet이 캐시 미스일 때마다 자동으로 호출 — migrateToUuidLinks()를 사람이 Apps Script 에디터에서
+// 수동으로 실행해줘야 한다는 전제가 실제로는 지켜지지 않아서(그 사이 브랜드 시트 행이 삽입/삭제되면)
+// "품목별 실적 표에서 행을 클릭하면 인접 행의 모달이 열리는" 버그가 재발했음. 매번 전체 스캔하는
+// 대신, 완전히 전환 완료된 뒤에는 스크립트 속성에 플래그를 남겨 그 다음부터는 스캔 자체를 건너뜀.
+function _autoMigrateLegacyLinks(ss) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('uuidMigrationDone') === 'true') return;
+  try {
+    var res = migrateToUuidLinks();
+    if (res && res.unresolved === 0) props.setProperty('uuidMigrationDone', 'true');
+  } catch (e) {
+    Logger.log('_autoMigrateLegacyLinks 실패 (무시하고 기존 방식으로 계속 진행): ' + e);
+  }
 }
 
 // 1회성 진단용: migrateToUuidLinks에서 전환 실패한 실적통합 행(출처가 존재하지 않는 브랜드 시트 행을
