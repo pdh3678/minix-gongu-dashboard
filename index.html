@@ -492,13 +492,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
     <!-- ③ 브랜드별 실적 페이지 — 기존 표 임시 배치, 2단계에서 재설계 예정 -->
     <div class="main page" id="page-sales">
-      <div class="subtabs" id="subTabs">
-        <span style="font-size:11px;color:var(--text-3);margin-right:6px;font-weight:600">더 플렌더</span>
-        <button class="stab sam" data-m="all">전체</button>
-        <button class="stab" data-m="PRO">PRO</button>
-        <button class="stab" data-m="MAX">MAX</button>
-        <button class="stab" data-m="mini">mini</button>
-      </div>
+      <div class="subtabs" id="subTabs"></div>
 
       <div class="card">
         <div class="card-hd">기간 필터</div>
@@ -930,7 +924,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='ym-dd-fixed-2026-07-24-01';
+const DASHBOARD_VERSION='model-tabs-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -1005,6 +999,7 @@ const normP=s=>String(s||'').replace(/\s/g,'').toLowerCase();
 const FLENDER_NORM={
   PRO: ['더플렌더pro','더플렌더 pro'],
   MAX: ['더플렌더max','더플렌더 max'],
+  NEXT:['더플렌더next','더플렌더 next'],
   mini:['더플렌더mini','더플렌더 mini','더플렌더']
 };
 function isFlender(p){
@@ -1015,7 +1010,16 @@ function flenderModel(p){
   const np=normP(p);
   if(FLENDER_NORM.PRO.some(k=>np===k||np.endsWith('pro'))) return 'PRO';
   if(FLENDER_NORM.MAX.some(k=>np===k||np.endsWith('max'))) return 'MAX';
+  if(FLENDER_NORM.NEXT.some(k=>np===k||np.endsWith('next'))) return 'NEXT';
   return 'mini';
+}
+
+// 더시프트: 접미사 없으면 기본형, 'PRO'로 끝나면 PRO 모델(더플렌더와 동일한 정규화 매칭 방식)
+function isShift(p){
+  return normP(p).startsWith('더시프트');
+}
+function shiftModel(p){
+  return normP(p).endsWith('pro')?'PRO':'기본';
 }
 
 // 제품별 뱃지/캘린더 막대 색상 — 색상 정의는 이 맵 한 곳에서만 관리 (변경 시 전체에 반영됨)
@@ -1023,6 +1027,7 @@ const PRODUCT_COLORS={
   '플렌더PRO':  {bg:'#F3E8FF',fg:'#7C3AED'},
   '플렌더MAX':  {bg:'#DBEAFE',fg:'#2563EB'},
   '플렌더mini': {bg:'#DCFCE7',fg:'#16A34A'},
+  '플렌더NEXT': {bg:'#FEF9C3',fg:'#CA8A04'},
   '시프트':     {bg:'#FFEDD5',fg:'#EA580C'},
   '슬림':       {bg:'#CCFBF1',fg:'#0D9488'},
   '에어드라이': {bg:'#FFE4E6',fg:'#E11D48'},
@@ -1031,8 +1036,8 @@ const PRODUCT_COLORS={
 // 제품명 → 색상 팔레트 키 (공백 제거 후 매칭)
 function productColorKey(p){
   if(isFlender(p))return'플렌더'+flenderModel(p);
+  if(isShift(p))return'시프트';
   const np=normP(p);
-  if(np==='더시프트')return'시프트';
   if(np==='더슬림')return'슬림';
   if(np.includes('에어드라이'))return'에어드라이';
   return'other';
@@ -1047,8 +1052,12 @@ function filteredProd(src){
       if(ST.model==='all')return true;
       return flenderModel(d.product)===ST.model;
     }
+    if(ST.prod==='시프트'){
+      if(!isShift(d.product))return false;
+      if(ST.model==='all')return true;
+      return shiftModel(d.product)===ST.model;
+    }
     const np=normP(d.product);
-    if(ST.prod==='시프트')  return np==='더시프트';
     if(ST.prod==='슬림')    return np==='더슬림';
     if(ST.prod==='에어드라이')return np.includes('에어드라이');
     return true;
@@ -1347,10 +1356,10 @@ function productBadge(p){
   const c=productColor(p);
   let label;
   if(isFlender(p))label=`더 플렌더 ${flenderModel(p)}`;
+  else if(isShift(p))label=shiftModel(p)==='PRO'?'더 시프트 PRO':'더 시프트';
   else{
     const np=normP(p);
-    if(np==='더시프트')label='더 시프트';
-    else if(np==='더슬림')label='더 슬림';
+    if(np==='더슬림')label='더 슬림';
     else if(np.includes('에어드라이'))label='더 에어드라이';
     else label=p||'—';
   }
@@ -2436,33 +2445,39 @@ function navPage(pageId,el){
   _setHash(hash);
 }
 
+// 제품군별 모델 탭 구성 — 탭이 없는 제품(슬림/에어드라이)은 목록에서 빠져 subTabs가 숨겨짐
+const PRODUCT_MODEL_TABS={
+  '플렌더':{label:'더 플렌더',tabs:[{m:'all',lb:'전체'},{m:'PRO',lb:'PRO'},{m:'MAX',lb:'MAX'},{m:'mini',lb:'mini'},{m:'NEXT',lb:'NEXT'}]},
+  '시프트':{label:'더 시프트',tabs:[{m:'all',lb:'전체'},{m:'기본',lb:'더 시프트'},{m:'PRO',lb:'PRO'}]}
+};
+function renderSubTabs(prod){
+  const subTabs=document.getElementById('subTabs');
+  const cfg=PRODUCT_MODEL_TABS[prod];
+  if(!cfg){subTabs.classList.remove('open');subTabs.innerHTML='';return;}
+  subTabs.classList.add('open');
+  subTabs.innerHTML=`<span style="font-size:11px;color:var(--text-3);margin-right:6px;font-weight:600">${cfg.label}</span>`+
+    cfg.tabs.map(t=>`<button class="stab${t.m==='all'?' sam':''}" data-m="${t.m}">${t.lb}</button>`).join('');
+  subTabs.querySelectorAll('.stab').forEach(stab=>{
+    stab.addEventListener('click',()=>{
+      subTabs.querySelectorAll('.stab').forEach(s=>s.classList.remove('sam'));
+      stab.classList.add('sam');
+      ST.model=stab.dataset.m;
+      render();
+    });
+  });
+}
+
 // 브랜드별 실적 페이지로 이동 + 제품 필터 적용
 function navSales(el,prod){
   navPage('sales',el);
   ST.prod=prod;
   ST.model='all';
-  const subTabs=document.getElementById('subTabs');
-  if(prod==='플렌더'){
-    subTabs.classList.add('open');
-    document.querySelectorAll('.stab').forEach(s=>s.classList.remove('sam'));
-    document.querySelector('.stab[data-m="all"]').classList.add('sam');
-  } else {
-    subTabs.classList.remove('open');
-  }
+  renderSubTabs(prod);
   render();
   const hashKey=ST_PRODUCT_TO_HASH[prod];
   if(hashKey){_currentPageHash=hashKey;_setHash(hashKey);}
 }
 
-/* Tabs */
-document.querySelectorAll('.stab').forEach(stab=>{
-  stab.addEventListener('click',()=>{
-    document.querySelectorAll('.stab').forEach(s=>s.classList.remove('sam'));
-    stab.classList.add('sam');
-    ST.model=stab.dataset.m;
-    render();
-  });
-});
 function render(){renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();}
 document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.getMonth()+1)+'월 '+_NOW.getDate()+'일';
 
