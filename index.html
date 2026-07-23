@@ -310,12 +310,6 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 :focus-visible{outline:2px solid var(--minix);outline-offset:2px}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 
-/* ── 새 공구건 / 실적 기입 ── */
-.tperf-btn{padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-3);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .12s}
-.tperf-btn:hover{background:var(--minix-lt);border-color:var(--minix);color:var(--minix)}
-.tperf-btn.has-data{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
-.mgmt-inp{width:90px;padding:6px 8px;font-size:12px}
-
 /* ── 폼 모달 공통 ── */
 .form-modal{width:700px;max-height:90vh;overflow-y:auto;padding-bottom:24px}
 .f-sec{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin:18px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--border)}
@@ -395,7 +389,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">공구 관리</span><span class="sb-chev">▾</span></button>
         <div class="sb-items">
           <div class="sb-item" onclick="openDealForm()"><span class="sb-ic">＋</span><span class="sb-label">새 공구건 등록</span></div>
-          <div class="sb-item" data-page="management" onclick="navPage('management',this)"><span class="sb-ic">📝</span><span class="sb-label">실적 기입 목록</span></div>
+          <div class="sb-item" data-page="management" onclick="navPage('management',this)"><span class="sb-ic">📝</span><span class="sb-label">실적 미기입 목록</span></div>
         </div>
       </div>
     </nav>
@@ -532,17 +526,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     <!-- ④ 공구 관리 페이지 -->
     <div class="main page" id="page-management">
       <div class="card">
-        <div class="card-hd">
-          <span>새 공구건 등록</span>
-          <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="openDealForm()">＋ 새 공구건 등록</button>
-        </div>
-        <div class="page-placeholder" style="padding:24px">브랜드·제품·채널·일정·상품 정보를 입력해 실적통합 시트에 새 행을 추가합니다.</div>
-      </div>
-      <div class="card">
-        <div class="card-hd">실적 기입 목록 <span class="card-hd-r" id="mgmtCnt"></span></div>
+        <div class="card-hd">실적 미기입 공구건 목록 <span class="card-hd-r" id="mgmtCnt"></span></div>
         <div class="tbl-wrap">
           <table><thead><tr>
-            <th>제품</th><th>채널</th><th>기간</th><th>공구가</th><th>판매수량</th><th>총매출</th><th>조회수</th><th></th>
+            <th>제품</th><th>채널</th><th>기간</th><th>공구가</th><th>진행상태</th>
           </tr></thead><tbody id="mgmtBody"></tbody></table>
         </div>
       </div>
@@ -1458,11 +1445,11 @@ function renderTbl(){
 // 속성값에 쓰인 큰따옴표가 HTML을 깨뜨리지 않도록 최소 이스케이프(진단용 data-* 속성 전용)
 function _escAttr(s){return String(s||'').replace(/"/g,'&quot;');}
 
-/* ── 공구 관리 페이지: 실적 기입 목록 ── */
-// 종료됐지만 판매수량/매출이 비어있는 건
+/* ── 공구 관리 페이지: 실적 미기입 목록 ── */
+// 판매수량과 총매출이 둘 다 비어있거나 0인 건(전체 공구건 대상, 상태 무관)
 function pendingPerfDeals(){
-  return DATA.filter(d=>d.status==='완료'&&(d.qty==null||d.qty===0||d.rev==null||d.rev===0))
-    .sort((a,b)=>new Date(b.end)-new Date(a.end));
+  return DATA.filter(d=>(d.qty==null||d.qty===0)&&(d.rev==null||d.rev===0))
+    .sort((a,b)=>new Date(a.end)-new Date(b.end)); // 종료일이 오래된(먼저 끝난) 순
 }
 function renderMgmtPage(){
   const f=pendingPerfDeals();
@@ -1473,34 +1460,8 @@ function renderMgmtPage(){
       <td>${d.ch}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
       <td>${won(d.s&&d.s.sale)}</td>
-      <td><input class="f-inp mgmt-inp" type="number" id="mgQty${d.dealId}" value="${d.qty!=null?d.qty:''}" placeholder="0"></td>
-      <td><input class="f-inp mgmt-inp" type="number" id="mgRev${d.dealId}" value="${d.rev!=null?d.rev:''}" placeholder="0"></td>
-      <td><input class="f-inp mgmt-inp" type="number" step="0.1" id="mgViews${d.dealId}" value="${d.views!=null?d.views:''}" placeholder="0.0"></td>
-      <td><button class="tperf-btn" onclick="saveMgmtRow('${d.dealId}')">저장</button></td>
-    </tr>`).join(''):`<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-3)">실적 미기입 건이 없습니다 🎉</td></tr>`;
-}
-function saveMgmtRow(dealId){
-  const d=DATA.find(x=>x.dealId===dealId);if(!d)return;
-  const qtyEl=document.getElementById('mgQty'+dealId),revEl=document.getElementById('mgRev'+dealId),viewsEl=document.getElementById('mgViews'+dealId);
-  const qty=qtyEl.value!==''?Number(qtyEl.value):null;
-  const rev=revEl.value!==''?Number(revEl.value):null;
-  const views=viewsEl.value!==''?Number(viewsEl.value):null;
-  const url=localStorage.getItem('gp_gas_url');
-  if(url){
-    setLoad(true);
-    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({
-      action:'addPerf',data:{dealId:d.dealId,views,qty,revenue:rev},idToken:_gasCredential||''
-    })}).then(j=>{
-      if(j.error)throw new Error(j.error);
-      d.views=views;d.qty=qty;d.rev=rev;
-      render();setLoad(false);
-      showToast('저장되었습니다');
-    }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
-  } else {
-    d.views=views;d.qty=qty;d.rev=rev;
-    render();
-    alert('샘플 모드: 로컬에 저장되었습니다. (새로고침 시 초기화)');
-  }
+      <td>${bdg(d.status)}</td>
+    </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-3)">실적 미기입 건이 없습니다 🎉</td></tr>`;
 }
 
 /* ── 공구 캘린더 페이지 ── */
@@ -2405,7 +2366,7 @@ function _routeFromHash(){
 }
 window.addEventListener('hashchange',_routeFromHash);
 
-// 페이지 전환 (사이드바 단일 항목: 공구 캘린더 / 대시보드 / 실적 기입 목록)
+// 페이지 전환 (사이드바 단일 항목: 공구 캘린더 / 대시보드 / 실적 미기입 목록)
 function navPage(pageId,el){
   _sbClearActive();
   if(el)el.classList.add('active');
