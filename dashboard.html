@@ -32,8 +32,6 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .stab{padding:5px 16px;white-space:nowrap;flex-shrink:0;border-radius:14px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .12s}
 .stab:hover{background:var(--border)}
 .stab.sam{background:var(--minix);border-color:var(--minix);color:#fff}
-.ssel{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:12px;cursor:pointer;font-family:inherit;align-self:center}
-.ssel option{color:#111827}
 
 .main{padding:20px 24px;display:flex;flex-direction:column;gap:16px;max-width:1440px}
 #page-sales{max-width:none}
@@ -415,12 +413,6 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div class="hdr-right">
         <span class="conn-pill cp-sample" id="connPill" onclick="refreshData()" title="클릭 시 재연결">● 샘플 데이터</span>
         <div id="hdrAdminControls" style="display:none;align-items:center;gap:8px">
-          <select class="ssel" id="statusSel">
-            <option value="all">전체 상태</option>
-            <option value="완료">완료</option>
-            <option value="진행중">진행중</option>
-            <option value="예정">예정</option>
-          </select>
           <button class="icon-btn" id="refreshBtn" title="새로고침" onclick="refreshData()">↻</button>
           <button class="icon-btn" title="디버그: 원시 데이터 확인" onclick="openDebug()">🐞</button>
           <button class="icon-btn" title="연결 설정" onclick="openCfg()">⚙</button>
@@ -919,7 +911,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='dash-period-2026-07-24-01';
+const DASHBOARD_VERSION='remove-status-filter-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -941,7 +933,7 @@ const SAMPLE_EVENTS=[
 let EVENTS=SAMPLE_EVENTS.map(e=>({...e}));
 
 const _NOW=new Date();
-const ST={prod:'all',model:'all',status:'all'};
+const ST={prod:'all',model:'all'};
 const DASH_PERIOD_LS_KEY='gp_dash_period';
 const DASH={years:null,months:null,weeks:null};
 function dashPLoad(){
@@ -1028,7 +1020,6 @@ function productColorKey(p){
 }
 function productColor(p){return PRODUCT_COLORS[productColorKey(p)]||PRODUCT_COLORS.other;}
 
-// 제품/브랜드/모델 필터만 적용 (상태 필터 제외)
 function filteredProd(src){
   return(src||DATA).filter(d=>{
     if(ST.prod==='all')return true;
@@ -1041,13 +1032,6 @@ function filteredProd(src){
     if(ST.prod==='시프트')  return np==='더시프트';
     if(ST.prod==='슬림')    return np==='더슬림';
     if(ST.prod==='에어드라이')return np.includes('에어드라이');
-    return true;
-  });
-}
-// 상태 필터까지 적용 (KPI·캘린더·차트용)
-function filtered(src){
-  return filteredProd(src).filter(d=>{
-    if(ST.status!=='all'&&d.status!==ST.status)return false;
     return true;
   });
 }
@@ -1426,7 +1410,7 @@ function renderYMFilterBar(){
 
 /* 실적 상세 표 상단 KPI (연도/월 필터 반영) */
 function renderSalesKpi(){
-  const f=filtered(DATA).filter(salesYMMatch);
+  const f=filteredProd(DATA).filter(salesYMMatch);
   const tRev=f.reduce((s,d)=>s+(d.rev||0),0);
   const tQty=f.reduce((s,d)=>s+(d.qty||0),0);
   const withViews=f.filter(d=>d.views!=null);
@@ -1447,7 +1431,7 @@ function renderTbl(){
     return`<th class="sortable${sorted?' sorted':''}${colClass(c)}" onclick="sortSales('${c.key}')">${c.lb}<span class="sort-ic">${arrow}</span></th>`;
   }).join('');
 
-  const f=filtered(DATA).filter(salesYMMatch);
+  const f=filteredProd(DATA).filter(salesYMMatch);
   if(SALES_SORT.key){
     const acc=SALES_ACC[SALES_SORT.key];
     f.sort((a,b)=>{
@@ -2437,8 +2421,6 @@ document.querySelectorAll('.stab').forEach(stab=>{
     render();
   });
 });
-document.getElementById('statusSel').addEventListener('change',e=>{ST.status=e.target.value;render();});
-
 function render(){renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();}
 document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.getMonth()+1)+'월 '+_NOW.getDate()+'일';
 
