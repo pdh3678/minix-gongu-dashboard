@@ -1540,10 +1540,12 @@ function calAssignLanes(items){
 }
 
 /* ── 캘린더 연도/월 접기·펼치기 상태 ──
-   localStorage는 쓰지 않고 URL 쿼리 파라미터(calOpen)로 유지 → 새로고침해도 상태 보존.
+   localStorage에 저장 → 새로고침해도 상태 보존. 쿼리스트링(?calOpen=...)은 더 이상 쓰지 않음 —
+   과거 버전이 남긴 게 있으면 최초 로드 시 한 번만 읽어 반영한 뒤 주소에서 제거함(_migrateLegacyCalOpen).
    Set에 들어있는 키는 "펼쳐진" 연도/월을 의미(연도="2025", 월="2025-01") */
 const CAL_STATE={years:new Set(),months:new Set()};
 let _calStateLoaded=false,_calScrolled=false;
+const CAL_OPEN_LS_KEY='gp_cal_open';
 
 function calDefaultOpenState(){
   const today=new Date();
@@ -1556,36 +1558,47 @@ function calDefaultOpenState(){
   }
   return{years,months};
 }
-function calSaveStateToURL(){
+function calSaveState(){
   const keys=[...CAL_STATE.years,...CAL_STATE.months];
-  const params=new URLSearchParams(location.search);
-  if(keys.length)params.set('calOpen',keys.join(','));else params.delete('calOpen');
-  const qs=params.toString();
-  history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+location.hash);
+  localStorage.setItem(CAL_OPEN_LS_KEY,keys.join(','));
 }
-function calLoadStateFromURL(){
+// 과거 버전이 쓰던 ?calOpen=... 쿼리스트링이 주소에 남아있으면 한 번 읽어서 반영하고 즉시 제거.
+// 쿼리스트링은 어떤 경우에도 주소에 남지 않아야 하므로, 해시는 보존한 채 replaceState로 정리함.
+function _migrateLegacyCalOpen(){
   const params=new URLSearchParams(location.search);
+  if(!params.has('calOpen'))return null;
   const raw=params.get('calOpen');
-  if(raw===null){
+  const keys=raw?raw.split(','):[];
+  history.replaceState(null,'',location.pathname+location.hash);
+  return keys;
+}
+function calLoadState(){
+  const legacyKeys=_migrateLegacyCalOpen();
+  let keys=legacyKeys;
+  if(keys===null){
+    const saved=localStorage.getItem(CAL_OPEN_LS_KEY);
+    keys=saved===null?null:(saved?saved.split(','):[]);
+  }
+  if(keys===null){
     const def=calDefaultOpenState();
     CAL_STATE.years=def.years;CAL_STATE.months=def.months;
-    calSaveStateToURL();
+    calSaveState();
     return;
   }
-  const keys=raw?raw.split(','):[];
   CAL_STATE.years=new Set(keys.filter(k=>/^\d{4}$/.test(k)));
   CAL_STATE.months=new Set(keys.filter(k=>/^\d{4}-\d{2}$/.test(k)));
+  calSaveState(); // 레거시 쿼리에서 읽어온 경우 localStorage에도 반영
 }
 function calToggleYear(y){
   const key=String(y);
   if(CAL_STATE.years.has(key))CAL_STATE.years.delete(key);else CAL_STATE.years.add(key);
-  calSaveStateToURL();
+  calSaveState();
   renderCalendarPage();
 }
 function calToggleMonth(y,m){
   const key=y+'-'+_pad2(m);
   if(CAL_STATE.months.has(key))CAL_STATE.months.delete(key);else CAL_STATE.months.add(key);
-  calSaveStateToURL();
+  calSaveState();
   renderCalendarPage();
 }
 function calAutoScrollToCurrentMonth(){
@@ -1617,7 +1630,7 @@ function monthWeeks(y,m){
 }
 
 function renderCalendarPage(){
-  if(!_calStateLoaded){calLoadStateFromURL();_calStateLoaded=true;}
+  if(!_calStateLoaded){calLoadState();_calStateLoaded=true;}
   const host=document.getElementById('calPageBody');
   // 공구 일정은 실적통합(DATA) 기준 — 프로모션 일정(EVENTS)은 그대로 별도 표시
   const withDates=DATA.filter(d=>d.start);
@@ -2360,6 +2373,38 @@ function _sbClearActive(){
   document.querySelectorAll('.sb-item-solo,.sb-item[data-prod],.sb-item[data-page]').forEach(x=>x.classList.remove('active'));
 }
 
+/* ── 탭 해시 라우팅 ──
+   #calendar / #dashboard / #entry-list / #new-deal / #product-더플렌더 등으로 현재 탭을 표시.
+   전환은 항상 history.replaceState로만 처리(location.hash 직접 할당 금지) → 뒤로가기 히스토리에
+   탭이 안 쌓이고, 대시보드 진입 이전 페이지로 바로 나가짐. 해시가 포함된 주소로 직접 열거나
+   새로고침하면 _routeFromHash()가 그 탭을 그대로 열어줌. */
+const HASH_PRODUCT_TO_ST={'더플렌더':'플렌더','더시프트':'시프트','더에어드라이':'에어드라이','더슬림':'슬림'};
+const ST_PRODUCT_TO_HASH={'플렌더':'더플렌더','시프트':'더시프트','에어드라이':'더에어드라이','슬림':'더슬림'};
+const PAGE_ID_TO_HASH={calendar:'calendar',dashboard:'dashboard',management:'entry-list'};
+let _currentPageHash='dashboard'; // 새 공구건 등록 모달을 닫을 때 되돌아갈 해시(모달 밑에 깔린 실제 탭)
+
+function _setHash(h){
+  history.replaceState(null,'',location.pathname+'#'+h);
+}
+function _findPageEl(pageId){
+  return document.querySelector(`.sb-item-solo[data-page="${pageId}"], .sb-item[data-page="${pageId}"]`);
+}
+function _findProdEl(prod){
+  return document.querySelector(`.sb-item[data-prod="${prod}"]`);
+}
+function _routeFromHash(){
+  const raw=(location.hash||'').replace(/^#/,'');
+  if(raw==='new-deal'){openDealForm();return;}
+  if(raw==='entry-list'){navPage('management',_findPageEl('management'));return;}
+  if(raw==='calendar'){navPage('calendar',_findPageEl('calendar'));return;}
+  if(raw.indexOf('product-')===0){
+    const prod=HASH_PRODUCT_TO_ST[raw.slice('product-'.length)];
+    if(prod){navSales(_findProdEl(prod),prod);return;}
+  }
+  navPage('dashboard',_findPageEl('dashboard')); // 해시 없음/인식 불가 시 기본 탭
+}
+window.addEventListener('hashchange',_routeFromHash);
+
 // 페이지 전환 (사이드바 단일 항목: 공구 캘린더 / 대시보드 / 실적 기입 목록)
 function navPage(pageId,el){
   _sbClearActive();
@@ -2367,6 +2412,9 @@ function navPage(pageId,el){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+pageId).classList.add('active');
   closeMobileSidebar();
+  const hash=PAGE_ID_TO_HASH[pageId]||pageId;
+  _currentPageHash=hash;
+  _setHash(hash);
 }
 
 // 브랜드별 실적 페이지로 이동 + 제품 필터 적용
@@ -2383,6 +2431,8 @@ function navSales(el,prod){
     subTabs.classList.remove('open');
   }
   render();
+  const hashKey=ST_PRODUCT_TO_HASH[prod];
+  if(hashKey){_currentPageHash=hashKey;_setHash(hashKey);}
 }
 
 /* Tabs */
@@ -2434,6 +2484,7 @@ function openDealForm(){
   _formCodes=[''];
   renderFormCodeList();
   document.getElementById('dealOv').classList.add('open');
+  _setHash('new-deal');
 }
 function closeDealForm(){
   document.getElementById('dealOv').classList.remove('open');
@@ -2448,6 +2499,7 @@ function closeDealForm(){
   document.getElementById('fChannelId').placeholder='플랫폼 먼저 선택';
   _formCodes=[''];
   renderFormCodeList();
+  _setHash(_currentPageHash); // 모달 밑에 깔려있던 실제 탭 해시로 복귀
 }
 document.getElementById('dealOv').addEventListener('click',e=>{if(e.target===document.getElementById('dealOv'))closeDealForm();});
 
@@ -2766,6 +2818,7 @@ function _enterDashboard(user){
   document.getElementById('sbUserEmail').textContent=user.name||user.email;
   _applyAdminUI(user.email||'');
   fetchLive();render();
+  _routeFromHash(); // 주소의 해시(#calendar, #product-더플렌더 등)에 맞는 탭을 열어줌(없으면 기본 탭)
 }
 
 function signOut(){
