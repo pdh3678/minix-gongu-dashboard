@@ -71,8 +71,8 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 
 /* ── 대시보드 페이지 ── */
 .dash-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.dash-mode-grp{display:flex;gap:4px;flex-shrink:0}
-.dash-psel{width:auto;min-width:140px;max-width:260px;margin:0}
+.dash-period-summary{font-size:12px;font-weight:700;color:var(--minix)}
+.chart-note{font-size:11px;color:var(--text-3);text-align:right;margin-top:4px}
 
 /* ── 브랜드별 실적: 연도/월 다중선택 필터 ── */
 .ym-filter-bar{display:flex;flex-wrap:wrap;gap:20px;align-items:center}
@@ -442,13 +442,19 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div class="card">
         <div class="card-hd">기간 필터</div>
         <div class="dash-filter-row">
-          <div class="dash-mode-grp">
-            <button class="stab sam" data-mode="all" onclick="setDashMode('all')">전체</button>
-            <button class="stab" data-mode="year" onclick="setDashMode('year')">연도별</button>
-            <button class="stab" data-mode="month" onclick="setDashMode('month')">월별</button>
-            <button class="stab" data-mode="week" onclick="setDashMode('week')">주차별</button>
+          <div class="ym-dd" id="dashPYearDd">
+            <button class="ym-dd-btn" id="dashPYearBtn" onclick="toggleYmDd('dashPYearDd',event)">연도: 전체</button>
+            <div class="ym-dd-pop" id="dashPYearPop"></div>
           </div>
-          <select class="f-inp f-sel dash-psel" id="dashPeriodSel" style="display:none" onchange="setDashPeriodValue(this.value)"></select>
+          <div class="ym-dd" id="dashPMonthDd">
+            <button class="ym-dd-btn" id="dashPMonthBtn" onclick="toggleYmDd('dashPMonthDd',event)">월: 전체</button>
+            <div class="ym-dd-pop" id="dashPMonthPop"></div>
+          </div>
+          <div class="ym-dd" id="dashPWeekDd">
+            <button class="ym-dd-btn" id="dashPWeekBtn" onclick="toggleYmDd('dashPWeekDd',event)">주차: 전체</button>
+            <div class="ym-dd-pop" id="dashPWeekPop"></div>
+          </div>
+          <span class="dash-period-summary" id="dashPeriodSummary"></span>
         </div>
       </div>
       <div class="kpi-row" id="kpiRow"></div>
@@ -456,6 +462,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="card">
           <div class="card-hd">조회수 × 매출 산점도</div>
           <div style="height:280px"><canvas id="scChart"></canvas></div>
+          <div class="chart-note" id="scChartNote"></div>
         </div>
         <div class="card">
           <div class="card-hd">기간별 매출·조회수 추이</div>
@@ -464,22 +471,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
       <div class="card">
         <div class="card-hd">
-          <span>그래프에 포함할 공구건 <span class="card-hd-r" id="dashSelCnt"></span></span>
-          <div style="display:flex;gap:6px;align-items:center">
-            <div class="ym-dd" id="dashYmYearDd">
-              <button class="ym-dd-btn" id="dashYmYearBtn" onclick="toggleYmDd('dashYmYearDd',event)">연도: 전체</button>
-              <div class="ym-dd-pop" id="dashYmYearPop"></div>
-            </div>
-            <div class="ym-dd" id="dashYmMonthDd">
-              <button class="ym-dd-btn" id="dashYmMonthBtn" onclick="toggleYmDd('dashYmMonthDd',event)">월: 전체</button>
-              <div class="ym-dd-pop" id="dashYmMonthPop"></div>
-            </div>
-            <button class="btn-cancel" style="padding:5px 12px;font-size:11px" onclick="dashSelectAll()">전체 선택</button>
-            <button class="btn-cancel" style="padding:5px 12px;font-size:11px" onclick="dashSelectNone()">전체 해제</button>
-          </div>
+          <span>해당 기간에 포함된 개별 공구 건 <span class="card-hd-r" id="dashSelCnt"></span></span>
         </div>
         <div class="tbl-wrap">
-          <table><thead><tr><th></th><th>제품</th><th>채널</th><th>기간</th><th>조회수</th><th>매출</th></tr></thead><tbody id="dashSelBody"></tbody></table>
+          <table><thead><tr><th>제품</th><th>채널</th><th>기간</th><th>조회수</th><th>매출</th></tr></thead><tbody id="dashSelBody"></tbody></table>
         </div>
       </div>
     </div>
@@ -924,7 +919,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='auth-refresh-2026-07-24-01';
+const DASHBOARD_VERSION='dash-period-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -947,7 +942,28 @@ let EVENTS=SAMPLE_EVENTS.map(e=>({...e}));
 
 const _NOW=new Date();
 const ST={prod:'all',model:'all',status:'all'};
-const DASH={mode:'all',value:'',selected:new Set()};
+const DASH_PERIOD_LS_KEY='gp_dash_period';
+const DASH={years:null,months:null,weeks:null};
+function dashPLoad(){
+  try{
+    const raw=localStorage.getItem(DASH_PERIOD_LS_KEY);
+    if(!raw)return;
+    const o=JSON.parse(raw);
+    DASH.years=(o.years==null)?null:new Set(o.years);
+    DASH.months=(o.months==null)?null:new Set(o.months);
+    DASH.weeks=(o.weeks==null)?null:new Set(o.weeks);
+  }catch(e){}
+}
+function dashPSave(){
+  try{
+    localStorage.setItem(DASH_PERIOD_LS_KEY,JSON.stringify({
+      years:DASH.years===null?null:[...DASH.years],
+      months:DASH.months===null?null:[...DASH.months],
+      weeks:DASH.weeks===null?null:[...DASH.weeks]
+    }));
+  }catch(e){}
+}
+dashPLoad();
 const won=n=>n==null?'—':'₩'+n.toLocaleString('ko-KR');
 const num=n=>n==null?'—':n.toLocaleString('ko-KR');
 const fmtS=s=>{const d=new Date(s+'T00:00:00');return`${d.getMonth()+1}.${d.getDate()}`};
@@ -1046,48 +1062,116 @@ function _mondayOf(dateStr){
   const mon=new Date(sd.getFullYear(),sd.getMonth(),sd.getDate()-dow);
   return`${mon.getFullYear()}-${_pad2(mon.getMonth()+1)}-${_pad2(mon.getDate())}`;
 }
-function dashPeriodOptions(){
-  const withDates=DATA.filter(d=>d.start);
-  if(DASH.mode==='year')return[...new Set(withDates.map(d=>String(yearOf(d.start))))].sort();
-  if(DASH.mode==='month')return[...new Set(withDates.map(d=>`${yearOf(d.start)}-${_pad2(monthOf(d.start))}`))].sort();
-  if(DASH.mode==='week')return[...new Set(withDates.map(d=>_mondayOf(d.start)))].sort();
-  return[];
+/* 연도→월→주차 계층 다중선택. 각 단계 null=전체(미제한), Set=명시적 선택(빈 Set이면 0건 매치) */
+function dashPAvailableYears(){
+  return[...new Set(DATA.filter(d=>d.start).map(d=>yearOf(d.start)))].sort((a,b)=>a-b);
 }
-function dashPeriodLabel(mode,v){
-  if(mode==='year')return v+'년';
-  if(mode==='month'){const[y,mo]=v.split('-');return`${y}년 ${Number(mo)}월`;}
-  if(mode==='week'){const e=new Date(v+'T00:00:00');e.setDate(e.getDate()+6);return`${fmtS(v)} ~ ${fmtS(`${e.getFullYear()}-${_pad2(e.getMonth()+1)}-${_pad2(e.getDate())}`)}`;}
-  return v;
+function dashPAvailableMonths(){
+  const scope=DATA.filter(d=>d.start&&(DASH.years===null||DASH.years.has(yearOf(d.start))));
+  return[...new Set(scope.map(d=>monthOf(d.start)))].sort((a,b)=>a-b);
 }
-function setDashMode(mode){
-  DASH.mode=mode;DASH.value='';
-  document.querySelectorAll('.dash-mode-grp .stab').forEach(b=>b.classList.toggle('sam',b.dataset.mode===mode));
-  const sel=document.getElementById('dashPeriodSel');
-  if(mode==='all'){sel.style.display='none';}
-  else{
-    const opts=dashPeriodOptions();
-    sel.style.display='';
-    sel.innerHTML=opts.map(o=>`<option value="${o}">${dashPeriodLabel(mode,o)}</option>`).join('');
-    DASH.value=opts[opts.length-1]||'';
-    sel.value=DASH.value;
+function dashPAvailableWeeks(){
+  const scope=DATA.filter(d=>d.start&&(DASH.years===null||DASH.years.has(yearOf(d.start)))&&(DASH.months===null||DASH.months.has(monthOf(d.start))));
+  return[...new Set(scope.map(d=>_mondayOf(d.start)))].sort();
+}
+function dashPWeekLabel(monday){
+  const e=new Date(monday+'T00:00:00');e.setDate(e.getDate()+6);
+  return`${fmtS(monday)}~${fmtS(`${e.getFullYear()}-${_pad2(e.getMonth()+1)}-${_pad2(e.getDate())}`)}`;
+}
+function _dashCompressRange(nums){
+  if(nums.length===1)return String(nums[0]);
+  const ranges=[];let start=nums[0],prev=nums[0];
+  for(let i=1;i<nums.length;i++){
+    if(nums[i]===prev+1){prev=nums[i];continue;}
+    ranges.push(start===prev?String(start):`${start}~${prev}`);
+    start=prev=nums[i];
   }
-  renderDashboard();
+  ranges.push(start===prev?String(start):`${start}~${prev}`);
+  return ranges.join('·');
 }
-function setDashPeriodValue(v){DASH.value=v;renderDashboard();}
+function dashPLabel(kind){
+  const val=DASH[kind];
+  const name=kind==='years'?'연도':kind==='months'?'월':'주차';
+  if(val===null)return`${name}: 전체`;
+  const arr=kind==='weeks'?[...val].sort():[...val].sort((a,b)=>a-b);
+  if(!arr.length)return`${name}: 없음`;
+  if(kind==='weeks')return arr.length===1?`주차: ${dashPWeekLabel(arr[0])}`:`주차: ${dashPWeekLabel(arr[0])} 외 ${arr.length-1}개`;
+  return`${name}: ${arr.length===1?arr[0]+(kind==='years'?'년':'월'):_dashCompressRange(arr)+(kind==='years'?'년':'월')}`;
+}
+function dashPSummary(){
+  if(DASH.years===null&&DASH.months===null&&DASH.weeks===null)return'전체 기간';
+  const parts=[];
+  if(DASH.years!==null){
+    const arr=[...DASH.years].sort((a,b)=>a-b);
+    parts.push(arr.length?arr.join('·')+'년':'연도 선택 없음');
+  }
+  if(DASH.months!==null){
+    const arr=[...DASH.months].sort((a,b)=>a-b);
+    parts.push(arr.length?_dashCompressRange(arr)+'월':'월 선택 없음');
+  }
+  if(DASH.weeks!==null){
+    const arr=[...DASH.weeks].sort();
+    parts.push(arr.length?arr.length+'개 주차':'주차 선택 없음');
+  }
+  return parts.join(' · ');
+}
+function dashPNormalizeChildren(changedKind){
+  if(changedKind==='years'&&DASH.months instanceof Set){
+    const validM=new Set(dashPAvailableMonths());
+    DASH.months=new Set([...DASH.months].filter(m=>validM.has(m)));
+  }
+  if((changedKind==='years'||changedKind==='months')&&DASH.weeks instanceof Set){
+    const validW=new Set(dashPAvailableWeeks());
+    DASH.weeks=new Set([...DASH.weeks].filter(w=>validW.has(w)));
+  }
+}
+function _dashAvailableFor(kind){
+  if(kind==='years')return dashPAvailableYears();
+  if(kind==='months')return dashPAvailableMonths();
+  return dashPAvailableWeeks();
+}
+function dashPToggle(kind,val,checked){
+  if(DASH[kind]===null)DASH[kind]=new Set(_dashAvailableFor(kind));
+  if(checked)DASH[kind].add(val);else DASH[kind].delete(val);
+  dashPNormalizeChildren(kind);
+  dashPSave();renderDashboard();
+}
+function dashPAll(kind){DASH[kind]=null;dashPNormalizeChildren(kind);dashPSave();renderDashboard();}
+function dashPNone(kind){DASH[kind]=new Set();dashPNormalizeChildren(kind);dashPSave();renderDashboard();}
+function renderDashPeriodBar(){
+  const years=dashPAvailableYears(),months=dashPAvailableMonths(),weeks=dashPAvailableWeeks();
+  document.getElementById('dashPYearBtn').textContent=dashPLabel('years');
+  document.getElementById('dashPYearPop').innerHTML=`
+    <div class="ym-chk-list">${years.map(y=>`<label class="ym-chk"><input type="checkbox" ${(DASH.years===null||DASH.years.has(y))?'checked':''} onchange="dashPToggle('years',${y},this.checked)">${y}년</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>
+    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('years')">전체</button><button class="ym-mini-btn" onclick="dashPNone('years')">해제</button></div>`;
+  document.getElementById('dashPMonthBtn').textContent=dashPLabel('months');
+  document.getElementById('dashPMonthPop').innerHTML=`
+    <div class="ym-chk-list">${months.map(m=>`<label class="ym-chk"><input type="checkbox" ${(DASH.months===null||DASH.months.has(m))?'checked':''} onchange="dashPToggle('months',${m},this.checked)">${m}월</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>
+    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('months')">전체</button><button class="ym-mini-btn" onclick="dashPNone('months')">해제</button></div>`;
+  document.getElementById('dashPWeekBtn').textContent=dashPLabel('weeks');
+  document.getElementById('dashPWeekPop').innerHTML=`
+    <div class="ym-chk-list">${weeks.map(w=>`<label class="ym-chk"><input type="checkbox" ${(DASH.weeks===null||DASH.weeks.has(w))?'checked':''} onchange="dashPToggle('weeks','${w}',this.checked)">${dashPWeekLabel(w)}</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>
+    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('weeks')">전체</button><button class="ym-mini-btn" onclick="dashPNone('weeks')">해제</button></div>`;
+  document.getElementById('dashPeriodSummary').textContent=dashPSummary();
+}
 function dashPeriodMatch(d){
-  if(DASH.mode==='all')return true;
   if(!d.start)return false;
-  if(DASH.mode==='year')return String(yearOf(d.start))===DASH.value;
-  if(DASH.mode==='month')return`${yearOf(d.start)}-${_pad2(monthOf(d.start))}`===DASH.value;
-  if(DASH.mode==='week'){
-    const wkStart=new Date(DASH.value+'T00:00:00'),wkEnd=new Date(wkStart);wkEnd.setDate(wkEnd.getDate()+6);
-    const sd=new Date(d.start+'T00:00:00');
-    return sd>=wkStart&&sd<=wkEnd;
-  }
+  const y=yearOf(d.start),m=monthOf(d.start),w=_mondayOf(d.start);
+  if(DASH.years!==null&&!DASH.years.has(y))return false;
+  if(DASH.months!==null&&!DASH.months.has(m))return false;
+  if(DASH.weeks!==null&&!DASH.weeks.has(w))return false;
   return true;
 }
 function dashData(){return DATA.filter(d=>d.start&&dashPeriodMatch(d));}
-function dashChartCandidates(){return dashData().filter(d=>d.views!=null&&d.rev!=null);}
+
+function toggleYmDd(ddId,ev){
+  ev.stopPropagation();
+  const el=document.getElementById(ddId);
+  const willOpen=!el.classList.contains('open');
+  document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));
+  if(willOpen)el.classList.add('open');
+}
+document.addEventListener('click',()=>{document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));});
 
 /* KPI (기간 필터 기준) */
 function renderKPI(){
@@ -1104,106 +1188,40 @@ function renderKPI(){
     <div class="kpi"><div class="kpi-lbl">조회→구매 전환율</div><div class="kpi-val cok">${conv}</div><div class="kpi-sub">릴스 조회수 기준</div></div>`;
 }
 
-/* 그래프 대상 공구건 선택 목록 */
-/* "그래프에 포함할 공구건" 목록 전용 연도/월 필터 — 상단 기간 필터(DASH.mode/value)와는 독립적으로 동작하며 필터를 곱해서 적용함.
-   years/months가 null이면 "전체"(항상 전체 매치, 목록이 나중에 바뀌어도 자동으로 전체 유지); 사용자가 하나라도 건드리면 그 시점의 전체 목록으로 구체화됨 */
-const DASH_YM={years:null,months:null};
-function dashSelAvailableYears(){
-  return[...new Set(dashChartCandidates().filter(d=>d.start).map(d=>yearOf(d.start)))].sort((a,b)=>a-b);
-}
-function dashSelYMMatch(d){
-  if(!d.start)return false;
-  const y=yearOf(d.start),m=monthOf(d.start);
-  const yOk=DASH_YM.years===null||DASH_YM.years.has(y);
-  const mOk=DASH_YM.months===null||DASH_YM.months.has(m);
-  return yOk&&mOk;
-}
-function dashSelCandidates(){return dashChartCandidates().filter(dashSelYMMatch);}
-function dashYmLabel(kind){
-  const val=DASH_YM[kind];
-  const unit=kind==='years'?'년':'월',name=kind==='years'?'연도':'월';
-  if(val===null)return`${name}: 전체`;
-  const arr=[...val].sort((a,b)=>a-b);
-  if(!arr.length)return`${name}: 없음`;
-  if(arr.length===1)return arr[0]+unit;
-  return arr[0]+unit+' 외 '+(arr.length-1)+'개';
-}
-function toggleYmDd(ddId,ev){
-  ev.stopPropagation();
-  const el=document.getElementById(ddId);
-  const willOpen=!el.classList.contains('open');
-  document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));
-  if(willOpen)el.classList.add('open');
-}
-document.addEventListener('click',()=>{document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));});
-function dashYmToggle(kindKey,val,checked){
-  if(DASH_YM[kindKey]===null){
-    DASH_YM[kindKey]=new Set(kindKey==='years'?dashSelAvailableYears():[1,2,3,4,5,6,7,8,9,10,11,12]);
-  }
-  if(checked)DASH_YM[kindKey].add(val);else DASH_YM[kindKey].delete(val);
-  renderDashSelectList();renderDashCharts();
-}
-function dashYmAll(kindKey){DASH_YM[kindKey]=null;renderDashSelectList();renderDashCharts();}
-function dashYmNone(kindKey){DASH_YM[kindKey]=new Set();renderDashSelectList();renderDashCharts();}
-function renderDashYmDropdowns(){
-  const years=dashSelAvailableYears();
-  const selYears=DASH_YM.years===null?new Set(years):DASH_YM.years;
-  document.getElementById('dashYmYearBtn').textContent=dashYmLabel('years');
-  document.getElementById('dashYmYearPop').innerHTML=`
-    <div class="ym-chk-list">${years.map(y=>`<label class="ym-chk"><input type="checkbox" ${selYears.has(y)?'checked':''} onchange="dashYmToggle('years',${y},this.checked)">${y}년</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>
-    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashYmAll('years')">전체</button><button class="ym-mini-btn" onclick="dashYmNone('years')">해제</button></div>`;
-
-  const months=[1,2,3,4,5,6,7,8,9,10,11,12];
-  const selMonths=DASH_YM.months===null?new Set(months):DASH_YM.months;
-  document.getElementById('dashYmMonthBtn').textContent=dashYmLabel('months');
-  document.getElementById('dashYmMonthPop').innerHTML=`
-    <div class="ym-chk-list">${months.map(mo=>`<label class="ym-chk"><input type="checkbox" ${selMonths.has(mo)?'checked':''} onchange="dashYmToggle('months',${mo},this.checked)">${mo}월</label>`).join('')}</div>
-    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashYmAll('months')">전체</button><button class="ym-mini-btn" onclick="dashYmNone('months')">해제</button></div>`;
-}
-
 function renderDashboard(){
-  const cands=dashChartCandidates();
-  DASH.selected=new Set(cands.map(d=>d.dealId));
+  renderDashPeriodBar();
   renderKPI();
-  renderDashSelectList();
+  renderDashList();
   renderDashCharts();
 }
-function renderDashSelectList(){
-  renderDashYmDropdowns();
-  const cands=dashSelCandidates();
-  document.getElementById('dashSelBody').innerHTML=cands.length?cands.map(d=>`
+/* 목록: 상단 기간 필터로 걸러진 공구건 전체를 조회 전용으로 표시 (선택/체크박스 없음) */
+function renderDashList(){
+  const list=dashData();
+  document.getElementById('dashSelBody').innerHTML=list.length?list.map(d=>`
     <tr>
-      <td><input type="checkbox" ${DASH.selected.has(d.dealId)?'checked':''} onchange="toggleDashSel('${d.dealId}',this.checked)"></td>
       <td>${productBadge(d.product)}</td>
       <td>${d.ch}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
-      <td>${d.views.toFixed(1)}만</td>
-      <td>${won(d.rev)}</td>
-    </tr>`).join(''):'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3)">조회수·매출이 모두 있는 공구건이 없습니다</td></tr>';
-  const visSel=cands.filter(d=>DASH.selected.has(d.dealId)).length;
-  document.getElementById('dashSelCnt').textContent=`${visSel}/${cands.length}건 선택`;
+      <td>${d.views!=null?d.views.toFixed(1)+'만':'—'}</td>
+      <td>${d.rev!=null?won(d.rev):'—'}</td>
+    </tr>`).join(''):'<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-3)">해당 기간에 공구건이 없습니다</td></tr>';
+  document.getElementById('dashSelCnt').textContent=`${list.length}건`;
 }
-function toggleDashSel(dealId,checked){
-  if(checked)DASH.selected.add(dealId);else DASH.selected.delete(dealId);
-  const cands=dashSelCandidates();
-  const visSel=cands.filter(d=>DASH.selected.has(d.dealId)).length;
-  document.getElementById('dashSelCnt').textContent=`${visSel}/${cands.length}건 선택`;
-  renderDashCharts();
-}
-function dashSelectAll(){dashSelCandidates().forEach(d=>DASH.selected.add(d.dealId));renderDashSelectList();renderDashCharts();}
-function dashSelectNone(){dashSelCandidates().forEach(d=>DASH.selected.delete(d.dealId));renderDashSelectList();renderDashCharts();}
 
 /* Chart.js: 산점도 + 기간별 추이 라인차트 */
 let _scChartInst=null,_trendChartInst=null;
 function renderDashCharts(){
   if(typeof Chart==='undefined')return; // CDN 로드 실패 시 조용히 건너뜀
-  const pts=dashSelCandidates().filter(d=>DASH.selected.has(d.dealId));
+  const periodAll=dashData();
+  // 산점도: 조회수 있는 건만 표시 (매출은 미기입 시 0으로 표시)
+  const scPts=periodAll.filter(d=>d.views!=null);
+  const scExcluded=periodAll.length-scPts.length;
 
   const scEl=document.getElementById('scChart');
   if(_scChartInst)_scChartInst.destroy();
   _scChartInst=new Chart(scEl.getContext('2d'),{
     type:'scatter',
-    data:{datasets:[{label:'공구건',data:pts.map(d=>({x:d.views,y:d.rev,ch:d.ch,product:d.product})),backgroundColor:'#3B56E5'}]},
+    data:{datasets:[{label:'공구건',data:scPts.map(d=>({x:d.views,y:d.rev||0,ch:d.ch,product:d.product})),backgroundColor:'#3B56E5'}]},
     options:{
       responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{
@@ -1213,9 +1231,12 @@ function renderDashCharts(){
       scales:{x:{title:{display:true,text:'릴스 조회수(만)'}},y:{title:{display:true,text:'매출(원)'}}}
     }
   });
+  const scNoteEl=document.getElementById('scChartNote');
+  if(scNoteEl)scNoteEl.textContent=scExcluded>0?`조회수 미기입 ${scExcluded}건 제외`:'';
 
+  // 매출·조회수 추이: 조회수 유무와 무관하게 기간 내 모든 공구건 포함
   const byDate={};
-  pts.forEach(d=>{
+  periodAll.forEach(d=>{
     const key=d.end||d.start;
     if(!byDate[key])byDate[key]={rev:0,views:0};
     byDate[key].rev+=d.rev||0;
@@ -1241,6 +1262,15 @@ function renderDashCharts(){
       }
     }
   });
+
+  // 검증: 매출 추이 그래프 합계가 KPI 총매출(완료 건 기준)과 일치하는지 확인
+  const trendRevSum=periodAll.reduce((s,d)=>s+(d.rev||0),0);
+  const kpiRevSum=periodAll.filter(d=>d.status==='완료').reduce((s,d)=>s+(d.rev||0),0);
+  if(Math.round(trendRevSum)!==Math.round(kpiRevSum)){
+    console.warn('[검증] 매출 추이 합계가 KPI 총매출과 다릅니다',{trendRevSum,kpiRevSum});
+  }else{
+    console.log('[검증] 매출 추이 합계 == KPI 총매출',trendRevSum);
+  }
 }
 
 /* 브랜드별 실적 표: 뱃지·정렬·토스트·열 표시 설정 */
