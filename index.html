@@ -924,7 +924,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='reels-fix-2026-07-13-05-thumbproxy';
+const DASHBOARD_VERSION='auth-refresh-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -2240,7 +2240,8 @@ async function saveCfg(){
 let _lastLiveAt=null, _connFailStreak=0;
 function setConn(s){
   const el=document.getElementById('connPill');
-  const m={sample:['● 샘플 데이터','cp-sample'],live:['● 실시간 연결','cp-live'],error:['● 연결 오류','cp-error'],loading:['◌ 로딩 중...','cp-loading'],retrying:['◌ 재연결 중...','cp-loading']};
+  const m={sample:['● 샘플 데이터','cp-sample'],live:['● 실시간 연결','cp-live'],error:['● 연결 오류','cp-error'],loading:['◌ 로딩 중...','cp-loading'],retrying:['◌ 재연결 중...','cp-loading'],
+    refreshing:['◌ 인증 갱신 중...','cp-loading'],relogin:['● 재로그인 필요','cp-error']};
   const[t,c]=m[s]||m.sample;el.textContent=t;el.className='conn-pill '+c;
   el.title=(_lastLiveAt?('마지막 동기화: '+new Date(_lastLiveAt).toLocaleTimeString('ko-KR')+' · '):'')+'클릭 시 재연결';
 }
@@ -2263,8 +2264,9 @@ async function fetchLive(forceFresh){
       console.warn(`[버전 불일치] 프론트=${DASHBOARD_VERSION} / 배포된 Apps Script=${j.version} — Apps Script를 최신 코드로 재배포했는지 확인하세요.`);
     }
     if(j.error==='AUTH_REQUIRED'){
-      // _gasFetch가 이미 토큰 자동 갱신+재시도를 한 번 시도한 뒤에도 실패한 경우 — 배너는 _gasFetch가 띄움
-      _connFail();return;
+      // _gasFetch가 이미 토큰 자동 갱신+재시도를 한 번 시도한 뒤에도 실패한 경우 — 배너/배지는
+      // 이미 _gasFetch·_refreshIdToken이 정확히 세팅해뒀으므로 여기서 _connFail()로 덮어쓰지 않음
+      return;
     }
     if(j.error)throw new Error(j.error);
     _hideReloginBanner();
@@ -2666,6 +2668,8 @@ function _applyAdminUI(email){
   document.getElementById('hdrAdminControls').style.display=ADMIN_EMAILS.includes(email)?'flex':'none';
 }
 let _gasCredential=null; // Google ID 토큰 (로그인 시 발급, ~1시간 유효)
+let _tokenExpiresAt=0; // ms epoch, JWT exp 클레임 — 선제적 백그라운드 갱신 타이머 예약용
+let _refreshTimer=null; // 만료 5분 전 자동 갱신을 예약하는 setTimeout 핸들
 
 function _decodeJwt(token){
   const b64=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
@@ -2701,6 +2705,13 @@ async function _gasFetch(url,opts,_authRetried){
   if(lastErr)throw lastErr;
   const j=await res.json();
   if(j&&j.error==='AUTH_REQUIRED'&&!_authRetried){
+    if(j.reason==='domain'){
+      // 도메인이 안 맞는 계정은 재발급해도 절대 안 풀림 — 조용한 갱신 시도 없이 바로 재로그인 화면
+      setConn('relogin');
+      _showReloginScreen();
+      _showLoginErr('접속 권한이 없는 계정입니다. 앳홈 계정(@'+ALLOWED_DOMAIN+')으로 다시 로그인해주세요.');
+      return j;
+    }
     const refreshed=await _refreshIdToken();
     if(refreshed){
       let retriedUrl=url,retriedOpts=opts;
@@ -2721,14 +2732,18 @@ async function _gasFetch(url,opts,_authRetried){
 // 만료된 idToken을 GIS의 자동 로그인(One Tap 무표시 모드)으로 조용히 갱신 시도.
 // prompt()의 notification 콜백만으로는 성공 여부가 애매해서, handleGoogleSignIn이 실제로
 // _gasCredential을 바꿔줄 때까지 짧게 폴링하고, 그래도 안 바뀌면(거부/미표시/타임아웃) 실패로 간주.
-let _refreshingToken=false;
+// 단일 비행(single-flight): 이미 갱신이 진행 중이면 새 prompt()를 또 띄우지 않고 같은 Promise를
+// 그대로 돌려줘서 여러 요청이 공유함 — 중복 로그인 프롬프트 방지 + "큐에 모아뒀다가 일괄 재시도"와
+// 동일한 효과(각 호출자는 이 Promise가 풀리면 자기 요청을 이어서 재시도함).
+let _refreshingPromise=null;
 function _refreshIdToken(){
-  return new Promise(resolve=>{
+  if(_refreshingPromise)return _refreshingPromise;
+  setConn('refreshing');
+  _refreshingPromise=new Promise(resolve=>{
     if(!(window.google&&google.accounts&&google.accounts.id)){resolve(false);return;}
     const prevCred=_gasCredential;
     let settled=false;
-    _refreshingToken=true;
-    const finish=ok=>{if(settled)return;settled=true;_refreshingToken=false;resolve(ok);};
+    const finish=ok=>{if(settled)return;settled=true;resolve(ok);};
     try{
       google.accounts.id.prompt(n=>{
         const declined=n&&((n.isNotDisplayed&&n.isNotDisplayed())||(n.isSkippedMoment&&n.isSkippedMoment())||(n.isDismissedMoment&&n.isDismissedMoment()));
@@ -2741,8 +2756,31 @@ function _refreshIdToken(){
       if(Date.now()-start>5000){finish(false);return;}
       setTimeout(poll,200);
     })();
+  }).then(ok=>{
+    _refreshingPromise=null;
+    console.log('[인증] 토큰 자동 갱신 '+(ok?'성공':'실패'));
+    if(ok)setConn('live');else{setConn('relogin');_showReloginBanner();}
+    return ok;
   });
+  return _refreshingPromise;
 }
+
+// 만료 5분 전에 백그라운드에서 조용히 갱신 — 사용자가 실제로 뭔가 요청하기 전에 미리 처리해서
+// "요청이 실패해야 갱신"이 아니라 "만료되기 전에 이미 갱신됨"을 목표로 함
+function _scheduleTokenRefresh(){
+  if(_refreshTimer){clearTimeout(_refreshTimer);_refreshTimer=null;}
+  if(!_tokenExpiresAt)return;
+  const msUntilRefresh=_tokenExpiresAt-Date.now()-5*60*1000;
+  if(msUntilRefresh<=0){_refreshIdToken();return;}
+  _refreshTimer=setTimeout(()=>{_refreshIdToken();},msUntilRefresh);
+}
+// 탭이 백그라운드에 오래 있다가 돌아온 경우 — 예약된 타이머가 그 사이 안 돌았을 수 있으니
+// 다시 보이는 시점에 만료 임박 여부를 즉시 재확인
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&_gasCredential&&_tokenExpiresAt){
+    if(Date.now()>=_tokenExpiresAt-5*60*1000)_refreshIdToken();
+  }
+});
 
 function _showReloginBanner(){document.getElementById('reloginBanner').classList.add('show');}
 function _hideReloginBanner(){document.getElementById('reloginBanner').classList.remove('show');}
@@ -2759,11 +2797,13 @@ function handleGoogleSignIn(response){
   }
   const isNewLogin=!_gasCredential; // 처음 로그인인지 여부
   _gasCredential=response.credential; // ID 토큰 보관
+  _tokenExpiresAt=(payload.exp||0)*1000;
+  _scheduleTokenRefresh(); // 만료 5분 전 백그라운드 자동 갱신 예약(로그인/자동 갱신 둘 다 여길 지나감)
   sessionStorage.setItem('gp_user',JSON.stringify({email,name:payload.name,picture:payload.picture}));
   _hideReloginBanner();
   if(isNewLogin){
     _enterDashboard(payload); // 처음 로그인 → 전체 진입
-  } else if(!_refreshingToken){
+  } else if(!_refreshingPromise){
     // _refreshIdToken()에 의한 갱신이면 그 호출부(_gasFetch)가 알아서 원래 요청을 재시도하므로 여기서 또 fetchLive를 부르지 않음
     fetchLive(); // auto_select 자동 갱신 → 데이터만 다시 로드
   }
@@ -2784,6 +2824,9 @@ function _enterDashboard(user){
 
 function signOut(){
   _gasCredential=null;
+  _tokenExpiresAt=0;
+  _refreshingPromise=null;
+  if(_refreshTimer){clearTimeout(_refreshTimer);_refreshTimer=null;}
   sessionStorage.removeItem('gp_user');
   if(window.google&&google.accounts)google.accounts.id.disableAutoSelect();
   document.getElementById('loginScreen').style.display='flex';
@@ -2796,19 +2839,16 @@ window.onGoogleLibraryLoad=function(){
   google.accounts.id.initialize({
     client_id:GAS_CLIENT_ID,
     callback:handleGoogleSignIn,
-    auto_select:true // 기존 Google 세션이 있으면 자동 credential 발급
+    auto_select:true, // 기존 Google 세션이 있으면 자동 credential 발급
+    use_fedcm_for_prompt:true // FedCM 적용(콘솔 deprecated 경고 해결)
   });
   // 로그인 버튼 렌더링
   google.accounts.id.renderButton(
     document.getElementById('gisBtn'),
     {theme:'outline',size:'large',locale:'ko',width:'308',text:'signin_with'}
   );
-  // 세션 있으면 자동 credential 갱신 시도
-  if(sessionStorage.getItem('gp_user')){
-    google.accounts.id.prompt(n=>{
-      // 자동 갱신 실패해도 세션 복원은 유지됨 (토큰 없이 연결)
-    });
-  }
+  // 세션 있으면 자동 credential 갱신 시도 — _refreshIdToken()으로 통일해서 단일 비행/배지 상태를 공유
+  if(sessionStorage.getItem('gp_user'))_refreshIdToken();
 };
 
 // 세션 복원: 새로고침 시 즉시 대시보드 표시
