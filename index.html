@@ -88,10 +88,10 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .ym-dd-btn{padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
 .ym-dd-btn:hover{background:var(--border)}
 .ym-dd-btn::after{content:'▾';font-size:8px}
-.ym-dd-pop{display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,.14);padding:10px;z-index:80;min-width:130px}
+.ym-dd-pop{display:none;position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,.18);padding:10px;z-index:200;min-width:150px;max-height:min(360px,70vh);overflow-y:auto}
 .ym-dd.open .ym-dd-pop{display:block}
-.ym-dd-pop .ym-chk-list{flex-direction:column;flex-wrap:nowrap;gap:6px;margin-bottom:8px;max-height:220px;overflow-y:auto}
-.ym-dd-pop .ym-mini-row{display:flex;gap:6px}
+.ym-dd-pop .ym-mini-row{display:flex;gap:6px;margin-bottom:8px}
+.ym-dd-pop .ym-chk-list{flex-direction:column;flex-wrap:nowrap;gap:6px;max-height:240px;overflow-y:auto}
 
 /* ── 레이아웃: 사이드바 + 본문 ── */
 .app-shell{display:flex;min-height:100vh}
@@ -930,7 +930,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='presence-2026-07-24-01';
+const DASHBOARD_VERSION='ym-dd-fixed-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -1065,16 +1065,21 @@ function _mondayOf(dateStr){
   const mon=new Date(sd.getFullYear(),sd.getMonth(),sd.getDate()-dow);
   return`${mon.getFullYear()}-${_pad2(mon.getMonth()+1)}-${_pad2(mon.getDate())}`;
 }
-/* 연도→월→주차 계층 다중선택. 각 단계 null=전체(미제한), Set=명시적 선택(빈 Set이면 0건 매치) */
+/* 연도→월→주차 계층 다중선택. null=전체, Set=명시적 선택 — 단, 빈 Set(전부 해제)도 "전체"와
+   동일하게 취급함(아래 _dashActive 참고). 체크박스 렌더링만 null과 빈 Set을 구분해서 보여줌. */
 function dashPAvailableYears(){
   return[...new Set(DATA.filter(d=>d.start).map(d=>yearOf(d.start)))].sort((a,b)=>a-b);
 }
+// null 또는 빈 Set(전부 해제)은 둘 다 "이 단계는 필터하지 않음"(상위 단계 전체)으로 취급.
+// 빈 Set을 null과 구분해서 보관하는 이유는 체크박스 렌더링(전부 해제 시 전부 미체크로 보여야 함)
+// 때문일 뿐 — 매칭/집계/요약 표시에서는 항상 이 헬퍼로 판단해 동일하게 취급함.
+function _dashActive(s){return s!==null&&s.size>0;}
 function dashPAvailableMonths(){
-  const scope=DATA.filter(d=>d.start&&(DASH.years===null||DASH.years.has(yearOf(d.start))));
+  const scope=DATA.filter(d=>d.start&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start))));
   return[...new Set(scope.map(d=>monthOf(d.start)))].sort((a,b)=>a-b);
 }
 function dashPAvailableWeeks(){
-  const scope=DATA.filter(d=>d.start&&(DASH.years===null||DASH.years.has(yearOf(d.start)))&&(DASH.months===null||DASH.months.has(monthOf(d.start))));
+  const scope=DATA.filter(d=>d.start&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start)))&&(!_dashActive(DASH.months)||DASH.months.has(monthOf(d.start))));
   return[...new Set(scope.map(d=>_mondayOf(d.start)))].sort();
 }
 function dashPWeekLabel(monday){
@@ -1095,28 +1100,17 @@ function _dashCompressRange(nums){
 function dashPLabel(kind){
   const val=DASH[kind];
   const name=kind==='years'?'연도':kind==='months'?'월':'주차';
-  if(val===null)return`${name}: 전체`;
+  if(!_dashActive(val))return`${name}: 전체`;
   const arr=kind==='weeks'?[...val].sort():[...val].sort((a,b)=>a-b);
-  if(!arr.length)return`${name}: 없음`;
   if(kind==='weeks')return arr.length===1?`주차: ${dashPWeekLabel(arr[0])}`:`주차: ${dashPWeekLabel(arr[0])} 외 ${arr.length-1}개`;
   return`${name}: ${arr.length===1?arr[0]+(kind==='years'?'년':'월'):_dashCompressRange(arr)+(kind==='years'?'년':'월')}`;
 }
 function dashPSummary(){
-  if(DASH.years===null&&DASH.months===null&&DASH.weeks===null)return'전체 기간';
   const parts=[];
-  if(DASH.years!==null){
-    const arr=[...DASH.years].sort((a,b)=>a-b);
-    parts.push(arr.length?arr.join('·')+'년':'연도 선택 없음');
-  }
-  if(DASH.months!==null){
-    const arr=[...DASH.months].sort((a,b)=>a-b);
-    parts.push(arr.length?_dashCompressRange(arr)+'월':'월 선택 없음');
-  }
-  if(DASH.weeks!==null){
-    const arr=[...DASH.weeks].sort();
-    parts.push(arr.length?arr.length+'개 주차':'주차 선택 없음');
-  }
-  return parts.join(' · ');
+  if(_dashActive(DASH.years))parts.push([...DASH.years].sort((a,b)=>a-b).join('·')+'년');
+  if(_dashActive(DASH.months))parts.push(_dashCompressRange([...DASH.months].sort((a,b)=>a-b))+'월');
+  if(_dashActive(DASH.weeks))parts.push([...DASH.weeks].length+'개 주차');
+  return parts.length?parts.join(' · '):'전체 기간';
 }
 function dashPNormalizeChildren(changedKind){
   if(changedKind==='years'&&DASH.months instanceof Set){
@@ -1145,36 +1139,65 @@ function renderDashPeriodBar(){
   const years=dashPAvailableYears(),months=dashPAvailableMonths(),weeks=dashPAvailableWeeks();
   document.getElementById('dashPYearBtn').textContent=dashPLabel('years');
   document.getElementById('dashPYearPop').innerHTML=`
-    <div class="ym-chk-list">${years.map(y=>`<label class="ym-chk"><input type="checkbox" ${(DASH.years===null||DASH.years.has(y))?'checked':''} onchange="dashPToggle('years',${y},this.checked)">${y}년</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>
-    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('years')">전체</button><button class="ym-mini-btn" onclick="dashPNone('years')">해제</button></div>`;
+    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('years')">전체 선택</button><button class="ym-mini-btn" onclick="dashPNone('years')">전체 해제</button></div>
+    <div class="ym-chk-list">${years.map(y=>`<label class="ym-chk"><input type="checkbox" ${(DASH.years===null||DASH.years.has(y))?'checked':''} onchange="dashPToggle('years',${y},this.checked)">${y}년</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>`;
   document.getElementById('dashPMonthBtn').textContent=dashPLabel('months');
   document.getElementById('dashPMonthPop').innerHTML=`
-    <div class="ym-chk-list">${months.map(m=>`<label class="ym-chk"><input type="checkbox" ${(DASH.months===null||DASH.months.has(m))?'checked':''} onchange="dashPToggle('months',${m},this.checked)">${m}월</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>
-    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('months')">전체</button><button class="ym-mini-btn" onclick="dashPNone('months')">해제</button></div>`;
+    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('months')">전체 선택</button><button class="ym-mini-btn" onclick="dashPNone('months')">전체 해제</button></div>
+    <div class="ym-chk-list">${months.map(m=>`<label class="ym-chk"><input type="checkbox" ${(DASH.months===null||DASH.months.has(m))?'checked':''} onchange="dashPToggle('months',${m},this.checked)">${m}월</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>`;
   document.getElementById('dashPWeekBtn').textContent=dashPLabel('weeks');
   document.getElementById('dashPWeekPop').innerHTML=`
-    <div class="ym-chk-list">${weeks.map(w=>`<label class="ym-chk"><input type="checkbox" ${(DASH.weeks===null||DASH.weeks.has(w))?'checked':''} onchange="dashPToggle('weeks','${w}',this.checked)">${dashPWeekLabel(w)}</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>
-    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('weeks')">전체</button><button class="ym-mini-btn" onclick="dashPNone('weeks')">해제</button></div>`;
+    <div class="ym-mini-row"><button class="ym-mini-btn" onclick="dashPAll('weeks')">전체 선택</button><button class="ym-mini-btn" onclick="dashPNone('weeks')">전체 해제</button></div>
+    <div class="ym-chk-list">${weeks.map(w=>`<label class="ym-chk"><input type="checkbox" ${(DASH.weeks===null||DASH.weeks.has(w))?'checked':''} onchange="dashPToggle('weeks','${w}',this.checked)">${dashPWeekLabel(w)}</label>`).join('')||'<span style="font-size:11px;color:var(--text-3)">데이터 없음</span>'}</div>`;
   document.getElementById('dashPeriodSummary').textContent=dashPSummary();
+  // 방금 다시 그린 팝오버가 열려 있는 상태였다면(체크박스/버튼 클릭 직후) 위치를 다시 계산
+  const openDd=document.querySelector('.ym-dd.open');
+  if(openDd)_positionYmDdPop(openDd);
 }
 function dashPeriodMatch(d){
   if(!d.start)return false;
   const y=yearOf(d.start),m=monthOf(d.start),w=_mondayOf(d.start);
-  if(DASH.years!==null&&!DASH.years.has(y))return false;
-  if(DASH.months!==null&&!DASH.months.has(m))return false;
-  if(DASH.weeks!==null&&!DASH.weeks.has(w))return false;
+  if(_dashActive(DASH.years)&&!DASH.years.has(y))return false;
+  if(_dashActive(DASH.months)&&!DASH.months.has(m))return false;
+  if(_dashActive(DASH.weeks)&&!DASH.weeks.has(w))return false;
   return true;
 }
 function dashData(){return DATA.filter(d=>d.start&&dashPeriodMatch(d));}
 
+// 패널을 position:fixed로 띄우고 버튼 위치 기준으로 좌표를 직접 계산 — 카드/사이드바 등
+// 조상 요소의 overflow에 잘리지 않고 항상 뷰포트 기준으로 온전히 보이게 함.
+// 하단 근처에서 열 경우 위쪽으로 뒤집어서 열림.
+function _positionYmDdPop(ddEl){
+  const btn=ddEl.querySelector('.ym-dd-btn'),pop=ddEl.querySelector('.ym-dd-pop');
+  if(!btn||!pop)return;
+  const btnRect=btn.getBoundingClientRect();
+  const margin=6,vw=window.innerWidth,vh=window.innerHeight;
+  const popH=pop.offsetHeight,popW=pop.offsetWidth;
+  let top=btnRect.bottom+margin;
+  if(top+popH>vh-8&&btnRect.top-margin-popH>=8)top=btnRect.top-margin-popH; // 아래 공간이 부족하면 위로 뒤집음
+  top=Math.max(8,Math.min(top,vh-8-popH));
+  let left=btnRect.right-popW;
+  left=Math.max(8,Math.min(left,vw-8-popW));
+  pop.style.top=top+'px';
+  pop.style.left=left+'px';
+}
 function toggleYmDd(ddId,ev){
   ev.stopPropagation();
   const el=document.getElementById(ddId);
   const willOpen=!el.classList.contains('open');
   document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));
-  if(willOpen)el.classList.add('open');
+  if(willOpen){el.classList.add('open');_positionYmDdPop(el);}
 }
-document.addEventListener('click',()=>{document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));});
+function _repositionOpenYmDd(){
+  const openDd=document.querySelector('.ym-dd.open');
+  if(openDd)_positionYmDdPop(openDd);
+}
+window.addEventListener('resize',_repositionOpenYmDd);
+window.addEventListener('scroll',_repositionOpenYmDd,true);
+document.addEventListener('click',ev=>{
+  if(ev.target.closest('.ym-dd-pop'))return; // 패널 내부(체크박스/전체 선택·해제 버튼) 클릭은 닫지 않음
+  document.querySelectorAll('.ym-dd.open').forEach(x=>x.classList.remove('open'));
+});
 
 /* KPI (기간 필터 기준) */
 function renderKPI(){
