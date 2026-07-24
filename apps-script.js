@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'status-fix-2026-07-24-01';
+var SCRIPT_VERSION = 'row-group-2026-07-24-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -631,7 +631,8 @@ function parseMainSheet(sheet) {
       reels:       reels,
       sale:        salePrice,
       commission:  commission,
-      note:        note
+      note:        note,
+      rowCount:    members.length // 이 그룹(dealId)이 시트에서 실제로 몇 개 물리 행을 차지하는지 — 프론트가 "N행" 안내에 사용
     });
   }
 
@@ -737,9 +738,11 @@ function doPost(e) {
   }
 }
 
-// 새 공구건 등록 — 상품코드 개수만큼(1~5) 같은 dealId를 공유하는 행을 만듦.
-// 첫 행(코드순번=1)이 대표 행 — 실적/조건 값 전부 여기에만 기록. 나머지 행은 공통 필드(제품/채널/
-// 브랜드/벤더사)+해당 코드만 채우고 나머지는 비움.
+// 새 공구건 등록 — 상품코드 개수만큼(1~10) 같은 dealId를 공유하는 행을 만듦.
+// 시트를 직접 봐도 각 행이 완전한 정보를 담고 있도록, 공통 필드(브랜드/제품/벤더사/채널/플랫폼/
+// 마케팅링크/공구가/수수료율/연도/기간/진행상태/포맷/구성/운영정보/링크)는 모든 행에 동일하게
+// 기록함. 실적/조회 필드(판매수량·총매출·조회수·릴스)만 그룹당 하나여야 하므로 첫 행에만 기록.
+// 여러 행을 setValues로 한 번에 써서, 중간에 실패해도 일부 행만 생기는 일이 없게 함(원자적 삽입).
 function _addDeal(ss, data) {
   var sheet = ss.getSheetByName(MAIN_SHEET);
   if (!sheet) throw new Error('실적통합 시트를 찾을 수 없습니다.');
@@ -753,42 +756,53 @@ function _addDeal(ss, data) {
   var scheme = data.s || {};
   var startDate = data.start ? new Date(data.start) : null;
   var endDate   = data.end   ? new Date(data.end)   : startDate;
-  var mainRow = null;
+  var numCols = sheet.getMaxColumns();
 
+  // 공통 필드 — 그룹의 모든 행에 동일하게 기록
+  var common = {};
+  common[COL.brand]         = '미닉스';
+  common[COL.product]       = data.product || '';
+  common[COL.channel]       = data.ch || '';
+  common[COL.vendor]        = data.vendor || '';
+  common[COL.platform]      = data.platform || '';
+  common[COL.marketingLink] = data.marketingLink || '';
+  common[COL.salePrice]     = scheme.sale != null ? scheme.sale : '';
+  common[COL.commission]    = scheme.comm != null ? scheme.comm / 100 : '';
+  common[COL.year]          = startDate ? startDate.getFullYear() : '';
+  common[COL.startMD]       = startDate || '';
+  common[COL.endMD]         = endDate || '';
+  common[COL.status]        = data.status || '예정';
+  common[COL.format]        = data.format || '';
+  common[COL.composition]   = data.composition || '';
+  common[COL.option1]       = data.option1 || '';
+  common[COL.option2]       = data.option2 || '';
+  common[COL.firstCome]     = data.firstCome || '';
+  common[COL.targetQty]     = data.targetQty != null ? data.targetQty : '';
+  common[COL.extraQty]      = data.extraQty != null ? data.extraQty : '';
+  common[COL.note]          = data.note || '';
+  common[COL.link]          = data.link || '';
+
+  var rows = [];
   for (var i = 0; i < codes.length; i++) {
     var row = [];
-    row[COL.brand]   = '미닉스';
-    row[COL.product] = data.product || '';
-    row[COL.channel] = data.ch || '';
-    row[COL.vendor]  = data.vendor || '';
+    for (var k in common) row[k] = common[k];
     row[COL.code]    = codes[i];
     row[COL.dealId]  = dealId;
     row[COL.codeSeq] = i + 1;
     if (i === 0) {
-      row[COL.platform]   = data.platform || '';
-      row[COL.salePrice]  = scheme.sale != null ? scheme.sale : '';
-      row[COL.commission] = scheme.comm != null ? scheme.comm / 100 : '';
-      row[COL.year]       = startDate ? startDate.getFullYear() : '';
-      row[COL.startMD]    = startDate || '';
-      row[COL.endMD]      = endDate   || '';
-      row[COL.status]     = data.status || '예정';
-      row[COL.format]     = data.format || '';
-      row[COL.targetQty]  = data.targetQty != null ? data.targetQty : '';
-      row[COL.composition] = data.composition || '';
-      row[COL.link]        = data.link || '';
-      row[COL.marketingLink] = data.marketingLink || '';
-      row[COL.option1]     = data.option1 || '';
-      row[COL.option2]     = data.option2 || '';
-      row[COL.firstCome]   = data.firstCome || '';
-      row[COL.extraQty]    = data.extraQty != null ? data.extraQty : '';
-      row[COL.note]        = data.note || '';
+      // 실적/조회 필드는 대표 행(첫 행)에만 — 등록 시점에 값이 있는 경우에만 기록(보통은 비어 있음)
+      if (data.qty != null) row[COL.qty] = data.qty;
+      if (data.revenue != null) row[COL.revenue] = data.revenue;
+      if (data.views != null) row[COL.views] = data.views;
     }
-    for (var c = 0; c < row.length; c++) if (row[c] === undefined) row[c] = '';
-    sheet.appendRow(row);
-    if (i === 0) mainRow = sheet.getLastRow();
+    for (var c = 0; c < numCols; c++) if (row[c] === undefined) row[c] = '';
+    rows.push(row);
   }
 
-  return _json({ success: true, mainRow: mainRow, dealId: dealId });
+  var startRow = sheet.getLastRow() + 1;
+  sheet.getRange(startRow, 1, rows.length, numCols).setValues(rows);
+
+  return _json({ success: true, mainRow: startRow, dealId: dealId });
 }
 
 // 공구건 상세 모달 저장 — dealId 그룹 전체에 반영.
