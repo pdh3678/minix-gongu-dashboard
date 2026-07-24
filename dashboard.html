@@ -982,7 +982,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='dealid-collision-fix-2026-07-24-01';
+const DASHBOARD_VERSION='auth-domain-fix-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -3070,6 +3070,11 @@ async function _gasFetch(url,opts,_authRetried){
   }
   if(lastErr)throw lastErr;
   const j=await res.json();
+  if(j&&j.error==='AUTH_REQUIRED'){
+    // 사유를 항상 콘솔에 남김(재시도 여부와 무관) — 다음에 비슷한 인증 문제가 생기면 바로 원인 확인 가능
+    const reasonLabel={missing:'토큰 없음',expired:'토큰 만료',domain:'도메인 불일치(허용 도메인 아님)',invalid:'토큰 형식 오류/필수 클레임 없음'}[j.reason]||'사유 불명('+j.reason+')';
+    console.warn('[인증 거절] AUTH_REQUIRED — 사유: '+reasonLabel+' (reason="'+j.reason+'")');
+  }
   if(j&&j.error==='AUTH_REQUIRED'&&!_authRetried){
     if(j.reason==='domain'){
       // 도메인이 안 맞는 계정은 재발급해도 절대 안 풀림 — 조용한 갱신 시도 없이 바로 재로그인 화면
@@ -3157,7 +3162,14 @@ function handleGoogleSignIn(response){
   let payload;
   try{payload=_decodeJwt(response.credential);}catch(e){_showLoginErr('로그인 처리 중 오류가 발생했습니다.');return;}
   const email=payload.email||'';
-  if(!email.endsWith('@'+ALLOWED_DOMAIN)){
+  // 서버(_authFailureReason)와 동일한 규칙: hd 클레임(호스팅 도메인)이 있으면 우선 신뢰하고,
+  // 없으면 email의 @ 뒤 문자열로 판정. 대소문자/공백 차이로 정상 계정이 튕기지 않게 정규화 후 비교.
+  const emailNorm=email.trim().toLowerCase();
+  const allowedDomainNorm=ALLOWED_DOMAIN.trim().toLowerCase();
+  const hd=payload.hd?String(payload.hd).trim().toLowerCase():'';
+  const domainOk=hd?(hd===allowedDomainNorm):emailNorm.endsWith('@'+allowedDomainNorm);
+  if(!domainOk){
+    console.warn('[로그인 거절] 클라이언트 도메인 검증 실패 — email='+email+', hd='+(hd||'(없음)')+', 허용 도메인='+ALLOWED_DOMAIN);
     _showLoginErr(`접속 권한이 없습니다. (${email})\n앳홈 계정(@${ALLOWED_DOMAIN})으로만 로그인할 수 있습니다.`);
     return;
   }
@@ -3220,6 +3232,9 @@ async function _sendPresenceHeartbeat(){
     if(j&&j.success&&Array.isArray(j.users)){
       _presenceUsers=j.users;
       renderPresencePanel();
+    }else if(j&&j.error){
+      // AUTH_REQUIRED 사유는 _gasFetch가 이미 콘솔에 남김 — 여기서는 하트비트가 실제로 반영 안 됐음만 표시
+      console.warn('[하트비트] presence 응답 실패로 접속자 목록에 반영되지 않음:',j.error);
     }
   }catch(e){
     // 네트워크 일시 오류는 조용히 무시 — 30초 후 다음 하트비트에서 자연 복구

@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'dealid-collision-fix-2026-07-24-01';
+var SCRIPT_VERSION = 'auth-domain-fix-2026-07-24-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -118,12 +118,23 @@ function _decodeIdTokenPayload(idToken) {
 
 // idToken 검증 실패 이유를 구분해서 반환 — 클라이언트가 "재발급하면 풀리는 경우"(만료)와
 // "재발급해도 절대 안 풀리는 경우"(도메인 불일치)를 구분해 불필요한 재로그인 시도를 안 하게 함.
-// null(유효함) / 'expired'(토큰 만료) / 'domain'(허용 도메인 아님) / 'invalid'(형식 오류·토큰 없음)
+// null(유효함) / 'missing'(토큰 자체가 없음) / 'expired'(토큰 만료) / 'domain'(허용 도메인 아님) /
+// 'invalid'(형식 오류·필수 클레임 없음 등 그 외)
+//
+// 도메인 판정: Google Workspace 계정이면 idToken에 hd 클레임(호스팅 도메인)이 실려오는 게 보통이라
+// 그걸 우선 신뢰하고, hd가 없는 계정/조직 설정도 있으므로 그럴 땐 email의 @ 뒤 문자열로 판정함.
+// 대소문자/앞뒤 공백 차이로 정상 계정이 튕기지 않도록 양쪽 다 trim+소문자 비교.
 function _authFailureReason(idToken) {
+  if (!idToken || typeof idToken !== 'string') return 'missing';
   var payload = _decodeIdTokenPayload(idToken);
   if (!payload) return 'invalid';
   if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return 'expired';
-  if (!(payload.email || '').endsWith('@' + ALLOWED_DOMAIN)) return 'domain';
+  var email = String(payload.email || '').trim().toLowerCase();
+  if (!email) return 'invalid';
+  var allowedDomain = ALLOWED_DOMAIN.trim().toLowerCase();
+  var hd = payload.hd ? String(payload.hd).trim().toLowerCase() : '';
+  var domainOk = hd ? (hd === allowedDomain) : email.endsWith('@' + allowedDomain);
+  if (!domainOk) return 'domain';
   return null;
 }
 
@@ -133,12 +144,17 @@ function _verifyAuth(idToken) {
 }
 
 // idToken이 유효하고(_verifyAuth와 동일 검증) 그 이메일이 ADMIN_EMAILS에 있을 때만 true.
-// 시트 연결정보/원시 데이터를 노출하는 디버그 엔드포인트(?debug=...)를 막는 용도.
+// 시트 연결정보/원시 데이터를 노출하는 디버그 엔드포인트(?debug=...)를 막는 용도 — 그 외 일반
+// 데이터 조회/등록/수정 기능은 ADMIN_EMAILS와 무관하게 도메인만 맞으면 전부 허용됨(_verifyAuth 참고).
 function _isAdmin(idToken) {
   var payload = _decodeIdTokenPayload(idToken);
   if (!payload) return false;
   if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return false;
-  return ADMIN_EMAILS.indexOf(payload.email || '') >= 0;
+  var email = String(payload.email || '').trim().toLowerCase();
+  for (var i = 0; i < ADMIN_EMAILS.length; i++) {
+    if (ADMIN_EMAILS[i].trim().toLowerCase() === email) return true;
+  }
+  return false;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
