@@ -609,17 +609,21 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <input class="f-inp" type="text" id="mChannelId" placeholder="입력 시 링크 자동 생성" oninput="mOnChannelIdChange()">
           </div>
         </div>
-        <div class="fg fg-2" style="margin-top:10px">
+        <div class="fg fg-3" style="margin-top:10px">
           <div class="f-grp">
             <label class="f-lbl">벤더사</label>
             <input class="f-inp" type="text" id="mVendor">
           </div>
           <div class="f-grp">
-            <label class="f-lbl">링크</label>
+            <label class="f-lbl">인플루언서 링크</label>
             <div style="display:flex;gap:6px">
               <input class="f-inp" type="url" id="mLinkInput" placeholder="https://..." style="flex:1">
               <button type="button" class="btn-cancel" style="padding:0 14px;font-size:12px;white-space:nowrap" onclick="openModalLink()">열기</button>
             </div>
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">마케팅 링크</label>
+            <input class="f-inp" type="url" id="mMarketingLink" placeholder="선택 입력">
           </div>
         </div>
 
@@ -642,7 +646,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="f-sec">상품 정보</div>
         <div class="fg fg-4">
           <div class="f-grp full">
-            <label class="f-lbl">상품코드 <span class="f-badge">최대 5개</span></label>
+            <label class="f-lbl">상품코드 <span class="f-badge">최대 10개</span></label>
             <div id="mCodeList"></div>
             <button type="button" class="btn-cancel" id="mCodeAddBtn" style="font-size:12px" onclick="addCodeRow()">+ 코드 추가</button>
           </div>
@@ -671,6 +675,32 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           </div>
         </div>
 
+        <div class="f-sec">운영 정보</div>
+        <div class="fg fg-3">
+          <div class="f-grp">
+            <label class="f-lbl">추가옵션1</label>
+            <input class="f-inp" type="text" id="mOption1" placeholder="예: 오픈시간 : 10:00 AM">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">추가옵션2</label>
+            <input class="f-inp" type="text" id="mOption2" placeholder="예: 오픈시간 : 10:00 AM">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">선착순</label>
+            <input class="f-inp" type="text" id="mFirstCome" placeholder="예: 하드락필터 300명">
+          </div>
+        </div>
+        <div class="fg fg-2" style="margin-top:10px">
+          <div class="f-grp">
+            <label class="f-lbl">추가물량 (개)</label>
+            <input class="f-inp" type="number" id="mExtraQty" placeholder="0">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">비고</label>
+            <input class="f-inp" type="text" id="mNoteInput" placeholder="예: NPAY 2만원 전원 증정">
+          </div>
+        </div>
+
         <div class="f-sec">실적</div>
         <div class="fg fg-2">
           <div class="f-grp">
@@ -682,7 +712,6 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <input class="f-inp" type="number" id="mQtyInput" placeholder="0">
           </div>
         </div>
-        <div class="sch-note" id="mNote"></div>
 
         <button type="button" class="m-delete-btn" onclick="confirmDeleteDeal()">🗑 이 공구건 삭제</button>
       </div>
@@ -809,14 +838,18 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <input class="f-inp" type="text" id="fChannelId" placeholder="플랫폼 먼저 선택" oninput="onChannelIdChange()">
       </div>
     </div>
-    <div class="fg fg-2" style="margin-top:10px">
+    <div class="fg fg-3" style="margin-top:10px">
       <div class="f-grp">
         <label class="f-lbl">벤더사</label>
         <input class="f-inp" type="text" id="fVendor" placeholder="벤더사명">
       </div>
       <div class="f-grp">
-        <label class="f-lbl">링크 <span class="f-badge">자동</span></label>
+        <label class="f-lbl">인플루언서 링크 <span class="f-badge">자동</span></label>
         <input class="f-inp" type="url" id="fLink" placeholder="ID 입력 시 자동 생성 (직접 수정 가능)">
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl">마케팅 링크</label>
+        <input class="f-inp" type="url" id="fMarketingLink" placeholder="선택 입력">
       </div>
     </div>
 
@@ -839,7 +872,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     <div class="f-sec">상품 정보</div>
     <div class="fg fg-4">
       <div class="f-grp full">
-        <label class="f-lbl">상품코드 <span class="f-badge">최대 5개</span></label>
+        <label class="f-lbl">상품코드 <span class="f-badge">최대 10개</span></label>
         <div id="fCodeList"></div>
         <button type="button" class="btn-cancel" id="fCodeAddBtn" style="font-size:12px" onclick="addFormCodeRow()">+ 코드 추가</button>
       </div>
@@ -869,6 +902,32 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div class="f-grp">
         <label class="f-lbl">목표수량 (개)</label>
         <input class="f-inp" type="number" id="fTargetQty" placeholder="0">
+      </div>
+    </div>
+
+    <div class="f-sec">운영 정보</div>
+    <div class="fg fg-3">
+      <div class="f-grp">
+        <label class="f-lbl">추가옵션1</label>
+        <input class="f-inp" type="text" id="fOption1" placeholder="예: 오픈시간 : 10:00 AM">
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl">추가옵션2</label>
+        <input class="f-inp" type="text" id="fOption2" placeholder="예: 오픈시간 : 10:00 AM">
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl">선착순</label>
+        <input class="f-inp" type="text" id="fFirstCome" placeholder="예: 하드락필터 300명">
+      </div>
+    </div>
+    <div class="fg fg-2" style="margin-top:10px">
+      <div class="f-grp">
+        <label class="f-lbl">추가물량 (개)</label>
+        <input class="f-inp" type="number" id="fExtraQty" placeholder="0">
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl">비고</label>
+        <input class="f-inp" type="text" id="fNote" placeholder="예: NPAY 2만원 전원 증정">
       </div>
     </div>
 
@@ -921,7 +980,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='new-deal-models-2026-07-24-01';
+const DASHBOARD_VERSION='col-remap-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -1345,7 +1404,8 @@ const SALES_COLS=[
   {key:'views',   lb:'조회수',     num:true},
   {key:'code',    lb:'상품코드'},
   {key:'format',  lb:'포맷'},
-  {key:'naverLink',lb:'링크'}
+  {key:'naverLink',lb:'링크'},
+  {key:'note',    lb:'비고'}
 ];
 const SALES_ACC={
   product:d=>d.product||'', vendor:d=>d.vendor||'', channel:d=>d.ch||'',
@@ -1356,7 +1416,8 @@ const SALES_ACC={
   comm:d=>d.s&&d.s.comm!=null?d.s.comm:-Infinity, year:d=>yearOf(d.start)||0,
   period:d=>d.start||'', status:d=>d.status||'', format:d=>d.format||'',
   views:d=>d.views!=null?d.views:-Infinity,
-  code:d=>(d.codes&&d.codes[0])||'', naverLink:d=>(d.codes&&d.codes[0])||''
+  code:d=>(d.codes&&d.codes[0])||'', naverLink:d=>(d.codes&&d.codes[0])||'',
+  note:d=>(d.s&&d.s.note)||''
 };
 function colClass(c){return`${c.num?' num-col':''}${c.sticky===1?' sticky-col1':''}${c.sticky===2?' sticky-col2':''}`;}
 
@@ -1422,7 +1483,8 @@ const SALES_CELL={
   naverLink:d=>{
     const c=(d.codes||[])[0];
     return naverProductLink(c)?`<a href="${naverProductLink(c)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="pcode-link">🔗 열기</a>`:'<span style="color:var(--text-3)">—</span>';
-  }
+  },
+  note:d=>(d.s&&d.s.note)?d.s.note:'<span style="color:var(--text-3)">—</span>'
 };
 
 function toggleCodeDd(el){
@@ -1800,7 +1862,7 @@ function renderCalPromoRow(events,monthStart,monthEnd,gridDays,colsTpl){
 
 /* Scheme modal */
 let _modalDealId=null,_modalChannel='',_modalReels=[],_modalHadReels=false,_activeReelIdx=null; // _modalDealId: dealId(UUID 문자열) — 물리 행 번호 아님
-let _modalCodes=['']; // 상품코드 목록(최대 5개, 세로 리스트)
+let _modalCodes=['']; // 상품코드 목록(최대 10개, 세로 리스트)
 
 // 저장된 제품명(모델별로 구분 안 된 경우 포함)에서 품목군/제품 드롭다운 값을 역으로 유추
 // (기존 데이터는 "더 플렌더 PRO"처럼 공백이 있고, 새 폼은 "더플렌더PRO"처럼 붙여 쓰므로 normP로 정규화해서 비교)
@@ -1853,6 +1915,7 @@ function _openRegisteredModal(d){
   mOnPlatformChange(); // 라벨/placeholder만 갱신(채널ID가 비어있어 링크는 안 건드림)
   document.getElementById('mVendor').value=d.vendor||'';
   document.getElementById('mLinkInput').value=d.link||'';
+  document.getElementById('mMarketingLink').value=d.marketingLink||'';
 
   // 일정
   document.getElementById('mStart').value=d.start||'';
@@ -1861,7 +1924,7 @@ function _openRegisteredModal(d){
 
   // 상품 정보
   const s=d.s||{};
-  _modalCodes=(d.codes&&d.codes.length?d.codes.slice(0,5):['']);
+  _modalCodes=(d.codes&&d.codes.length?d.codes.slice(0,10):['']);
   renderCodeList();
   document.getElementById('mSaleInput').value=s.sale!=null?s.sale:'';
   document.getElementById('mCommInput').value=s.comm!=null?s.comm:'';
@@ -1869,10 +1932,16 @@ function _openRegisteredModal(d){
   document.getElementById('mComposition').value=d.composition||'';
   document.getElementById('mTargetQty').value=d.targetQty!=null?d.targetQty:'';
 
+  // 운영 정보
+  document.getElementById('mOption1').value=d.option1||'';
+  document.getElementById('mOption2').value=d.option2||'';
+  document.getElementById('mFirstCome').value=d.firstCome||'';
+  document.getElementById('mExtraQty').value=d.extraQty!=null?d.extraQty:'';
+  document.getElementById('mNoteInput').value=s.note||'';
+
   // 실적
   document.getElementById('mQtyInput').value=d.qty!=null?d.qty:'';
 
-  document.getElementById('mNote').textContent='📋 '+(s.note||'비고 없음');
   renderReelList();
   document.getElementById('schOv').classList.add('open');
 }
@@ -2098,6 +2167,7 @@ function _collectModalChanges(d){
   const platform=document.getElementById('mPlatform').value;
   const vendor=document.getElementById('mVendor').value.trim();
   const link=document.getElementById('mLinkInput').value.trim();
+  const marketingLink=document.getElementById('mMarketingLink').value.trim();
   const start=document.getElementById('mStart').value;
   const end=document.getElementById('mEnd').value;
   const saleVal=document.getElementById('mSaleInput').value;
@@ -2106,19 +2176,31 @@ function _collectModalChanges(d){
   const composition=document.getElementById('mComposition').value.trim();
   const targetQtyVal=document.getElementById('mTargetQty').value;
   const qtyVal=document.getElementById('mQtyInput').value;
+  const option1=document.getElementById('mOption1').value.trim();
+  const option2=document.getElementById('mOption2').value.trim();
+  const firstCome=document.getElementById('mFirstCome').value.trim();
+  const extraQtyVal=document.getElementById('mExtraQty').value;
+  const note=document.getElementById('mNoteInput').value.trim();
 
   const sale=saleVal!==''?Number(saleVal):null;
   const comm=commVal!==''?Number(commVal):null;
   const targetQty=targetQtyVal!==''?Number(targetQtyVal):null;
   const qty=qtyVal!==''?Number(qtyVal):null;
+  const extraQty=extraQtyVal!==''?Number(extraQtyVal):null;
 
   const s=d.s||{};
   const cur={
     product:d.product||'',channel:d.ch||'',platform:d.platform||'',vendor:d.vendor||'',link:d.link||'',
+    marketingLink:d.marketingLink||'',
     start:d.start||'',end:d.end||'',sale:s.sale!=null?s.sale:null,comm:s.comm!=null?s.comm:null,
-    format:d.format||'',composition:d.composition||'',targetQty:d.targetQty!=null?d.targetQty:null,qty:d.qty!=null?d.qty:null
+    format:d.format||'',composition:d.composition||'',targetQty:d.targetQty!=null?d.targetQty:null,qty:d.qty!=null?d.qty:null,
+    option1:d.option1||'',option2:d.option2||'',firstCome:d.firstCome||'',
+    extraQty:d.extraQty!=null?d.extraQty:null,note:s.note!=null?s.note:''
   };
-  const next={product,channel:influencer,platform,vendor,link,start,end,sale,comm,format,composition,targetQty,qty};
+  const next={
+    product,channel:influencer,platform,vendor,link,marketingLink,start,end,sale,comm,format,composition,targetQty,qty,
+    option1,option2,firstCome,extraQty,note
+  };
 
   const changes={};
   for(const k in next){if(next[k]!==cur[k])changes[k]=next[k];}
@@ -2238,7 +2320,7 @@ function openModalLink(){
   window.open(url,'_blank','noopener');
 }
 
-// 모달 상품코드 세로 리스트 (최대 5개) — _modalReels/renderReelList 패턴을 그대로 본뜸
+// 모달 상품코드 세로 리스트 (최대 10개) — _modalReels/renderReelList 패턴을 그대로 본뜸
 function renderCodeList(){
   const host=document.getElementById('mCodeList');
   host.innerHTML=_modalCodes.map((c,i)=>`
@@ -2248,11 +2330,11 @@ function renderCodeList(){
       ${_modalCodes.length>1?`<button type="button" class="btn-cancel" onclick="removeCodeRow(${i})">삭제</button>`:''}
     </div>`).join('');
   const addBtn=document.getElementById('mCodeAddBtn');
-  if(addBtn)addBtn.disabled=_modalCodes.length>=5;
+  if(addBtn)addBtn.disabled=_modalCodes.length>=10;
 }
 function updateCodeVal(i,val){_modalCodes[i]=val;}
 function addCodeRow(){
-  if(_modalCodes.length>=5)return;
+  if(_modalCodes.length>=10)return;
   _modalCodes.push('');
   renderCodeList();
 }
@@ -2380,10 +2462,13 @@ function adaptGAS(j){
     id:p.id!=null?p.id:i+1,dealId:p.dealId||'',brand:p.brand||'',product:p.product||'',ch:p.channel||p.influencer||'',
     influencer:p.influencer||'',vendor:p.vendor||'',platform:p.platform||'',format:p.format||'',
     chId:p.chId||'',link:p.link||(p.chId?buildChannelLink(p.platform,p.chId):''),
+    marketingLink:p.marketingLink||'',
     profileLink:p.profileLink||'',
     start:normDate(p.start),end:normDate(p.end),
     composition:p.composition||'',
     targetQty:p.targetQty!=null?Number(p.targetQty):null,
+    option1:p.option1||'',option2:p.option2||'',firstCome:p.firstCome||'',
+    extraQty:p.extraQty!=null?Number(p.extraQty):null,
     status:p.status||'예정',
     views:p.views!=null?Number(p.views):null,qty:p.qty!=null?Number(p.qty):null,rev:p.revenue!=null?Number(p.revenue):null,
     codes:Array.isArray(p.codes)?p.codes:[],reels:Array.isArray(p.reels)?p.reels:[],
@@ -2523,11 +2608,11 @@ function renderFormCodeList(){
       ${_formCodes.length>1?`<button type="button" class="btn-cancel" onclick="removeFormCodeRow(${i})">삭제</button>`:''}
     </div>`).join('');
   const addBtn=document.getElementById('fCodeAddBtn');
-  if(addBtn)addBtn.disabled=_formCodes.length>=5;
+  if(addBtn)addBtn.disabled=_formCodes.length>=10;
 }
 function updateFormCodeVal(i,val){_formCodes[i]=val;}
 function addFormCodeRow(){
-  if(_formCodes.length>=5)return;
+  if(_formCodes.length>=10)return;
   _formCodes.push('');
   renderFormCodeList();
 }
@@ -2641,10 +2726,16 @@ function saveDeal(){
     influencer,platform,chId:channelId,
     vendor:document.getElementById('fVendor').value.trim(),
     link:document.getElementById('fLink').value.trim()||buildChannelLink(platform,channelId),
+    marketingLink:document.getElementById('fMarketingLink').value.trim(),
     start,end,
     format:document.getElementById('fFormat').value,
     composition:document.getElementById('fComposition').value.trim(),
     targetQty:document.getElementById('fTargetQty').value?Number(document.getElementById('fTargetQty').value):null,
+    option1:document.getElementById('fOption1').value.trim(),
+    option2:document.getElementById('fOption2').value.trim(),
+    firstCome:document.getElementById('fFirstCome').value.trim(),
+    extraQty:document.getElementById('fExtraQty').value?Number(document.getElementById('fExtraQty').value):null,
+    note:document.getElementById('fNote').value.trim(),
     status:_calcStatus(start,end),views:null,qty:null,rev:null,
     codes:_formCodes.map(c=>c.trim()).filter(c=>c),
     s:{retail:null,sale:Number(document.getElementById('fSalePrice').value)||null,comm:Number(document.getElementById('fCommission').value)||null,note:''}

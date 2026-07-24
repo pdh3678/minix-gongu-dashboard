@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'presence-2026-07-24-01';
+var SCRIPT_VERSION = 'col-remap-2026-07-24-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -26,44 +26,53 @@ var MAIN_SHEET = '실적통합';
 // 데이터 시작 행 (2행이 헤더 → 3행부터 데이터, 0-based index = 2)
 var DATA_START_ROW = 2;
 
-// 열 인덱스 (0-based: A=0, B=1, C=2 ...) — 새 스프레드시트 "실적통합" 탭 실제 헤더 기준으로 확정됨
+// 열 인덱스 (0-based: A=0, B=1, C=2 ...) — 실적통합 탭에 마케팅링크(G)/상품코드(H)가 새로 삽입되면서
+// 전체 재확정됨(2026-07-24). 추측이 아니라 실제 헤더 행을 CSV로 내려받아 한 칸씩 확인한 값.
+// G/H 삽입으로 기존 G(공동구매가)부터는 전부 +2, 옛 AJ열(상품코드)은 폐기되고 H로 대체되면서
+// 그 뒤(link~codeSeq)는 +1만 밀림 — 단순 "전부 +2"가 아니므로 다음에 또 열이 바뀌면 반드시
+// 실제 헤더를 다시 읽고(예: CSV 내보내기) 재확정할 것.
 var COL = {
-  brand:      1,   // B: 브랜드
-  product:    2,   // C: 제품명
-  vendor:     3,   // D: 소속(벤더사)
-  channel:    4,   // E: 채널명(인플루언서)
-  platform:   5,   // F: 플랫폼
-  salePrice:  6,   // G: 공동구매가
-  qty:        7,   // H: 판매수량
-  revenue:    8,   // I: 총매출
-  commission: 9,   // J: 수수료율 (0.35 = 35% 형태의 소수로 저장됨)
-  year:       10,  // K: 연도
-  startMD:    11,  // L: 시작일
-  endMD:      12,  // M: 종료일
-  status:     13,  // N: 진행상태
-  format:     14,  // O: 포맷
-  composition: 15, // P: 구성 (같은 헤더가 AL에도 있지만 그건 무시 — 여기가 실제 사용 열)
-  // Q:추가옵션1 R:추가옵션2 S:선착순 U:추가물량 V:비고 — 대시보드가 다루지 않는 필드, 손대지 않음
-  targetQty:  19,  // T: "목 표" (헤더에 공백 포함) — AK열 "목표수량"은 중복이라 무시
-  // W~AG(11칸)이 "조회수" 병합 헤더: W=합계, X~AG=릴스별 슬롯(REEL_COL_START/REEL_SLOT_COUNT 참고)
-  views:      22,  // W: 조회수 합계 (이미 "만" 단위로 저장됨, 예: 3.4 = 3.4만회)
-  // AH~AI: "성과 (대표 게시물 기준)" — 용도 불명, 대시보드가 읽지도 쓰지도 않음(그대로 둠)
-  code:       35,  // AJ: 상품코드
-  // AK:목표수량(중복,무시) AL:구성(중복,무시)
-  link:       38,  // AM: 채널 링크
-  thumbs:     39,  // AN: 릴스 썸네일(JSON)
-  source:     40,  // AO: 출처(레거시, 브랜드 시트 없어져서 이제 무의미 — 절대 안 읽음)
-  dealId:     41,  // AP: 공구건 유일 식별자(UUID) — 조회/저장/삭제는 전부 이 값 기준
-  codeSeq:    42,  // AQ: 코드순번(1~5) — 같은 dealId를 공유하는 행들 중 순서/대표행 구분용. 1이 대표 행.
+  brand:        1,   // B: 브랜드
+  product:      2,   // C: 제품명
+  vendor:       3,   // D: 소속(벤더사)
+  channel:      4,   // E: 채널명(인플루언서)
+  platform:     5,   // F: 플랫폼
+  marketingLink: 6,  // G: 마케팅 링크 (신규)
+  code:         7,   // H: 상품코드 (신규 — 옛 AJ열은 폐기 예정, 더 이상 참조하지 않음)
+  salePrice:    8,   // I: 공동구매가
+  qty:          9,   // J: 판매수량
+  revenue:      10,  // K: 총매출
+  commission:   11,  // L: 수수료율 (0.35 = 35% 형태의 소수로 저장됨)
+  year:         12,  // M: 연도
+  startMD:      13,  // N: 시작일
+  endMD:        14,  // O: 종료일
+  status:       15,  // P: 진행상태
+  format:       16,  // Q: 포맷
+  composition:  17,  // R: 구성 (같은 헤더가 AM에도 있지만 그건 레거시 — 여기가 실제 사용 열)
+  option1:      18,  // S: 추가옵션1 (신규)
+  option2:      19,  // T: 추가옵션2 (신규)
+  firstCome:    20,  // U: 선착순 (신규)
+  targetQty:    21,  // V: 목표수량 (AL열 "목표수량"은 레거시 중복이라 무시)
+  extraQty:     22,  // W: 추가물량 (신규)
+  note:         23,  // X: 비고 (신규)
+  // Y~AI(11칸)이 "조회수" 병합 헤더: Y=합계, Z~AI=릴스별 슬롯(REEL_COL_START/REEL_SLOT_COUNT 참고)
+  views:        24,  // Y: 조회수 합계 (이미 "만" 단위로 저장됨, 예: 3.4 = 3.4만회)
+  // AJ~AK: "성과 (대표 게시물 기준)" — 용도 불명, 대시보드가 읽지도 쓰지도 않음(그대로 둠)
+  // AL:목표수량(레거시 중복,무시) AM:구성(레거시 중복,무시)
+  link:         39,  // AN: 채널 링크(인플루언서 링크)
+  thumbs:       40,  // AO: 릴스 썸네일(JSON)
+  source:       41,  // AP: 출처(레거시, 브랜드 시트 없어져서 이제 무의미 — 절대 안 읽음)
+  dealId:       42,  // AQ: 공구건 유일 식별자(UUID) — 조회/저장/삭제는 전부 이 값 기준
+  codeSeq:      43,  // AR: 코드순번(1~10) — 같은 dealId를 공유하는 행들 중 순서/대표행 구분용. 1이 대표 행.
 };
 
-// 릴스별 조회수/링크를 담는 열 범위: X~AG (10칸). 셀 값=조회수(만 단위), 링크=해당 셀의 하이퍼링크.
-// W열(조회수 합계)은 이 10개 칸의 합으로 대시보드가 직접 계산해 덮어씀
-var REEL_COL_START = 24; // X (1-based)
+// 릴스별 조회수/링크를 담는 열 범위: Z~AI (10칸). 셀 값=조회수(만 단위), 링크=해당 셀의 하이퍼링크.
+// Y열(조회수 합계)은 이 10개 칸의 합으로 대시보드가 직접 계산해 덮어씀
+var REEL_COL_START = 26; // Z (1-based)
 var REEL_SLOT_COUNT = 10;
 
-// 상품코드 최대 개수(그룹당 최대 행 수)
-var MAX_CODES = 5;
+// 상품코드 최대 개수(그룹당 최대 행 수) — H열 하나만 사용, 옛 AJ열은 참조하지 않음
+var MAX_CODES = 10;
 
 // 접근 제어
 var REQUIRE_AUTH   = true;
@@ -193,6 +202,15 @@ function doGet(e) {
 
       payload = { purchases: result.deals, calendarEvents: calendarEvents, updatedAt: new Date().toISOString(), version: SCRIPT_VERSION };
       _cachePutJSON(cache, cacheKey, payload, DASHBOARD_CACHE_TTL_SEC);
+
+      // 열 재배치 검증용 — 첫 행이 실제로 올바른 열에서 읽혔는지 확인(공구가/매출/시작일/조회수/
+      // 상품코드/비고). 값이 시트와 다르면 COL 매핑이 어긋난 것이니 바로 확인할 것.
+      if (result.deals.length) {
+        var d0 = result.deals[0];
+        Logger.log('[열 매핑 검증] 첫 행 — product=' + d0.product + ', salePrice=' + d0.sale +
+          ', revenue=' + d0.revenue + ', startMD=' + d0.start + ', views=' + d0.views +
+          ', code=' + JSON.stringify(d0.codes) + ', note=' + d0.note);
+      }
     }
 
     payload.cached = fromCache;
@@ -481,6 +499,12 @@ function parseMainSheet(sheet) {
     var statusRaw  = String(pRow[COL.status] || '').trim();
     var format     = String(pRow[COL.format] || '').trim();
     var targetQty  = _numOrNull(pRow[COL.targetQty]);
+    var marketingLink = String(pRow[COL.marketingLink] || '').trim();
+    var option1    = String(pRow[COL.option1]   || '').trim();
+    var option2    = String(pRow[COL.option2]   || '').trim();
+    var firstCome  = String(pRow[COL.firstCome] || '').trim();
+    var extraQty   = _numOrNull(pRow[COL.extraQty]);
+    var note       = String(pRow[COL.note]      || '').trim();
 
     var views = _numOrNull(pRow[COL.views]);
     if (views === 0) views = null;
@@ -540,10 +564,15 @@ function parseMainSheet(sheet) {
       codes:       codes,
       composition: String(pRow[COL.composition] || '').trim(),
       link:        String(pRow[COL.link] || '').trim(),
+      marketingLink: marketingLink,
+      option1:     option1,
+      option2:     option2,
+      firstCome:   firstCome,
+      extraQty:    extraQty,
       reels:       reels,
       sale:        salePrice,
       commission:  commission,
-      note:        ''
+      note:        note
     });
   }
 
@@ -611,7 +640,9 @@ var GROUP_MIRROR_COLS = { brand: COL.brand, product: COL.product, channel: COL.c
 // 대표 행(코드순번=1)에만 반영하는 필드 — 실적/조건 값은 그룹당 하나만 존재해야 하므로 중복 저장 금지
 var PRIMARY_ONLY_COLS = {
   platform: COL.platform, link: COL.link, format: COL.format, composition: COL.composition,
-  targetQty: COL.targetQty
+  targetQty: COL.targetQty, marketingLink: COL.marketingLink,
+  option1: COL.option1, option2: COL.option2, firstCome: COL.firstCome,
+  extraQty: COL.extraQty, note: COL.note
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -686,6 +717,12 @@ function _addDeal(ss, data) {
       row[COL.targetQty]  = data.targetQty != null ? data.targetQty : '';
       row[COL.composition] = data.composition || '';
       row[COL.link]        = data.link || '';
+      row[COL.marketingLink] = data.marketingLink || '';
+      row[COL.option1]     = data.option1 || '';
+      row[COL.option2]     = data.option2 || '';
+      row[COL.firstCome]   = data.firstCome || '';
+      row[COL.extraQty]    = data.extraQty != null ? data.extraQty : '';
+      row[COL.note]        = data.note || '';
     }
     for (var c = 0; c < row.length; c++) if (row[c] === undefined) row[c] = '';
     sheet.appendRow(row);
