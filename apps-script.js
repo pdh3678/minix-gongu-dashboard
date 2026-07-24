@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'row-group-2026-07-24-01';
+var SCRIPT_VERSION = 'dealid-collision-fix-2026-07-24-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -495,12 +495,18 @@ function parseMainSheet(sheet) {
         consistent.push(mem[mi]);
       } else {
         var splitKey = '__SPLIT' + mem[mi].rowIdx;
+        // 분리된 행은 원래 dealId(다른 행과 겹쳐 있던 값)를 그대로 들고 나가면 안 됨 — 그 값을
+        // 그대로 반환하면 여러 공구건이 똑같은 dealId를 갖게 돼서, 캘린더/표에서 그중 아무 칩이나
+        // 클릭해도 항상 그 dealId로 배열에서 "처음 발견되는" 건(대개 시트 첫 행)의 모달이 열리는
+        // 버그가 생김. 여기서 메모리상 dealId를 비워두면, 이 함수가 끝난 뒤 doGet이 호출하는
+        // _autoFillMissingDealIds가 "dealId 없는 행"으로 인식해 새 UUID를 발급해서 시트에도 써줌.
+        mem[mi].row[COL.dealId] = '';
         groups[splitKey] = [mem[mi]];
         groupOrder.push(splitKey);
         mismatchSplit++;
         Logger.log('[dealId 불일치 분리] row ' + (mem[mi].rowIdx + 1) + ' (제품=' + mp + ', 채널=' + mc +
-          ') — 그룹 대표행(제품=' + refProduct + ', 채널=' + refChannel + ')과 달라 별도 공구건으로 분리함. ' +
-          'dealId 중복 입력이 의심되니 시트에서 확인해볼 것.');
+          ') — 그룹 대표행(제품=' + refProduct + ', 채널=' + refChannel + ')과 달라 별도 공구건으로 분리하고 ' +
+          '기존 dealId를 비웠음(곧 새 dealId가 자동 발급됨). 다른 행과 dealId가 겹쳐 있었던 것으로 보임.');
       }
     }
     groups[gk] = consistent;

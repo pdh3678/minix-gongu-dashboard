@@ -982,7 +982,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='row-group-2026-07-24-01';
+const DASHBOARD_VERSION='dealid-collision-fix-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -1821,8 +1821,8 @@ function renderCalMonth(y,m){
       const qtyTxt=x.d.qty!=null?`(${num(x.d.qty)})`:'';
       // dealId가 비어있으면(정상적으로는 발생하지 않아야 함 — 방어적 처리) 클릭을 막고 미연결임을 표시
       const fullTxt=x.d.dealId?`${x.d.ch}${qtyTxt}`:`⚠ 미연결 ${x.d.ch}${qtyTxt}`;
-      const onclickAttr=x.d.dealId?`onclick="openM('${x.d.dealId}')"`:'';
-      bars+=`<div class="cal-bar" style="grid-column:${x.startIdx+3}/${x.endIdx+4};grid-row:${x.lane+1};background:${calBarColor(x.d.product).bg};color:${calBarColor(x.d.product).fg}" ${onclickAttr} title="${fullTxt}">${fullTxt}</div>`;
+      const onclickAttr=x.d.dealId?`onclick="openM('${x.d.dealId}',this)"`:'';
+      bars+=`<div class="cal-bar" data-ch="${_escAttr(x.d.ch)}" data-product="${_escAttr(x.d.product)}" style="grid-column:${x.startIdx+3}/${x.endIdx+4};grid-row:${x.lane+1};background:${calBarColor(x.d.product).bg};color:${calBarColor(x.d.product).fg}" ${onclickAttr} title="${fullTxt}">${fullTxt}</div>`;
     });
     rowsHtml+=`<div class="cal-row" style="grid-template-columns:${colsTpl};grid-template-rows:repeat(${laneCount},minmax(30px,auto))">${bars}</div>`;
   });
@@ -1886,14 +1886,20 @@ function _refreshModalHeader(d){
 }
 
 // dealId(UUID 문자열) 하나로만 공구건을 식별함 — 물리 행 번호/채널명 추측은 전부 폐기.
+// 조회에 실패하면(=클릭한 칩/행의 dealId와 일치하는 건이 DATA에 없으면) 절대 다른 건으로
+// 대체 열지 않음 — 엉뚱한 건이 열리는 것보다 그냥 안 열리는 게 낫다는 원칙.
 function openM(dealId,srcEl){
   const d=DATA.find(x=>x.dealId===dealId);
-  if(srcEl){
-    // [모달진단] (a)행의 data-id (b)행에 화면 표시된 채널/제품 (c)모달이 조회해온 건의 dealId/채널/제품
-    console.log('[모달진단] 클릭 data-id='+srcEl.dataset.id+' 표시행(채널/제품)='+srcEl.dataset.ch+'/'+srcEl.dataset.product+
-      ' → 조회결과='+(d?(d.dealId+'/'+(d.ch||d.influencer||'')+'/'+(d.product||'')):'없음(매칭 실패, 모달 안 열림)'));
+  // [모달진단] 클릭한 칩/행이 기대한 채널·제품과, 실제로 그 dealId로 조회된 건의 채널·제품을 항상 비교 로그로 남김
+  const expected=srcEl?`(기대: ${srcEl.dataset.ch||'?'}/${srcEl.dataset.product||'?'})`:'';
+  console.log('[모달진단] 클릭 dealId='+dealId+' '+expected+' → 조회결과='+
+    (d?(d.dealId+' / '+(d.ch||d.influencer||'')+' / '+(d.product||'')):'없음(매칭 실패, 모달 안 엶)'));
+  if(d){
+    _openRegisteredModal(d);
+    return;
   }
-  if(d)return _openRegisteredModal(d);
+  console.error('[모달오류] dealId="'+dealId+'"에 해당하는 공구건을 찾을 수 없습니다. '+expected+' 데이터가 새로고침되지 않았거나 해당 건이 삭제됐을 수 있습니다.');
+  showToast('⚠ 해당 공구건 정보를 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.');
 }
 
 function _openRegisteredModal(d){
