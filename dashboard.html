@@ -980,7 +980,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='status-fix-2026-07-24-01';
+const DASHBOARD_VERSION='cache-swr-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -2407,21 +2407,55 @@ let _lastLiveAt=null, _connFailStreak=0;
 function setConn(s){
   const el=document.getElementById('connPill');
   const m={sample:['● 샘플 데이터','cp-sample'],live:['● 실시간 연결','cp-live'],error:['● 연결 오류','cp-error'],loading:['◌ 로딩 중...','cp-loading'],retrying:['◌ 재연결 중...','cp-loading'],
-    refreshing:['◌ 인증 갱신 중...','cp-loading'],relogin:['● 재로그인 필요','cp-error']};
+    refreshing:['◌ 인증 갱신 중...','cp-loading'],relogin:['● 재로그인 필요','cp-error'],cached:['◌ 캐시 데이터 · 갱신 중...','cp-loading']};
   const[t,c]=m[s]||m.sample;el.textContent=t;el.className='conn-pill '+c;
   el.title=(_lastLiveAt?('마지막 동기화: '+new Date(_lastLiveAt).toLocaleTimeString('ko-KR')+' · '):'')+'클릭 시 재연결';
+}
+// 캐시로 즉시 렌더링한 직후 표시 — "N분 전 데이터 · 갱신 중..." 처럼 캐시 나이를 보여줌.
+// fetchLive가 성공하면 setConn('live')로 자연히 대체됨.
+function _showCacheBadge(cachedAt){
+  setConn('cached');
+  const mins=Math.max(0,Math.round((Date.now()-cachedAt)/60000));
+  const label=mins<1?'방금 전':mins+'분 전';
+  document.getElementById('connPill').textContent='◌ '+label+' 데이터 · 갱신 중...';
 }
 function _connOk(){_connFailStreak=0;_lastLiveAt=Date.now();}
 // 실패 시 바로 "연결 오류"로 튀지 않고, 2회 연속 실패해야 전환 — 일시적 blip으로 뱃지가 깜빡이는 걸 방지
 function _connFail(){_connFailStreak++;setConn(_connFailStreak>=2?'error':'retrying');}
 function setLoad(on){document.getElementById('loadOv').classList[on?'add':'remove']('open');}
 
+// ── 데이터 캐시(stale-while-revalidate): 마지막 성공 응답을 저장해뒀다가 다음 방문 때
+// 인증을 기다리지 않고 즉시 화면을 그리는 데 씀. 스키마가 바뀌면(SCRIPT_VERSION 변경) 폐기.
+const GAS_DATA_CACHE_LS_KEY='gp_data_cache';
+function _saveDataCache(payload){
+  try{
+    localStorage.setItem(GAS_DATA_CACHE_LS_KEY,JSON.stringify({
+      purchases:payload.purchases,calendarEvents:payload.calendarEvents,
+      version:payload.version,cachedAt:Date.now()
+    }));
+  }catch(e){
+    console.warn('[캐시] 데이터 캐시 저장 실패(용량 초과 등으로 추정, 무시함):',e);
+  }
+}
+function _loadDataCache(){
+  try{
+    const raw=localStorage.getItem(GAS_DATA_CACHE_LS_KEY);
+    if(!raw)return null;
+    const c=JSON.parse(raw);
+    if(!c||!Array.isArray(c.purchases)||!c.cachedAt)return null;
+    if(c.version!==DASHBOARD_VERSION)return null; // 구조 변경 등으로 버전이 다르면 폐기
+    return c;
+  }catch(e){return null;}
+}
+function _clearDataCache(){try{localStorage.removeItem(GAS_DATA_CACHE_LS_KEY);}catch(e){}}
+
+let _usingCachedRender=false; // 캐시로 이미 화면을 그려둔 채 백그라운드로 새로고침 중이면 true — 전체화면 로딩 오버레이/뱃지를 덮어쓰지 않음
 async function fetchLive(forceFresh){
   const url=localStorage.getItem('gp_gas_url');
   if(!url){setConn('sample');return;}
   // 아직 GIS 로그인 credential이 없으면 대기 (auto_select가 곧 발급해줌)
   if(!_gasCredential){setConn('sample');return;}
-  setConn('loading');setLoad(true);
+  if(!_usingCachedRender){setConn('loading');setLoad(true);}
   try{
     // 수동 새로고침(forceFresh)은 서버의 90초 캐시를 건너뛰고 항상 최신 데이터를 받아옴
     const j=await _gasFetch(_gasUrl(url)+(forceFresh?'&nocache=1':''),{});
@@ -2456,9 +2490,10 @@ async function fetchLive(forceFresh){
       DATA.splice(0,DATA.length,...adapted);
       EVENTS.splice(0,EVENTS.length,...adaptGASEvents(j));
       _connOk();setConn('live');render();
+      _saveDataCache(j);
     }else throw new Error('데이터가 비어있습니다');
   }catch(e){console.error(e);_connFail();}
-  finally{setLoad(false);}
+  finally{setLoad(false);_usingCachedRender=false;}
 }
 
 function adaptGAS(j){
@@ -2868,6 +2903,24 @@ let _gasCredential=null; // Google ID 토큰 (로그인 시 발급, ~1시간 유
 let _tokenExpiresAt=0; // ms epoch, JWT exp 클레임 — 선제적 백그라운드 갱신 타이머 예약용
 let _refreshTimer=null; // 만료 5분 전 자동 갱신을 예약하는 setTimeout 핸들
 
+// ── 토큰 캐시: 만료 전 idToken을 저장해뒀다가, 다음 방문 때 GSI의 조용한 재인증(One Tap)
+// 왕복을 기다리지 않고 곧바로 그 토큰으로 fetchLive를 시작하기 위함(인증/데이터 요청 병렬화).
+const GAS_TOKEN_LS_KEY='gp_id_token';
+function _saveTokenCache(token,expiresAt){
+  try{localStorage.setItem(GAS_TOKEN_LS_KEY,JSON.stringify({token,expiresAt}));}catch(e){}
+}
+function _loadTokenCache(){
+  try{
+    const raw=localStorage.getItem(GAS_TOKEN_LS_KEY);
+    if(!raw)return null;
+    const t=JSON.parse(raw);
+    if(!t||!t.token||!t.expiresAt)return null;
+    if(Date.now()>=t.expiresAt)return null; // 이미 만료됨 — 캐시 무의미
+    return t;
+  }catch(e){return null;}
+}
+function _clearTokenCache(){try{localStorage.removeItem(GAS_TOKEN_LS_KEY);}catch(e){}}
+
 function _decodeJwt(token){
   const b64=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
   return JSON.parse(decodeURIComponent(
@@ -2995,6 +3048,7 @@ function handleGoogleSignIn(response){
   const isNewLogin=!_gasCredential; // 처음 로그인인지 여부
   _gasCredential=response.credential; // ID 토큰 보관
   _tokenExpiresAt=(payload.exp||0)*1000;
+  _saveTokenCache(_gasCredential,_tokenExpiresAt); // 다음 방문 때 인증 왕복 없이 바로 쓸 수 있게 저장
   _scheduleTokenRefresh(); // 만료 5분 전 백그라운드 자동 갱신 예약(로그인/자동 갱신 둘 다 여길 지나감)
   sessionStorage.setItem('gp_user',JSON.stringify({email,name:payload.name,picture:payload.picture}));
   _hideReloginBanner();
@@ -3028,6 +3082,8 @@ function signOut(){
   _stopPresenceHeartbeat();
   _presenceUsers=[];renderPresencePanel();
   sessionStorage.removeItem('gp_user');
+  _clearTokenCache();
+  _clearDataCache(); // 다른 계정으로 다시 로그인했을 때 이전 사용자의 캐시 데이터가 보이면 안 됨
   if(window.google&&google.accounts)google.accounts.id.disableAutoSelect();
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('sbUserEmail').textContent='—';
@@ -3094,15 +3150,55 @@ window.onGoogleLibraryLoad=function(){
     document.getElementById('gisBtn'),
     {theme:'outline',size:'large',locale:'ko',width:'308',text:'signin_with'}
   );
-  // 세션 있으면 자동 credential 갱신 시도 — _refreshIdToken()으로 통일해서 단일 비행/배지 상태를 공유
-  if(sessionStorage.getItem('gp_user'))_refreshIdToken();
+  // 부트스트랩이 이미 유효한 캐시 토큰으로 _gasCredential을 채워뒀으면 여기서 또 조용한 재인증을
+  // 시도할 필요 없음 — _scheduleTokenRefresh()가 만료 5분 전에 알아서 처리함. 캐시 토큰이 없거나
+  // 이미 만료된 상태로 세션 흔적(gp_user)만 남아있는 경우에만 지금 한 번 시도.
+  if(!_gasCredential&&sessionStorage.getItem('gp_user'))_refreshIdToken();
 };
 
-// 세션 복원: 새로고침 시 즉시 대시보드 표시
-(function(){
-  const saved=sessionStorage.getItem('gp_user');
-  if(!saved)return;
-  try{_enterDashboard(JSON.parse(saved));}catch(e){sessionStorage.removeItem('gp_user');}
+// ── 초기 진입: 캐시 우선 렌더링(stale-while-revalidate) + 인증/데이터 요청 병렬화 ──
+// 1) 마지막 성공 응답이 로컬에 있으면 인증(GSI 로드/조용한 재인증)을 기다리지 않고 즉시 그
+//    데이터로 화면을 그림 — 체감 로딩 시간을 0에 가깝게 만드는 게 목적.
+// 2) 만료 전 idToken이 로컬에 있으면 그 값으로 _gasCredential을 바로 채워서 fetchLive를
+//    지금 바로 병행 시작함(GSI 스크립트 로드/초기화를 기다리지 않음).
+// 3) 위 둘 다 없으면(캐시 없는 최초 방문 등) 기존과 동일하게 GSI 로드를 기다리는 흐름으로 진행.
+(function _bootstrap(){
+  const savedUserRaw=sessionStorage.getItem('gp_user');
+  const tokenCache=_loadTokenCache();
+  if(!savedUserRaw&&!tokenCache)return; // 로그인 흔적이 전혀 없음 — 정상 로그인 화면 유지
+
+  let user=null;
+  try{user=savedUserRaw?JSON.parse(savedUserRaw):null;}catch(e){user=null;}
+
+  if(tokenCache){
+    _gasCredential=tokenCache.token;
+    _tokenExpiresAt=tokenCache.expiresAt;
+    _scheduleTokenRefresh();
+    if(!user){
+      // sessionStorage가 없는 상태(예: 브라우저 완전 재시작)에서도 토큰 캐시만으로 복원
+      try{
+        const p=_decodeJwt(tokenCache.token);
+        user={email:p.email,name:p.name,picture:p.picture};
+        sessionStorage.setItem('gp_user',JSON.stringify(user));
+      }catch(e){}
+    }
+  }
+  if(!user)return; // 사용자 정보를 하나도 복원 못 하면 정상 로그인 흐름으로 진행
+
+  const dataCache=_loadDataCache();
+  if(dataCache){
+    const adaptedDeals=adaptGAS(dataCache);
+    const adaptedEvents=adaptGASEvents(dataCache);
+    if(adaptedDeals&&adaptedDeals.length){
+      DATA.splice(0,DATA.length,...adaptedDeals);
+      EVENTS.splice(0,EVENTS.length,...adaptedEvents);
+      _usingCachedRender=true;
+      _lastLiveAt=dataCache.cachedAt;
+    }
+  }
+
+  if(_usingCachedRender)_showCacheBadge(dataCache.cachedAt);
+  _enterDashboard(user); // fetchLive()는 유효한 토큰이 있으면 바로 시작되고, render()는 캐시로 채워진 DATA를 즉시 그림
 })();
 
 // ── 로컬 테스트 우회 ──
