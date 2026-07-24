@@ -980,7 +980,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='col-remap-2026-07-24-01';
+const DASHBOARD_VERSION='status-fix-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -2447,6 +2447,11 @@ async function fetchLive(forceFresh){
       '/ 첫 건 원본(raw)=',JSON.stringify(_purchases[0]));
     const adapted=adaptGAS(j);
     console.log('[7.fetchLive 진단] adaptGAS 이후 첫 건 start=',adapted&&adapted[0]&&adapted[0].start,'/ start 있는 건수=',adapted?adapted.filter(d=>d.start).length:0);
+    if(adapted){
+      const statusCounts={};
+      adapted.forEach(d=>{statusCounts[d.status]=(statusCounts[d.status]||0)+1;});
+      console.log('[8.fetchLive 진단] 상태별 건수(서버 응답 기준)=',JSON.stringify(statusCounts),'/ 전체=',adapted.length);
+    }
     if(adapted&&adapted.length){
       DATA.splice(0,DATA.length,...adapted);
       EVENTS.splice(0,EVENTS.length,...adaptGASEvents(j));

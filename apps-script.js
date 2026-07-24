@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'col-remap-2026-07-24-01';
+var SCRIPT_VERSION = 'status-fix-2026-07-24-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -211,6 +211,16 @@ function doGet(e) {
           ', revenue=' + d0.revenue + ', startMD=' + d0.start + ', views=' + d0.views +
           ', code=' + JSON.stringify(d0.codes) + ', note=' + d0.note);
       }
+
+      // 진행중 건 누락 진단용 — 상태별 건수를 세어서 KPI(진행 중 건수)와 대조할 수 있게 함.
+      // 이 합계가 시트에서 눈으로 센 상태별 행 수와 다르면 위 [파싱 진단]/[dealId 불일치 분리]/
+      // [상태값 미매칭] 로그에서 어느 행이 어떤 이유로 빠졌는지 확인할 것.
+      var statusCounts = {};
+      for (var si2 = 0; si2 < result.deals.length; si2++) {
+        var st2 = result.deals[si2].status;
+        statusCounts[st2] = (statusCounts[st2] || 0) + 1;
+      }
+      Logger.log('[상태별 건수 검증] 전체 공구건=' + result.deals.length + ' / ' + JSON.stringify(statusCounts));
     }
 
     payload.cached = fromCache;
@@ -449,20 +459,57 @@ function parseMainSheet(sheet) {
   // (실제로 노출되는 deal.dealId 필드는 그대로 빈 문자열로 두고, doGet이 이후 _autoFillMissingDealIds로 채움).
   var groups = {}; // key -> [{rowIdx, row}]
   var groupOrder = [];
+  var skippedStrike = 0, skippedNoProduct = 0, skippedNonMinix = 0;
 
   for (var i = DATA_START_ROW; i < data.length; i++) {
-    if (strikeMap[i]) continue;
+    if (strikeMap[i]) { skippedStrike++; continue; }
     var row = data[i];
     var brand = String(row[COL.brand] || '').trim();
     var product = String(row[COL.product] || '').trim();
-    if (!product) continue; // 빈 행/구분용 행("2025년" 등) 제외
-    if (!MINIX_ALIASES[brand]) continue; // Minix 전용 대시보드
+    if (!product) { skippedNoProduct++; continue; } // 빈 행/구분용 행("2025년" 등) 제외
+    if (!MINIX_ALIASES[brand]) { skippedNonMinix++; continue; } // Minix 전용 대시보드
 
     var dealId = String(row[COL.dealId] || '').trim();
     var key = dealId || ('__ROW' + i);
     if (!groups[key]) { groups[key] = []; groupOrder.push(key); }
     groups[key].push({ rowIdx: i, row: row });
   }
+
+  // 방어 로직: 같은 dealId를 공유하는 그룹인데 제품명/채널명이 서로 다른 행이 섞여 있으면
+  // (수동 편집 중 dealId가 실수로 복사된 경우 등) 정상적인 "한 공구건의 코드 여러 개" 그룹이
+  // 아니라 서로 다른 공구건이 우연히 같은 dealId를 갖게 된 것으로 간주함. 이런 경우 대표 행으로
+  // 억지로 합쳐서 나머지를 조용히 지워버리지 않고, 일치하지 않는 행을 별도 건으로 분리해서
+  // 전부 살아남게 함 — 데이터가 화면에서 조용히 사라지는 것을 막는 게 최우선.
+  var mismatchSplit = 0;
+  for (var gi = 0; gi < groupOrder.length; gi++) {
+    var gk = groupOrder[gi];
+    var mem = groups[gk];
+    if (mem.length <= 1) continue;
+    var refProduct = String(mem[0].row[COL.product] || '').trim();
+    var refChannel = String(mem[0].row[COL.channel] || '').trim();
+    var consistent = [mem[0]];
+    for (var mi = 1; mi < mem.length; mi++) {
+      var mp = String(mem[mi].row[COL.product] || '').trim();
+      var mc = String(mem[mi].row[COL.channel] || '').trim();
+      if (mp === refProduct && mc === refChannel) {
+        consistent.push(mem[mi]);
+      } else {
+        var splitKey = '__SPLIT' + mem[mi].rowIdx;
+        groups[splitKey] = [mem[mi]];
+        groupOrder.push(splitKey);
+        mismatchSplit++;
+        Logger.log('[dealId 불일치 분리] row ' + (mem[mi].rowIdx + 1) + ' (제품=' + mp + ', 채널=' + mc +
+          ') — 그룹 대표행(제품=' + refProduct + ', 채널=' + refChannel + ')과 달라 별도 공구건으로 분리함. ' +
+          'dealId 중복 입력이 의심되니 시트에서 확인해볼 것.');
+      }
+    }
+    groups[gk] = consistent;
+  }
+
+  Logger.log('[파싱 진단] 전체 데이터 행=' + (data.length - DATA_START_ROW) +
+    ' / 취소선 제외=' + skippedStrike + ' / 제품명 없음 제외=' + skippedNoProduct +
+    ' / 브랜드 불일치 제외=' + skippedNonMinix + ' / dealId 불일치로 분리=' + mismatchSplit +
+    ' / 최종 공구건 수=' + groupOrder.length);
 
   var deals = [];
 
@@ -529,19 +576,31 @@ function parseMainSheet(sheet) {
     var endDate   = _parseDate(endCell, year) || startDate;
     endDate = _fixYearWrap(startDate, endDate);
 
+    // 진행상태 매칭: 공백류(일반 공백/전각 공백/줄바꿈 등, \s가 포괄)를 전부 제거하고 비교해서
+    // "진행중" vs "진행 중" 같은 표기 차이에 흔들리지 않게 함. 그래도 못 알아본 값이면(오타 등)
+    // 행 자체를 누락시키지 않고 날짜 기준으로 안전하게 분류 + 콘솔에 경고를 남겨 원인 추적 가능하게 함.
     var status;
     var sn = statusRaw.replace(/\s/g, '');
-    if      (sn === '종료' || sn === '완료') status = '완료';
-    else if (sn === '진행중')                 status = '진행중';
-    else if (sn === '예정')                   status = '예정';
-    else if (startDate) {
-      var sd = new Date(startDate + 'T00:00:00');
-      var ed = new Date((endDate || startDate) + 'T00:00:00');
-      if (ed < today)       status = '완료';
-      else if (sd <= today) status = '진행중';
-      else                  status = '예정';
+    var knownStatus = (sn === '종료' || sn === '완료') ? '완료'
+      : (sn === '진행중' || sn === '진행') ? '진행중'
+      : (sn === '예정') ? '예정'
+      : null;
+    if (knownStatus) {
+      status = knownStatus;
     } else {
-      status = '예정';
+      if (sn) {
+        Logger.log('[상태값 미매칭] row ' + (pIdx + 1) + ' 진행상태="' + statusRaw +
+          '" — 알려진 값(완료/진행중/예정)과 다름. 날짜 기준으로 자동 분류함(행은 누락시키지 않음).');
+      }
+      if (startDate) {
+        var sd = new Date(startDate + 'T00:00:00');
+        var ed = new Date((endDate || startDate) + 'T00:00:00');
+        if (ed < today)       status = '완료';
+        else if (sd <= today) status = '진행중';
+        else                  status = '예정';
+      } else {
+        status = '예정';
+      }
     }
 
     deals.push({
