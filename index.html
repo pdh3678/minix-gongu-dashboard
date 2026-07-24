@@ -781,9 +781,6 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <label class="f-lbl">제품 <span class="f-req">*</span></label>
         <select class="f-inp f-sel" id="fModel" onchange="onModelChange()">
           <option value="">선택</option>
-          <option value="더플렌더PRO">더플렌더PRO</option>
-          <option value="더플렌더MAX">더플렌더MAX</option>
-          <option value="더플렌더mini">더플렌더mini</option>
         </select>
       </div>
       <div class="f-grp">
@@ -924,7 +921,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='ym-dd-portal-fix-2026-07-24-01';
+const DASHBOARD_VERSION='new-deal-models-2026-07-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -2504,14 +2501,25 @@ function render(){renderDashboard();renderTbl();renderCalendarPage();renderMgmtP
 document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.getMonth()+1)+'월 '+_NOW.getDate()+'일';
 
 /* ── 새 공구건 폼 ── */
+// LINE_HAS_MODELS는 공구건 상세(편집) 모달(mLine/mModel)에서 사용 — 이번 변경 대상이 아니므로 그대로 유지.
 const LINE_HAS_MODELS={'더플렌더':true};
+// "새 공구건 등록" 모달 전용 — 더시프트에 제품 드롭다운을 추가하되, 위 LINE_HAS_MODELS(편집 모달)는
+// 건드리지 않기 위해 별도 상수로 분리함.
+const ADD_LINE_HAS_MODELS={'더플렌더':true,'더시프트':true};
+// 품목군별 제품 드롭다운 옵션 — 값 표기는 대시보드 품목별 실적의 모델 매칭 규칙(flenderModel/shiftModel)과
+// 정확히 일치해야 함. 더시프트 기본형은 기존에 모델 구분 없이 저장되던 값("더시프트")과 동일해서
+// 과거 데이터도 그대로 "기본" 모델로 인식됨.
+const LINE_MODEL_OPTIONS={
+  '더플렌더':['더플렌더PRO','더플렌더MAX','더플렌더mini','더플렌더NEXT'],
+  '더시프트':['더시프트','더시프트PRO']
+};
 
 let _formCodes=['']; // 새 공구건 등록 폼의 상품코드 목록(모달의 _modalCodes와 별개 인스턴스)
 function renderFormCodeList(){
   const host=document.getElementById('fCodeList');
   host.innerHTML=_formCodes.map((c,i)=>`
     <div class="code-row">
-      <input class="f-inp" type="text" placeholder="예: MX-BLD-001" value="${_escAttr(c)}" oninput="updateFormCodeVal(${i},this.value)">
+      <input class="f-inp" type="text" placeholder="예: 13646128618" value="${_escAttr(c)}" oninput="updateFormCodeVal(${i},this.value)">
       ${_formCodes.length>1?`<button type="button" class="btn-cancel" onclick="removeFormCodeRow(${i})">삭제</button>`:''}
     </div>`).join('');
   const addBtn=document.getElementById('fCodeAddBtn');
@@ -2578,8 +2586,10 @@ function onLineChange(){
   const modelRow=document.getElementById('modelRow');
   const fModel=document.getElementById('fModel');
   const fProd=document.getElementById('fProduct');
-  if(LINE_HAS_MODELS[line]){
+  if(ADD_LINE_HAS_MODELS[line]){
     modelRow.style.display='';
+    const opts=LINE_MODEL_OPTIONS[line]||[];
+    fModel.innerHTML='<option value="">선택</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
     fModel.value='';
     fProd.value='';
   } else {
@@ -2611,15 +2621,15 @@ function saveDeal(){
   const brand='Minix';
   const line=document.getElementById('fLine').value;
   const model=document.getElementById('fModel')?document.getElementById('fModel').value:'';
-  // product = model if selected (더플렌더 PRO/MAX/mini), else line name
-  const product=LINE_HAS_MODELS[line]?(model||line):line;
+  // product = model if selected (더플렌더 PRO/MAX/mini/NEXT, 더시프트/더시프트PRO), else line name
+  const product=ADD_LINE_HAS_MODELS[line]?(model||line):line;
   const influencer=document.getElementById('fInfluencer').value.trim();
   const platform=document.getElementById('fPlatform').value;
   const channelId=document.getElementById('fChannelId').value.trim().replace(/^@/,'');
   const start=document.getElementById('fStart').value;
   const end=document.getElementById('fEnd').value;
   if(!line){alert('품목군을 선택하세요.');return;}
-  if(LINE_HAS_MODELS[line]&&!model){alert('제품을 선택하세요.');return;}
+  if(ADD_LINE_HAS_MODELS[line]&&!model){alert('제품을 선택하세요.');return;}
   if(!influencer){alert('채널명을 입력하세요.');return;}
   if(!platform){alert('플랫폼을 선택하세요.');return;}
   if((platform==='인스타그램'||platform==='유튜브')&&!channelId){alert(`${platform} ID를 입력하세요.`);return;}
