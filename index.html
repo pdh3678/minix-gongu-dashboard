@@ -984,7 +984,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='thumb-auth-fetch-2026-07-25-01';
+const DASHBOARD_VERSION='thumb-cors-fix-2026-07-25-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -2031,12 +2031,15 @@ function mOnDateChange(){
 
 /* ── 릴스 관리 (모달 우측) ── */
 // 저장된 썸네일은 doGet의 ?thumb=<fileId> 프록시가 내려주는 이미지라, <img src>에 URL을 직접
-// 넣으면 인증 토큰을 실을 수 없어(+ Workspace 도메인의 /a/<도메인>/ 변형 URL은 구글 자체 로그인
-// 리다이렉트를 탈 수 있어) 조용히 실패한다. 다른 데이터 요청과 동일하게 idToken을 실어 fetch한
-// 뒤 blob으로 변환해서 <img>에 주입함. 세션 내 메모리 캐시(fileId 기준)로 중복 fetch를 막고,
+// 넣으면 인증 토큰을 실을 수 없다. 그렇다고 커스텀 헤더로 토큰을 실어 fetch하면 preflight(OPTIONS)가
+// 발생하는데 Apps Script는 OPTIONS에 응답하지 못해 CORS로 막힌다. 또한 서버가 Blob을 doGet에서
+// 직접 반환하면 구글이 googleusercontent.com으로 302 리다이렉트해서 서빙하는데 그 응답엔 CORS
+// 헤더가 없어 역시 막힌다. 그래서 fetchLive와 완전히 동일한 패턴으로 통일함: GET + 커스텀 헤더
+// 없음 + 토큰은 URL 파라미터 + 서버는 ContentService _json()으로 응답(base64 인코딩된 이미지) →
+// 프론트가 data URL로 변환해 <img>에 주입. 세션 내 메모리 캐시(fileId 기준)로 중복 fetch를 막고,
 // 시트에 예전 방식으로 저장된 두 형태(우리 프록시의 /a/<도메인>/ 변형, drive.google.com 직접
 // 링크)도 파일ID만 뽑아서 항상 우리 프록시로 새로 인증 요청하도록 흡수함(시트 값은 그대로 둠).
-const _thumbBlobCache=new Map(); // fileId -> Promise<string|null>(objectURL, 실패 시 null)
+const _thumbBlobCache=new Map(); // fileId -> Promise<string|null>(data URL, 실패 시 null)
 
 function _extractDriveThumbFileId(thumb){
   if(!thumb)return'';
@@ -2064,19 +2067,26 @@ async function _loadThumbBlobUrl(thumb){
   const p=(async()=>{
     if(!gasUrl){console.warn('[썸네일 로드 실패] GAS URL이 설정되지 않았습니다. fileId=',fileId);return null;}
     try{
+      // fetchLive와 완전히 동일한 방식(GET, 커스텀 헤더 없음, 토큰은 URL 파라미터) — 이래야
+      // preflight 없는 단순 요청이 되고, 서버도 같은 _json() 응답 파이프라인을 타서 CORS를 통과함.
+      // 커스텀 헤더(Authorization 등)를 붙이면 OPTIONS preflight가 발생하는데 Apps Script는
+      // OPTIONS에 응답하지 못해 여기서 막히므로 절대 추가하지 말 것.
       const res=await fetch(_gasUrl(gasUrl+'?thumb='+encodeURIComponent(fileId)));
-      const ct=res.headers.get('content-type')||'';
-      if(!res.ok||!ct.startsWith('image/')){
-        let reason='HTTP '+res.status;
-        try{
-          const j=await res.clone().json();
-          reason=j.error==='AUTH_REQUIRED'?'인증 실패(사유: '+(j.reason||'?')+')':(j.error||'포맷 오류(이미지 아님, content-type='+ct+')');
-        }catch(e){/* 응답이 JSON도 아니면 위의 HTTP 상태 사유를 그대로 씀 */}
+      if(!res.ok){
+        console.error('[썸네일 로드 실패] 사유: HTTP '+res.status,'/ fileId=',fileId);
+        return null;
+      }
+      const j=await res.json();
+      if(j.error){
+        const reason=j.error==='AUTH_REQUIRED'?'인증 실패(사유: '+(j.reason||'?')+')':j.error;
         console.error('[썸네일 로드 실패] 사유:',reason,'/ fileId=',fileId);
         return null;
       }
-      const blob=await res.blob();
-      return URL.createObjectURL(blob);
+      if(!j.base64){
+        console.error('[썸네일 로드 실패] 사유: 응답에 이미지 데이터 없음 / fileId=',fileId);
+        return null;
+      }
+      return'data:'+(j.mimeType||'image/jpeg')+';base64,'+j.base64;
     }catch(e){
       console.error('[썸네일 로드 실패] 네트워크 오류:',e,'/ fileId=',fileId);
       return null;

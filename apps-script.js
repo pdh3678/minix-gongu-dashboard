@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'thumb-auth-fetch-2026-07-25-01';
+var SCRIPT_VERSION = 'thumb-cors-fix-2026-07-25-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -168,9 +168,13 @@ function doGet(e) {
     if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED', reason: _authFailureReason(idToken) });
 
     // 썸네일 프록시: 개별 Drive 파일을 사용자에게 직접 공유하는 대신, 스크립트 소유자 권한으로
-    // 파일을 읽어 그대로 내려줌 — 조직 정책(링크 공유 차단)과 무관하게 항상 접근 가능
+    // 파일을 읽어 내려줌 — 조직 정책(링크 공유 차단)과 무관하게 항상 접근 가능.
+    // Blob을 doGet에서 직접 반환하면 구글이 파일을 googleusercontent.com으로 302 리다이렉트해서
+    // 내려주는데, 그 응답엔 Access-Control-Allow-Origin이 없어 fetch()가 CORS로 막힘.
+    // fetchLive와 완전히 동일한 _json() 파이프라인(ContentService JSON)을 타면 CORS도 똑같이
+    // 통과하므로, 이미지를 base64로 인코딩해 JSON으로 응답하고 프론트가 data URL로 변환해 씀.
     if (e && e.parameter && e.parameter.thumb) {
-      return DriveApp.getFileById(e.parameter.thumb).getBlob();
+      return _thumbAsJson(e.parameter.thumb);
     }
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1132,6 +1136,21 @@ function _getThumbFolder() {
   var it = DriveApp.getFoldersByName(THUMB_FOLDER_NAME);
   if (it.hasNext()) return it.next();
   return DriveApp.createFolder(THUMB_FOLDER_NAME);
+}
+
+// doGet의 ?thumb=<fileId> 프록시 본체 — 이미지를 base64로 인코딩해 다른 모든 응답과 동일한
+// _json() 파이프라인으로 내려줌. Blob을 doGet에서 직접 반환하면 구글이 파일을
+// googleusercontent.com으로 302 리다이렉트해서 서빙하는데, 그 응답엔 CORS 헤더가 없어서
+// fetch()가 차단됨 — ContentService JSON 응답은 fetchLive와 동일하게 CORS를 통과하므로 이 방식으로 통일함.
+function _thumbAsJson(fileId) {
+  try {
+    var blob = DriveApp.getFileById(fileId).getBlob();
+    var base64 = Utilities.base64Encode(blob.getBytes());
+    var mimeType = blob.getContentType() || 'image/jpeg';
+    return _json({ success: true, base64: base64, mimeType: mimeType });
+  } catch (err) {
+    return _json({ error: '썸네일을 불러올 수 없습니다: ' + err.toString() });
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
