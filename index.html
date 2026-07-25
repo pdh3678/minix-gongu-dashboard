@@ -621,7 +621,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <div class="f-grp">
             <label class="f-lbl">인플루언서 링크</label>
             <div style="display:flex;gap:6px">
-              <input class="f-inp" type="url" id="mLinkInput" placeholder="https://..." style="flex:1">
+              <input class="f-inp" type="url" id="mLinkInput" placeholder="https://..." style="flex:1" onblur="mOnLinkInputChange()">
               <button type="button" class="btn-cancel" style="padding:0 14px;font-size:12px;white-space:nowrap" onclick="openModalLink()">열기</button>
             </div>
           </div>
@@ -984,7 +984,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='thumb-cors-fix-2026-07-25-01';
+const DASHBOARD_VERSION='channel-link-2026-07-25-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -1042,6 +1042,20 @@ function buildChannelLink(platform,id){
   if(!v)return'';
   if(platform==='인스타그램')return`https://www.instagram.com/${v}`;
   if(platform==='유튜브')return`https://www.youtube.com/@${v}`;
+  return'';
+}
+// buildChannelLink의 역방향 — 링크에서 플랫폼별 ID를 추출(모달에 기존 링크를 불러올 때
+// "인스타그램/유튜브 ID" 필드를 자동으로 채우는 데 씀). 인식 못 하면 빈 문자열.
+function _extractChannelIdFromLink(platform,url){
+  if(!url)return'';
+  try{
+    const u=new URL(normalizeUrl(url));
+    const host=u.hostname.replace(/^www\./,'');
+    const path=u.pathname.replace(/^\/+|\/+$/g,'');
+    const seg=path.split('/')[0]||'';
+    if(platform==='인스타그램'&&host==='instagram.com')return seg;
+    if(platform==='유튜브'&&host==='youtube.com')return seg.replace(/^@/,'');
+  }catch(e){}
   return'';
 }
 // instagram.com/... 처럼 프로토콜이 빠진 링크에 https://를 자동으로 붙여줌
@@ -1918,7 +1932,9 @@ function _openRegisteredModal(d){
   document.getElementById('mModel').value=model;
   document.getElementById('mProduct').value=d.product||'';
 
-  // 채널 정보 — 채널ID는 실적통합에 별도 저장되지 않아 복원 불가(빈 값으로 시작, 건드리지 않으면 기존 링크 유지)
+  // 채널 정보 — 채널ID는 시트에 별도 열로 저장되지 않지만, 채널명 셀의 하이퍼링크(또는 링크 열)에서
+  // 역추출해서 채워줌. mOnPlatformChange 호출 시점엔 아직 비워둬야 mOnChannelIdChange가 빈 값으로
+  // 보고 링크를 안 건드림 — 링크를 실제 값으로 설정한 다음에 마지막으로 ID만 대입(이벤트 안 태움).
   document.getElementById('mInfluencer').value=d.ch||d.influencer||'';
   document.getElementById('mPlatform').value=d.platform||'';
   document.getElementById('mChannelId').value='';
@@ -1926,6 +1942,7 @@ function _openRegisteredModal(d){
   document.getElementById('mVendor').value=d.vendor||'';
   document.getElementById('mLinkInput').value=d.link||'';
   document.getElementById('mMarketingLink').value=d.marketingLink||'';
+  document.getElementById('mChannelId').value=_extractChannelIdFromLink(d.platform,d.link);
 
   // 일정
   document.getElementById('mStart').value=d.start||'';
@@ -2018,6 +2035,15 @@ function mOnChannelIdChange(){
   const p=document.getElementById('mPlatform').value;
   const id=document.getElementById('mChannelId').value;
   if(id.trim())document.getElementById('mLinkInput').value=buildChannelLink(p,id);
+}
+// 링크를 직접 붙여넣거나 수정했을 때, 인식 가능한 형식이면 인스타그램/유튜브 ID도 같이 맞춰줌
+// (반대 방향은 mOnChannelIdChange가 이미 처리) — 인식 못 하는 링크는 ID를 건드리지 않음
+function mOnLinkInputChange(){
+  const p=document.getElementById('mPlatform').value;
+  const link=document.getElementById('mLinkInput').value.trim();
+  if(!link)return;
+  const id=_extractChannelIdFromLink(p,link);
+  if(id)document.getElementById('mChannelId').value=id;
 }
 function mOnDateChange(){
   const s=document.getElementById('mStart').value;
@@ -2379,7 +2405,7 @@ async function saveSchemeModal(){
       closeSchModal();
       showToast('저장되었습니다');
       fetchLive();
-    }).catch(e=>{console.error('[저장 실패]',e);alert('저장 실패: '+e.message);setLoad(false);});
+    }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+e.message);setLoad(false);});
   } else {
     Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,status:_calcStatus(next.start,next.end)});
     if(codesChanged)d.codes=codes;

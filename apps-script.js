@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'thumb-cors-fix-2026-07-25-01';
+var SCRIPT_VERSION = 'channel-link-2026-07-25-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -471,6 +471,18 @@ function parseMainSheet(sheet) {
     Logger.log('릴스 링크 읽기 실패 (무시): ' + e);
   }
 
+  // 채널명(E열) 셀에 걸린 하이퍼링크(인플루언서 프로필 링크) — getValues()는 텍스트만 읽고
+  // 하이퍼링크는 놓치므로 채널명 열 범위 전체를 한 번만 getRichTextValues()로 읽어둠(행별 개별
+  // 호출 금지 — 성능). 채널명이 비어있는 행도 있을 수 있어 인덱스가 어긋나지 않게 조심.
+  var channelRich = null;
+  try {
+    if (data.length > DATA_START_ROW) {
+      channelRich = sheet.getRange(DATA_START_ROW + 1, COL.channel + 1, data.length - DATA_START_ROW, 1).getRichTextValues();
+    }
+  } catch (e) {
+    Logger.log('채널명 하이퍼링크 읽기 실패 (무시): ' + e);
+  }
+
   var today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -579,6 +591,16 @@ function parseMainSheet(sheet) {
     var extraQty   = _numOrNull(pRow[COL.extraQty]);
     var note       = String(pRow[COL.note]      || '').trim();
 
+    // 인플루언서 링크: 별도 링크 열(COL.link)에 값이 있으면 그걸 우선하고, 없으면 채널명 셀에
+    // 걸린 하이퍼링크로 채움(둘 다 없으면 빈 값). 채널명 셀에 링크가 없는 행도 있을 수 있음.
+    var linkColVal = String(pRow[COL.link] || '').trim();
+    var channelCellLink = '';
+    if (channelRich) {
+      var chRichRow = channelRich[pIdx - DATA_START_ROW];
+      if (chRichRow && chRichRow[0]) channelCellLink = chRichRow[0].getLinkUrl() || '';
+    }
+    var influencerLink = linkColVal || channelCellLink;
+
     var views = _numOrNull(pRow[COL.views]);
     if (views === 0) views = null;
 
@@ -648,7 +670,7 @@ function parseMainSheet(sheet) {
       revenue:     revenue,
       codes:       codes,
       composition: String(pRow[COL.composition] || '').trim(),
-      link:        String(pRow[COL.link] || '').trim(),
+      link:        influencerLink,
       marketingLink: marketingLink,
       option1:     option1,
       option2:     option2,
@@ -730,6 +752,20 @@ var PRIMARY_ONLY_COLS = {
   option1: COL.option1, option2: COL.option2, firstCome: COL.firstCome,
   extraQty: COL.extraQty, note: COL.note
 };
+
+// 채널명(E열) 셀의 텍스트는 그대로 두고 하이퍼링크만 걸거나 제거함 — 별도 링크 열(COL.link)과
+// 어긋나지 않도록 저장 시 항상 같이 갱신함. url이 falsy면 링크 제거(텍스트는 유지).
+function _buildChannelRichText(text, url) {
+  var builder = SpreadsheetApp.newRichTextValue().setText(text);
+  if (url) builder.setLinkUrl(0, text.length, url);
+  return builder.build();
+}
+function _setChannelLink(sheet, row, url) {
+  var cell = sheet.getRange(row, COL.channel + 1);
+  var text = String(cell.getValue() || '');
+  if (!text) return; // 채널명 자체가 비어있으면 링크를 걸 자리가 없음
+  cell.setRichTextValue(_buildChannelRichText(text, url));
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── doPost: 공구 추가 / 수정 / 삭제 / 실적 기입 ──
@@ -828,6 +864,14 @@ function _addDeal(ss, data) {
   var startRow = sheet.getLastRow() + 1;
   sheet.getRange(startRow, 1, rows.length, numCols).setValues(rows);
 
+  // 인플루언서 링크가 입력됐으면 채널명 셀에도 하이퍼링크를 걸어줌(코드별로 생성된 모든 행에 동일
+  // 반영). setValues로는 서식(하이퍼링크)이 안 실리므로 별도 setRichTextValues 호출이 필요함.
+  if (data.link && data.ch) {
+    var channelRT = [];
+    for (var ri = 0; ri < codes.length; ri++) channelRT.push([_buildChannelRichText(data.ch, data.link)]);
+    sheet.getRange(startRow, COL.channel + 1, codes.length, 1).setRichTextValues(channelRT);
+  }
+
   return _json({ success: true, mainRow: startRow, dealId: dealId });
 }
 
@@ -863,6 +907,16 @@ function _updateDeal(ss, data) {
   for (var k2 in PRIMARY_ONLY_COLS) {
     if (c[k2] !== undefined) sheet.getRange(primaryRow, PRIMARY_ONLY_COLS[k2] + 1).setValue(c[k2] != null ? c[k2] : '');
   }
+
+  // 채널명 셀의 하이퍼링크도 함께 갱신 — 위 링크 열(COL.link)과 어긋나지 않게, 그룹의 모든 행에
+  // 반영함(채널명 텍스트는 위 GROUP_MIRROR_COLS 반영이 이미 끝난 뒤라 최신 텍스트를 그대로 씀).
+  // 링크를 빈 값으로 저장하면 하이퍼링크만 제거되고 텍스트는 유지됨.
+  if (c.link !== undefined) {
+    for (var lg = 0; lg < groupRows.length; lg++) {
+      _setChannelLink(sheet, groupRows[lg].row, c.link || '');
+    }
+  }
+
   if (c.sale !== undefined) sheet.getRange(primaryRow, COL.salePrice + 1).setValue(c.sale != null ? c.sale : '');
   if (c.comm !== undefined) sheet.getRange(primaryRow, COL.commission + 1).setValue(c.comm != null ? c.comm / 100 : '');
   if (c.qty !== undefined) sheet.getRange(primaryRow, COL.qty + 1).setValue(c.qty != null ? c.qty : '');
@@ -899,6 +953,13 @@ function _updateDeal(ss, data) {
       // 부족한 만큼 그룹 끝에 새 행 추가(공통 필드는 대표 행 현재 값을 복사, 실적/조건 값은 비움)
       var mirrorVals = {};
       for (var mk in GROUP_MIRROR_COLS) mirrorVals[mk] = sheet.getRange(primaryRow, GROUP_MIRROR_COLS[mk] + 1).getValue();
+      // 새로 추가되는 행도 채널명 하이퍼링크가 맞도록, 지금 이 요청에서 바뀐 링크(c.link)가
+      // 있으면 그걸 쓰고 없으면 현재 저장된 링크(링크 열 → 없으면 채널명 셀 하이퍼링크)를 따라감
+      var linkForNewRows = c.link !== undefined ? c.link : String(sheet.getRange(primaryRow, COL.link + 1).getValue() || '').trim();
+      if (!linkForNewRows) {
+        var primaryRT = sheet.getRange(primaryRow, COL.channel + 1).getRichTextValue();
+        linkForNewRows = primaryRT ? (primaryRT.getLinkUrl() || '') : '';
+      }
       for (var add = groupRows.length; add < codes.length; add++) {
         var newRow = [];
         for (var mk2 in GROUP_MIRROR_COLS) newRow[GROUP_MIRROR_COLS[mk2]] = mirrorVals[mk2];
@@ -907,6 +968,7 @@ function _updateDeal(ss, data) {
         newRow[COL.codeSeq] = add + 1;
         for (var ci = 0; ci < newRow.length; ci++) if (newRow[ci] === undefined) newRow[ci] = '';
         sheet.appendRow(newRow);
+        if (linkForNewRows) _setChannelLink(sheet, sheet.getLastRow(), linkForNewRows);
       }
     } else if (codes.length < groupRows.length) {
       // 초과 행 삭제 — 물리 행 번호 내림차순으로 지워야 인덱스가 안 밀림
