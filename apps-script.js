@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'channel-link-2026-07-25-01';
+var SCRIPT_VERSION = 'review-editor-2026-07-25-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -90,6 +90,12 @@ var MINIX_ALIASES = { '미닉스': true, 'minix': true, 'Minix': true, 'MINIX': 
 var EVENT_SHEET = '캘린더이벤트';
 var EVENT_COL = { name: 0, start: 1, end: 2, note: 3 }; // A 이벤트명 / B 시작일 / C 종료일 / D 메모
 var EVENT_DATA_START_ROW = 1; // 0-based index — 1행(index 0)은 헤더, 2행부터 데이터
+
+// "회고" 문서 전용 시트 — 실적통합과 완전히 분리되어 대시보드/품목별 실적 집계에 전혀 영향을 주지
+// 않음. 탭이 없으면 최초 저장 시 _ensureReviewSheet가 헤더까지 자동 생성함(캘린더이벤트와 동일 패턴).
+var REVIEW_SHEET = '회고';
+var REVIEW_COL = { id: 0, title: 1, ym: 2, owner: 3, team: 4, part: 5, body: 6, updatedAt: 7, editedBy: 8 };
+var REVIEW_DATA_START_ROW = 1; // 0-based index — 1행(index 0)은 헤더, 2행부터 데이터
 
 // doGet 응답 캐시 — 실적통합 파싱이 무거워서(수 초), 여러 사용자가 짧은 간격으로 새로고침할 때
 // 실행 시간·동시 실행 한도 부담이 커짐. 계산 결과를 스크립트 캐시에 잠깐 담아두고 그 안에서는
@@ -175,6 +181,11 @@ function doGet(e) {
     // 통과하므로, 이미지를 base64로 인코딩해 JSON으로 응답하고 프론트가 data URL로 변환해 씀.
     if (e && e.parameter && e.parameter.thumb) {
       return _thumbAsJson(e.parameter.thumb);
+    }
+
+    // 회고 문서 목록/상세 — 실적통합 파싱/캐시와 완전히 별개 경로(가벼운 요청이라 캐시 불필요).
+    if (e && e.parameter && e.parameter.review) {
+      return _handleReviewGet(e.parameter.review, e.parameter.id || '');
     }
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -783,6 +794,8 @@ function doPost(e) {
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var resp;
+    // 회고 문서는 실적통합과 무관한 별도 시트라 대시보드 캐시를 무효화할 필요가 없음 — 이 액션들만 건너뜀.
+    var skipCacheInvalidate = false;
     if (body.action === 'addSalesRow') resp = _addDeal(ss, body.data);
     else if (body.action === 'addPerf') resp = _addPerf(ss, body.data);
     else if (body.action === 'addCalendarEvent') resp = _addCalendarEvent(ss, body.data);
@@ -792,8 +805,11 @@ function doPost(e) {
     else if (body.action === 'updateDeal') resp = _updateDeal(ss, body.data);
     else if (body.action === 'deleteDeal') resp = _deleteDeal(ss, body.data);
     else if (body.action === 'uploadThumbnail') resp = _uploadThumbnail(body.data);
+    else if (body.action === 'saveReview') { resp = _saveReview(ss, body.data, idToken); skipCacheInvalidate = true; }
+    else if (body.action === 'deleteReview') { resp = _deleteReview(ss, body.data); skipCacheInvalidate = true; }
+    else if (body.action === 'uploadReviewImage') { resp = _uploadReviewImage(body.data); skipCacheInvalidate = true; }
     else throw new Error('Unknown action: ' + body.action);
-    _invalidateDashboardCache();
+    if (!skipCacheInvalidate) _invalidateDashboardCache();
     return resp;
   } catch (err) {
     return _json({ error: err.toString() });
@@ -1212,6 +1228,155 @@ function _thumbAsJson(fileId) {
     return _json({ success: true, base64: base64, mimeType: mimeType });
   } catch (err) {
     return _json({ error: '썸네일을 불러올 수 없습니다: ' + err.toString() });
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 회고 (회고 시트) ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function _ensureReviewSheet(ss) {
+  var sheet = ss.getSheetByName(REVIEW_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(REVIEW_SHEET);
+    sheet.getRange(1, 1, 1, 9).setValues([['id', '제목', '연월', '담당자', '팀', '파트', '본문', '수정일시', '최종편집자']]);
+    sheet.getRange(1, 1, 1, 9).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+// doGet ?review=list / ?review=get&id=... 진입점
+function _handleReviewGet(reviewParam, id) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (reviewParam === 'list') return _json({ success: true, reviews: _listReviews(ss) });
+  if (reviewParam === 'get') {
+    var doc = _getReviewDoc(ss, id);
+    if (!doc) return _json({ error: '해당 회고 문서를 찾을 수 없습니다.' });
+    return _json({ success: true, review: doc });
+  }
+  return _json({ error: 'Unknown review request: ' + reviewParam });
+}
+
+function _reviewUpdatedAtStr(cell) {
+  return cell instanceof Date ? cell.toISOString() : String(cell || '');
+}
+
+// 목록 화면용 — 시트가 아직 없으면(한 번도 저장 안 됨) 빈 배열 반환(캘린더이벤트와 동일 패턴).
+// 본문(블록 JSON)은 목록에 필요 없어 응답에서 제외 — 문서가 많아져도 목록 응답이 가벼움.
+function _listReviews(ss) {
+  var sheet = ss.getSheetByName(REVIEW_SHEET);
+  if (!sheet) return [];
+  var data = sheet.getDataRange().getValues();
+  var list = [];
+  for (var i = REVIEW_DATA_START_ROW; i < data.length; i++) {
+    var row = data[i];
+    var id = String(row[REVIEW_COL.id] || '').trim();
+    if (!id) continue;
+    list.push({
+      id: id,
+      title: String(row[REVIEW_COL.title] || ''),
+      ym: String(row[REVIEW_COL.ym] || ''),
+      owner: String(row[REVIEW_COL.owner] || ''),
+      team: String(row[REVIEW_COL.team] || ''),
+      part: String(row[REVIEW_COL.part] || ''),
+      updatedAt: _reviewUpdatedAtStr(row[REVIEW_COL.updatedAt]),
+      editedBy: String(row[REVIEW_COL.editedBy] || '')
+    });
+  }
+  list.sort(function (a, b) { return (b.updatedAt || '').localeCompare(a.updatedAt || ''); }); // 최신 작성순
+  return list;
+}
+
+function _findReviewRow(sheet, id) {
+  var data = sheet.getDataRange().getValues();
+  for (var i = REVIEW_DATA_START_ROW; i < data.length; i++) {
+    if (String(data[i][REVIEW_COL.id] || '') === id) return i + 1; // 1-based 물리 행 번호
+  }
+  return 0;
+}
+
+function _getReviewDoc(ss, id) {
+  var sheet = ss.getSheetByName(REVIEW_SHEET);
+  if (!sheet || !id) return null;
+  var data = sheet.getDataRange().getValues();
+  for (var i = REVIEW_DATA_START_ROW; i < data.length; i++) {
+    var row = data[i];
+    if (String(row[REVIEW_COL.id] || '') !== id) continue;
+    var blocks = [];
+    try { blocks = JSON.parse(row[REVIEW_COL.body] || '[]'); } catch (e) { blocks = []; }
+    return {
+      id: String(row[REVIEW_COL.id] || ''),
+      title: String(row[REVIEW_COL.title] || ''),
+      ym: String(row[REVIEW_COL.ym] || ''),
+      owner: String(row[REVIEW_COL.owner] || ''),
+      team: String(row[REVIEW_COL.team] || ''),
+      part: String(row[REVIEW_COL.part] || ''),
+      blocks: blocks,
+      updatedAt: _reviewUpdatedAtStr(row[REVIEW_COL.updatedAt]),
+      editedBy: String(row[REVIEW_COL.editedBy] || '')
+    };
+  }
+  return null;
+}
+
+// 저장(신규/수정 겸용) — id가 없으면 새로 발급해 새 행 추가, 있으면 기존 행을 덮어씀.
+// 로그인한 athomecorp.com 사용자 누구나 읽기/쓰기 가능(REQUIRE_AUTH 도메인 검증 외 추가 제한 없음).
+function _saveReview(ss, data, idToken) {
+  var sheet = _ensureReviewSheet(ss);
+  var payload = _decodeIdTokenPayload(idToken);
+  var editor = (payload && (payload.name || payload.email)) || '';
+  var id = String((data && data.id) || '').trim() || Utilities.getUuid();
+  var now = new Date().toISOString();
+  var rowData = [
+    id,
+    String((data && data.title) || '').trim(),
+    String((data && data.ym) || '').trim(),
+    String((data && data.owner) || '').trim(),
+    String((data && data.team) || '').trim(),
+    String((data && data.part) || '').trim(),
+    JSON.stringify((data && data.blocks) || []),
+    now,
+    editor
+  ];
+  var row = _findReviewRow(sheet, id);
+  if (row) sheet.getRange(row, 1, 1, rowData.length).setValues([rowData]);
+  else sheet.appendRow(rowData);
+  return _json({ success: true, id: id, updatedAt: now, editedBy: editor });
+}
+
+function _deleteReview(ss, data) {
+  var sheet = ss.getSheetByName(REVIEW_SHEET);
+  if (!sheet) return _json({ error: '회고 시트를 찾을 수 없습니다.' });
+  var id = String((data && data.id) || '').trim();
+  var row = _findReviewRow(sheet, id);
+  if (!row) return _json({ error: '해당 회고 문서를 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
+  sheet.deleteRow(row);
+  return _json({ success: true });
+}
+
+// 회고 본문에 삽입하는 이미지 — 릴스 썸네일과 완전히 같은 방식(전용 Drive 폴더에 비공개로 저장하고
+// doGet의 ?thumb=<fileId> 프록시로 인증 fetch 서빙)이라 폴더만 분리하고 프록시는 그대로 재사용함.
+var REVIEW_IMG_FOLDER_NAME = '공동구매_회고_이미지';
+
+function _getReviewImgFolder() {
+  var it = DriveApp.getFoldersByName(REVIEW_IMG_FOLDER_NAME);
+  if (it.hasNext()) return it.next();
+  return DriveApp.createFolder(REVIEW_IMG_FOLDER_NAME);
+}
+
+function _uploadReviewImage(data) {
+  if (!data || !data.base64) return _json({ error: '업로드할 이미지 데이터가 없습니다.' });
+  try {
+    var folder = _getReviewImgFolder();
+    var bytes = Utilities.base64Decode(data.base64);
+    var mimeType = data.mimeType || 'image/jpeg';
+    var ext = mimeType.indexOf('png') >= 0 ? 'png' : 'jpg';
+    var blob = Utilities.newBlob(bytes, mimeType, 'review_' + Date.now() + '.' + ext);
+    var file = folder.createFile(blob);
+    var url = _canonicalScriptUrl() + '?thumb=' + file.getId();
+    return _json({ success: true, url: url });
+  } catch (err) {
+    return _json({ error: '이미지 업로드 실패: ' + err.toString() });
   }
 }
 
