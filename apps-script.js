@@ -18,7 +18,7 @@
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'auth-domain-fix-2026-07-24-01';
+var SCRIPT_VERSION = 'thumb-auth-fetch-2026-07-25-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1100,6 +1100,15 @@ function _deleteCalendarEvent(ss, data) {
 
 var THUMB_FOLDER_NAME = '공동구매_릴스_썸네일';
 
+// Workspace 도메인에 배포된 스크립트는 ScriptApp.getService().getUrl()이 가끔
+// https://script.google.com/a/<도메인>/macros/s/.../exec 형태로 나옴 — 이 /a/<도메인>/ 경로는
+// 구글이 자체 로그인 세션(우리 idToken과는 별개)을 요구해서 리다이렉트/차단될 수 있으므로,
+// 일반적인 /macros/s/.../exec 형태로 통일해서 저장함(우리 앱의 idToken 인증만 거치도록).
+function _canonicalScriptUrl() {
+  var url = ScriptApp.getService().getUrl();
+  return url.replace(/\/a\/[^/]+\/macros\//, '/macros/');
+}
+
 function _uploadThumbnail(data) {
   if (!data || !data.base64) return _json({ error: '업로드할 이미지 데이터가 없습니다.' });
   try {
@@ -1111,7 +1120,8 @@ function _uploadThumbnail(data) {
 
     // 조직 정책이 "링크가 있는 모든 사용자" 공유를 막고 있어 개별 파일 공유는 신뢰할 수 없음(403).
     // 대신 파일은 비공개로 두고, doGet의 ?thumb=<fileId> 프록시로 스크립트 소유자 권한으로 내려줌.
-    var url = ScriptApp.getService().getUrl() + '?thumb=' + file.getId();
+    // 이 URL 자체엔 idToken을 넣지 않음(토큰은 만료되므로) — 프론트가 매번 요청 시점에 새로 붙임.
+    var url = _canonicalScriptUrl() + '?thumb=' + file.getId();
     return _json({ success: true, url: url });
   } catch (err) {
     return _json({ error: '이미지 업로드 실패: ' + err.toString() });

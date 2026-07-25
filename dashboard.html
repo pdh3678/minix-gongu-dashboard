@@ -284,6 +284,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .reel-thumb-upload-btn input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer}
 .reel-thumb-clear{font-size:11px;color:var(--text-3);background:none;border:none;cursor:pointer;font-family:inherit;text-decoration:underline;flex-shrink:0}
 .reel-thumb-clear:hover{color:#DC2626}
+.reel-thumb-skeleton{display:block;width:100%;height:100%;background:linear-gradient(90deg,var(--nbg) 25%,var(--border) 50%,var(--nbg) 75%);background-size:200% 100%;animation:reelThumbPulse 1.2s ease-in-out infinite}
+@keyframes reelThumbPulse{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .reel-del{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-3);cursor:pointer;flex-shrink:0;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:inherit}
 .reel-del:hover{background:#FEE2E2;color:#DC2626;border-color:#FCA5A5}
 .reel-add-btn{width:100%;margin-top:10px}
@@ -982,7 +984,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='auth-domain-fix-2026-07-24-01';
+const DASHBOARD_VERSION='thumb-auth-fetch-2026-07-25-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -2028,15 +2030,63 @@ function mOnDateChange(){
 }
 
 /* ── 릴스 관리 (모달 우측) ── */
-// 저장된 썸네일은 doGet의 ?thumb=<fileId> 프록시 URL이라 idToken을 붙여야 접근 가능.
-// 업로드 전 로컬 미리보기(data: URL)는 그대로 사용.
-function _reelThumbSrc(thumb){
+// 저장된 썸네일은 doGet의 ?thumb=<fileId> 프록시가 내려주는 이미지라, <img src>에 URL을 직접
+// 넣으면 인증 토큰을 실을 수 없어(+ Workspace 도메인의 /a/<도메인>/ 변형 URL은 구글 자체 로그인
+// 리다이렉트를 탈 수 있어) 조용히 실패한다. 다른 데이터 요청과 동일하게 idToken을 실어 fetch한
+// 뒤 blob으로 변환해서 <img>에 주입함. 세션 내 메모리 캐시(fileId 기준)로 중복 fetch를 막고,
+// 시트에 예전 방식으로 저장된 두 형태(우리 프록시의 /a/<도메인>/ 변형, drive.google.com 직접
+// 링크)도 파일ID만 뽑아서 항상 우리 프록시로 새로 인증 요청하도록 흡수함(시트 값은 그대로 둠).
+const _thumbBlobCache=new Map(); // fileId -> Promise<string|null>(objectURL, 실패 시 null)
+
+function _extractDriveThumbFileId(thumb){
   if(!thumb)return'';
-  if(thumb.startsWith('data:'))return thumb;
-  return _gasUrl(thumb);
+  try{
+    const u=new URL(thumb,location.href);
+    if(u.searchParams.get('thumb'))return u.searchParams.get('thumb');
+    if(u.searchParams.get('id'))return u.searchParams.get('id');
+    const m=u.pathname.match(/\/file\/d\/([^/]+)/);
+    if(m)return m[1];
+  }catch(e){}
+  return'';
+}
+
+async function _loadThumbBlobUrl(thumb){
+  if(!thumb)return null;
+  if(thumb.startsWith('data:'))return thumb; // 업로드 직후 로컬 미리보기는 그대로 사용
+  const fileId=_extractDriveThumbFileId(thumb);
+  if(!fileId){
+    console.warn('[썸네일] 파일ID를 추출하지 못했습니다(알 수 없는 URL 형식):',thumb);
+    return null;
+  }
+  if(_thumbBlobCache.has(fileId))return _thumbBlobCache.get(fileId);
+
+  const gasUrl=localStorage.getItem('gp_gas_url');
+  const p=(async()=>{
+    if(!gasUrl){console.warn('[썸네일 로드 실패] GAS URL이 설정되지 않았습니다. fileId=',fileId);return null;}
+    try{
+      const res=await fetch(_gasUrl(gasUrl+'?thumb='+encodeURIComponent(fileId)));
+      const ct=res.headers.get('content-type')||'';
+      if(!res.ok||!ct.startsWith('image/')){
+        let reason='HTTP '+res.status;
+        try{
+          const j=await res.clone().json();
+          reason=j.error==='AUTH_REQUIRED'?'인증 실패(사유: '+(j.reason||'?')+')':(j.error||'포맷 오류(이미지 아님, content-type='+ct+')');
+        }catch(e){/* 응답이 JSON도 아니면 위의 HTTP 상태 사유를 그대로 씀 */}
+        console.error('[썸네일 로드 실패] 사유:',reason,'/ fileId=',fileId);
+        return null;
+      }
+      const blob=await res.blob();
+      return URL.createObjectURL(blob);
+    }catch(e){
+      console.error('[썸네일 로드 실패] 네트워크 오류:',e,'/ fileId=',fileId);
+      return null;
+    }
+  })();
+  _thumbBlobCache.set(fileId,p);
+  return p;
 }
 function reelThumbHtml(r,i){
-  if(r.thumb)return`<img src="${_reelThumbSrc(r.thumb)}" alt="" onerror="reelThumbError(${i})">`;
+  if(r.thumb)return`<span class="reel-thumb-skeleton" id="reelThumbImg${i}"></span>`;
   return reelThumbFallback();
 }
 function reelThumbFallback(){
@@ -2049,6 +2099,18 @@ function reelThumbError(i){
   _modalReels[i].thumb='';
   delete _modalReels[i]._pendingUpload;
   refreshReelThumb(i);
+}
+// 스켈레톤으로 먼저 그려둔 뒤, 각 슬롯의 실제 이미지를 비동기 인증 fetch로 채워넣음(목록/그리드 둘 다)
+function _hydrateReelThumbs(){
+  _modalReels.forEach((r,i)=>{
+    if(!r.thumb)return;
+    _loadThumbBlobUrl(r.thumb).then(src=>{
+      const listEl=document.getElementById('reelThumbImg'+i);
+      if(listEl)listEl.outerHTML=src?`<img id="reelThumbImg${i}" src="${src}" alt="" onerror="reelThumbError(${i})">`:reelThumbFallback();
+      const galEl=document.getElementById('reelGalleryImg'+i);
+      if(galEl)galEl.outerHTML=src?`<img id="reelGalleryImg${i}" src="${src}" alt="">`:'';
+    });
+  });
 }
 function renderReelList(){
   const host=document.getElementById('reelList');
@@ -2068,6 +2130,7 @@ function renderReelList(){
   document.getElementById('addReelBtn').disabled=_modalReels.length>=10;
   updateReelTotal();
   renderReelGallery();
+  _hydrateReelThumbs();
 }
 // 최대 10칸 — 채워진 썸네일은 클릭 시 릴스로 이동, 빈 칸은 점선 플레이스홀더
 function renderReelGallery(){
@@ -2076,7 +2139,7 @@ function renderReelGallery(){
   for(let i=0;i<10;i++){
     const r=_modalReels[i];
     if(r&&r.thumb){
-      html+=`<a class="reel-gallery-slot" href="${r.url||'#'}" target="_blank" rel="noopener" onclick="${r.url?'':'event.preventDefault()'}" title="릴스 ${i+1}"><img src="${_reelThumbSrc(r.thumb)}" alt=""></a>`;
+      html+=`<a class="reel-gallery-slot" href="${r.url||'#'}" target="_blank" rel="noopener" onclick="${r.url?'':'event.preventDefault()'}" title="릴스 ${i+1}"><span class="reel-thumb-skeleton" id="reelGalleryImg${i}"></span></a>`;
     } else {
       html+='<div class="reel-gallery-slot empty"></div>';
     }
@@ -2095,6 +2158,7 @@ function refreshReelThumb(i){
   el.href=r.url||'#';
   el.innerHTML=reelThumbHtml(r,i);
   renderReelGallery();
+  _hydrateReelThumbs();
 }
 function updateReelTotal(){
   const total=_modalReels.reduce((s,r)=>s+(r.views||0),0);
