@@ -20,6 +20,9 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .cp-live{background:rgba(10,124,94,.35);color:#A7F3D0}
 .cp-error{background:rgba(220,38,38,.3);color:#FCA5A5}
 .cp-loading{background:rgba(255,255,255,.1);color:rgba(255,255,255,.5)}
+/* 재시도 안내가 붙는 "확정 실패" 상태 — 샘플 데이터로 조용히 넘어가지 않고, 클릭하면 재요청됨을
+   밑줄로 힌트(연결뱃지는 이미 전역적으로 onclick=refreshData()가 걸려있어 클릭 자체는 항상 동작함) */
+.cp-failed{background:rgba(220,38,38,.42);color:#FEE2E2;text-decoration:underline;font-weight:700}
 .icon-btn{width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .15s}
 .icon-btn:hover{background:rgba(255,255,255,.18)}
 .icon-btn:disabled{opacity:.4;cursor:default}
@@ -1138,7 +1141,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='login-postcred-fix-2026-07-27-01';
+const DASHBOARD_VERSION='fetchlive-fix-2026-07-28-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -2551,7 +2554,7 @@ async function saveSchemeModal(){
     try{
       for(const r of reels){
         if(!r._pendingUpload)continue;
-        const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadThumbnail',data:r._pendingUpload,idToken:_gasCredential||''})});
+        const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadThumbnail',data:r._pendingUpload,idToken:_getToken()||''})});
         if(j.error)throw new Error(j.error);
         r.thumb=j.url;
       }
@@ -2567,11 +2570,11 @@ async function saveSchemeModal(){
       // updateDeal과 saveReels는 이제 둘 다 dealId로 같은 행을 직접 찾으므로(제품+채널 추측 검증 폐기)
       // 병렬로 보내도 안전하지만, 실패 시 원인 구분이 쉽도록 순차 처리 유지.
       if(Object.keys(changes).length||codesChanged){
-        const r1=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'updateDeal',data:{dealId:d.dealId,changes,codes},idToken:_gasCredential||''})});
+        const r1=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'updateDeal',data:{dealId:d.dealId,changes,codes},idToken:_getToken()||''})});
         if(!r1||r1.success!==true||r1.error)throw new Error((r1&&r1.error)||'updateDeal 응답에 success:true가 없습니다');
       }
       if(touchReels){
-        const r2=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReels',data:{dealId:d.dealId,link:next.link,reels},idToken:_gasCredential||''})});
+        const r2=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReels',data:{dealId:d.dealId,link:next.link,reels},idToken:_getToken()||''})});
         if(!r2||r2.success!==true||r2.error)throw new Error((r2&&r2.error)||'saveReels 응답에 success:true가 없습니다');
       }
     })().then(()=>{
@@ -2618,7 +2621,7 @@ function deleteDeal(d){
     return;
   }
   setLoad(true);
-  _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteDeal',data:{dealId:d.dealId},idToken:_gasCredential||''})})
+  _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteDeal',data:{dealId:d.dealId},idToken:_getToken()||''})})
     .then(j=>{
       if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'삭제 응답에 success:true가 없습니다');
       const idx=DATA.indexOf(d);if(idx>=0)DATA.splice(idx,1);
@@ -2677,7 +2680,7 @@ async function openDebug(){
   const body=document.getElementById('debugBody');
   document.getElementById('debugOv').classList.add('open');
   if(!url){body.textContent='먼저 ⚙ 연결 설정에서 Apps Script Web App URL을 등록하세요.';return;}
-  if(!_gasCredential){body.textContent='로그인이 필요합니다. 새로고침 후 다시 시도하세요.';return;}
+  if(!_getToken()){body.textContent='로그인이 필요합니다. 새로고침 후 다시 시도하세요.';return;}
   body.textContent='불러오는 중...';
   try{
     const r=await fetch(_gasUrl(url)+'&debug=1');
@@ -2701,7 +2704,7 @@ function showCfgMsg(msg,type){const el=document.getElementById('cfgMsg');if(!msg
 async function testConn(){
   const url=document.getElementById('gasUrl').value.trim();
   if(!url){showCfgMsg('URL을 입력해주세요.','err');return;}
-  if(!_gasCredential){showCfgMsg('로그인 후 테스트해주세요.','err');return;}
+  if(!_getToken()){showCfgMsg('로그인 후 테스트해주세요.','err');return;}
   showCfgMsg('연결 테스트 중...','');
   try{
     const r=await fetch(_gasUrl(url));const j=await r.json();
@@ -2723,7 +2726,10 @@ let _lastLiveAt=null, _connFailStreak=0;
 function setConn(s){
   const el=document.getElementById('connPill');
   const m={sample:['● 샘플 데이터','cp-sample'],live:['● 실시간 연결','cp-live'],error:['● 연결 오류','cp-error'],loading:['◌ 로딩 중...','cp-loading'],retrying:['◌ 재연결 중...','cp-loading'],
-    refreshing:['◌ 인증 갱신 중...','cp-loading'],relogin:['● 재로그인 필요','cp-error'],cached:['◌ 캐시 데이터 · 갱신 중...','cp-loading']};
+    refreshing:['◌ 인증 갱신 중...','cp-loading'],relogin:['● 재로그인 필요','cp-error'],cached:['◌ 캐시 데이터 · 갱신 중...','cp-loading'],
+    // fetchLive가 반복 실패했을 때 "샘플 데이터"로 조용히 보이지 않게 하는 확정 실패 상태 —
+    // connPill은 이미 항상 onclick=refreshData()가 걸려있어 클릭하면 그대로 재요청됨
+    failed:['⚠ 서버 연결 실패 — 클릭해 재시도','cp-failed']};
   const[t,c]=m[s]||m.sample;el.textContent=t;el.className='conn-pill '+c;
   el.title=(_lastLiveAt?('마지막 동기화: '+new Date(_lastLiveAt).toLocaleTimeString('ko-KR')+' · '):'')+'클릭 시 재연결';
 }
@@ -2736,8 +2742,14 @@ function _showCacheBadge(cachedAt){
   document.getElementById('connPill').textContent='◌ '+label+' 데이터 · 갱신 중...';
 }
 function _connOk(){_connFailStreak=0;_lastLiveAt=Date.now();}
-// 실패 시 바로 "연결 오류"로 튀지 않고, 2회 연속 실패해야 전환 — 일시적 blip으로 뱃지가 깜빡이는 걸 방지
-function _connFail(){_connFailStreak++;setConn(_connFailStreak>=2?'error':'retrying');}
+// 실패 시 바로 "연결 실패"로 튀지 않고, 2회 연속 실패해야 전환 — 일시적 blip으로 뱃지가 깜빡이는 걸 방지.
+// 2회째부터는 (구)'연결 오류' 텍스트 배지가 아니라 클릭 유도형 'failed' 상태로 — 샘플 데이터로
+// 오인되지 않게, 그리고 클릭하면 그대로 재시도(connPill onclick=refreshData)되게 함.
+function _connFail(reason){
+  _connFailStreak++;
+  console.warn('[fetchLive] 연속 실패 '+_connFailStreak+'회'+(reason?' (사유: '+reason+')':''));
+  setConn(_connFailStreak>=2?'failed':'retrying');
+}
 function setLoad(on){document.getElementById('loadOv').classList[on?'add':'remove']('open');}
 
 // ── 데이터 캐시(stale-while-revalidate): 마지막 성공 응답을 저장해뒀다가 다음 방문 때
@@ -2766,25 +2778,67 @@ function _loadDataCache(){
 function _clearDataCache(){try{localStorage.removeItem(GAS_DATA_CACHE_LS_KEY);}catch(e){}}
 
 let _usingCachedRender=false; // 캐시로 이미 화면을 그려둔 채 백그라운드로 새로고침 중이면 true — 전체화면 로딩 오버레이/뱃지를 덮어쓰지 않음
+
+// fetch()가 던진 에러를 콘솔에서 바로 원인 구분이 되게 분류 — 신규 로그인 직후 데이터가 안 뜨는
+// 문제를 조사할 때 "샘플로 조용히 폴백"이 아니라 정확히 어느 유형의 실패인지 남기기 위함
+function _classifyFetchError(e){
+  const msg=(e&&e.message)||String(e);
+  if(/^TIMEOUT/.test(msg))return'TIMEOUT';
+  if(/^HTTP 5/.test(msg))return'SERVER_5XX';
+  if(e&&e.name==='TypeError')return'NETWORK_ERROR'; // fetch 자체가 못 나감(오프라인/CORS/DNS 등)
+  return'SERVER_ERROR';
+}
+
+// AUTH_REQUIRED 자동 재시도(1회) 예약 — _gasFetch가 이미 내부적으로 토큰 갱신+재시도를 한 번
+// 시도했는데도 AUTH_REQUIRED가 남아있으면, 5초 뒤 토큰을 다시 확인해서 한 번 더 시도함. 여러 호출이
+// 겹쳐도 타이머가 중첩되지 않게 단일 타이머로 관리.
+let _fetchLiveAuthRetryTimer=null;
+function _scheduleFetchLiveAuthRetry(){
+  if(_fetchLiveAuthRetryTimer)return; // 이미 예약돼 있으면 중복 예약 안 함
+  _fetchLiveAuthRetryTimer=setTimeout(()=>{
+    _fetchLiveAuthRetryTimer=null;
+    console.log('[fetchLive] AUTH_REQUIRED 5초 후 1회 자동 재시도 — 현재 토큰 존재='+(!!_getToken()));
+    fetchLive();
+  },5000);
+}
+
 async function fetchLive(forceFresh){
   const url=localStorage.getItem('gp_gas_url');
-  if(!url){setConn('sample');return;}
-  // 아직 GIS 로그인 credential이 없으면 대기 (auto_select가 곧 발급해줌)
-  if(!_gasCredential){setConn('sample');return;}
+  const token=_getToken();
+  console.log('[fetchLive] 요청 준비 — GAS URL 설정됨='+(!!url)+', 토큰 존재='+(!!token)+(token?(' (앞 10자: '+token.slice(0,10)+'...)'):''));
+  if(!url){
+    // 서버 URL 자체가 없는 건 관리자가 ⚙ 연결 설정에서 등록해야 하는 상태 — 재시도로 해결되지 않으므로
+    // "서버 연결 실패"가 아니라 "샘플 데이터"(데모 모드)로 명확히 구분해서 표시
+    console.error('[fetchLive 실패] 사유: GAS_URL_MISSING — ⚙ 연결 설정에서 Apps Script Web App URL을 등록해야 합니다.');
+    setConn('sample');
+    return;
+  }
+  if(!token){
+    // 여기 도달했다는 건 이미 로그인 흐름이 fetchLive를 부른 뒤라 정상적으로는 토큰이 있어야 함 —
+    // 조용히 샘플로 넘기지 않고 실패로 남겨서(재시도 가능) 원인이 눈에 띄게 함
+    console.error('[fetchLive 실패] 사유: NO_TOKEN — 로그인 토큰이 없는 상태에서 fetchLive가 호출됨');
+    _connFail('NO_TOKEN');
+    return;
+  }
   if(!_usingCachedRender){setConn('loading');setLoad(true);}
   try{
     // 수동 새로고침(forceFresh)은 서버의 90초 캐시를 건너뛰고 항상 최신 데이터를 받아옴
-    const j=await _gasFetch(_gasUrl(url)+(forceFresh?'&nocache=1':''),{});
+    const reqUrl=_gasUrl(url)+(forceFresh?'&nocache=1':'');
+    console.log('[fetchLive] 요청 URL(토큰 마스킹)=',reqUrl.replace(/idToken=[^&]+/,'idToken=***'));
+    const j=await _gasFetch(reqUrl,{});
     console.log('[fetchLive] 응답 버전(Apps Script):',j.version||'(버전 필드 없음 — 구버전 배포본)',j.cached?'(캐시됨, '+j.execMs+'ms)':'(새로 계산, '+j.execMs+'ms)');
     if(j.version&&j.version!==DASHBOARD_VERSION){
       console.warn(`[버전 불일치] 프론트=${DASHBOARD_VERSION} / 배포된 Apps Script=${j.version} — Apps Script를 최신 코드로 재배포했는지 확인하세요.`);
     }
     if(j.error==='AUTH_REQUIRED'){
       // _gasFetch가 이미 토큰 자동 갱신+재시도를 한 번 시도한 뒤에도 실패한 경우 — 배너/배지는
-      // 이미 _gasFetch·_refreshIdToken이 정확히 세팅해뒀으므로 여기서 _connFail()로 덮어쓰지 않음
+      // 이미 _gasFetch·_refreshIdToken이 정확히 세팅해뒀으므로 여기서 _connFail()로 덮어쓰지 않되,
+      // 5초 뒤 자동으로 한 번 더 시도해서 사용자가 직접 새로고침을 누를 필요가 없게 함
+      console.error('[fetchLive 실패] 사유: AUTH_REQUIRED — 서버가 토큰을 거부함(사유는 위 [인증 거절] 로그 참고)');
+      _scheduleFetchLiveAuthRetry();
       return;
     }
-    if(j.error)throw new Error(j.error);
+    if(j.error){console.error('[fetchLive 실패] 사유: SERVER_ERROR —',j.error);throw new Error(j.error);}
     _hideReloginBanner();
     const _withReels=(j.purchases||[]).filter(p=>Array.isArray(p.reels)&&p.reels.length);
     console.log('[6.fetchLive 응답] 릴스 있는 공구건 수=',_withReels.length,
@@ -2810,8 +2864,13 @@ async function fetchLive(forceFresh){
       EVENTS.splice(0,EVENTS.length,...adaptGASEvents(j));
       _connOk();setConn('live');render();
       _saveDataCache(j);
+      if(_fetchLiveAuthRetryTimer){clearTimeout(_fetchLiveAuthRetryTimer);_fetchLiveAuthRetryTimer=null;} // 성공했으니 예약된 재시도는 취소
     }else throw new Error('데이터가 비어있습니다');
-  }catch(e){console.error(e);_connFail();}
+  }catch(e){
+    const reason=_classifyFetchError(e);
+    console.error('[fetchLive 실패] 사유: '+reason+' —',e);
+    _connFail(reason);
+  }
   finally{setLoad(false);_usingCachedRender=false;}
 }
 
@@ -3187,7 +3246,7 @@ function saveDeal(){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addSalesRow',data:newDeal,idToken:_gasCredential||''})})
+    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addSalesRow',data:newDeal,idToken:_getToken()||''})})
       .then(j=>{
         if(j.error)throw new Error(j.error);
         closeDealForm();fetchLive();
@@ -3254,7 +3313,7 @@ function savePromo(){
   if(url){
     setLoad(true);
     const action=isEdit?'updateCalendarEvent':'addCalendarEvent';
-    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action,data:payload,idToken:_gasCredential||''})})
+    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action,data:payload,idToken:_getToken()||''})})
       .then(j=>{
         if(j.error)throw new Error(j.error);
         closePromoForm();fetchLive();
@@ -3280,7 +3339,7 @@ function deletePromo(){
   const url=localStorage.getItem('gp_gas_url');
   if(url){
     setLoad(true);
-    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteCalendarEvent',data:{row,origName},idToken:_gasCredential||''})})
+    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteCalendarEvent',data:{row,origName},idToken:_getToken()||''})})
       .then(j=>{
         if(j.error)throw new Error(j.error);
         closePromoForm();fetchLive();
@@ -3373,10 +3432,10 @@ function _armLoginAttemptWatch(){
 }
 function _startLoginAttemptWatchdog(){
   if(_gsiAttemptTimer)clearTimeout(_gsiAttemptTimer);
-  const credBefore=_gasCredential;
+  const credBefore=_getToken();
   _gsiAttemptTimer=setTimeout(()=>{
     _gsiAttemptTimer=null;
-    if(_gasCredential&&_gasCredential!==credBefore)return; // 그 사이 로그인 성공 — 배지 필요 없음
+    if(_getToken()&&_getToken()!==credBefore)return; // 그 사이 로그인 성공 — 배지 필요 없음
     _gsiLog('로그인 시도 후 5초 경과 — credential 콜백 없음');
     _showLoginDiag('로그인이 완료되지 않았습니다. 팝업이 차단된 것 같습니다 — 주소창의 팝업 차단 아이콘을 확인해 이 사이트의 팝업을 허용해주세요.');
   },5000);
@@ -3408,6 +3467,17 @@ function _loadTokenCache(){
 }
 function _clearTokenCache(){try{localStorage.removeItem(GAS_TOKEN_LS_KEY);}catch(e){}}
 
+// 토큰 읽기/쓰기 단일 창구 — 신규 로그인/기존 세션 복원/자동 갱신 세 경로 모두 반드시 이 두 함수만
+// 거치게 통일함(과거엔 _gasCredential 전역변수를 여기저기서 직접 대입해서, 저장 위치가 실제로
+// 어긋난 적은 없었지만 다음에 또 저장 경로가 늘어나면 어긋나기 쉬운 구조였음). _getToken()은 항상
+// 그 시점의 최신 in-memory 값을 반환하므로 fetchLive 등 호출부가 캐시된 값을 들고 있을 위험이 없음.
+function _getToken(){return _gasCredential;}
+function _setToken(token,expiresAt,persist){
+  _gasCredential=token||null;
+  _tokenExpiresAt=expiresAt||0;
+  if(persist!==false&&token)_saveTokenCache(token,expiresAt);
+}
+
 function _decodeJwt(token){
   const b64=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
   return JSON.parse(decodeURIComponent(
@@ -3418,25 +3488,32 @@ function _decodeJwt(token){
 // GAS URL에 idToken 쿼리 파라미터 추가(있으면 교체, 없으면 붙임) — 토큰 자동 갱신 후 재시도할 때도 재사용
 function _gasUrl(base){
   const stripped=base.replace(/([?&])idToken=[^&]*&?/,'$1').replace(/[?&]$/,'');
-  if(!_gasCredential)return stripped;
-  return stripped+(stripped.includes('?')?'&':'?')+'idToken='+encodeURIComponent(_gasCredential);
+  if(!_getToken())return stripped;
+  return stripped+(stripped.includes('?')?'&':'?')+'idToken='+encodeURIComponent(_getToken());
 }
 
-// 네트워크 오류/일시 실패(5xx)는 지수 백오프로 최대 2회 재시도.
+// 네트워크 오류/일시 실패(5xx)는 지수 백오프로 최대 2회 재시도. 응답이 20초 넘게 안 오면(Apps
+// Script 콜드스타트/네트워크 정체 등) 타임아웃으로 끊어서, "그냥 무한정 조용히 멈춤"이 아니라
+// 명확한 실패로 처리되게 함(끊긴 뒤에도 위 재시도 루프를 그대로 탐).
 // 응답이 AUTH_REQUIRED(idToken 만료, ~1시간)면 토큰을 자동 갱신해서 1회만 재시도하고,
 // 갱신까지 실패한 경우에만 재로그인 배너를 띄움. opts.body가 있으면(POST) 그 안의 idToken도 갱신해서 다시 보냄.
+const GAS_FETCH_TIMEOUT_MS=20000;
 async function _gasFetch(url,opts,_authRetried){
   const MAX_RETRY=2;
   let res,lastErr;
   for(let attempt=0;attempt<=MAX_RETRY;attempt++){
+    const ac=new AbortController();
+    const timeoutTimer=setTimeout(()=>ac.abort(),GAS_FETCH_TIMEOUT_MS);
     try{
-      res=await fetch(url,opts);
+      res=await fetch(url,Object.assign({},opts,{signal:ac.signal}));
       if(res.status>=500)throw new Error('HTTP '+res.status);
       lastErr=null;break;
     }catch(e){
-      lastErr=e;
+      lastErr=e.name==='AbortError'?new Error('TIMEOUT('+(GAS_FETCH_TIMEOUT_MS/1000)+'s)'):e;
       if(attempt===MAX_RETRY)break;
       await new Promise(r=>setTimeout(r,300*Math.pow(2,attempt))); // 300ms, 600ms
+    }finally{
+      clearTimeout(timeoutTimer);
     }
   }
   if(lastErr)throw lastErr;
@@ -3460,7 +3537,7 @@ async function _gasFetch(url,opts,_authRetried){
       if(url.includes('idToken='))retriedUrl=_gasUrl(url);
       if(opts&&opts.body){
         try{
-          const b=JSON.parse(opts.body);b.idToken=_gasCredential||'';
+          const b=JSON.parse(opts.body);b.idToken=_getToken()||'';
           retriedOpts=Object.assign({},opts,{body:JSON.stringify(b)});
         }catch(e){}
       }
@@ -3483,7 +3560,7 @@ function _refreshIdToken(){
   setConn('refreshing');
   _refreshingPromise=new Promise(resolve=>{
     if(!(window.google&&google.accounts&&google.accounts.id)){resolve(false);return;}
-    const prevCred=_gasCredential;
+    const prevCred=_getToken();
     let settled=false;
     const finish=ok=>{if(settled)return;settled=true;resolve(ok);};
     try{
@@ -3509,7 +3586,7 @@ function _refreshIdToken(){
     }
     const start=Date.now();
     (function poll(){
-      if(_gasCredential&&_gasCredential!==prevCred){finish(true);return;}
+      if(_getToken()&&_getToken()!==prevCred){finish(true);return;}
       if(Date.now()-start>5000){finish(false);return;}
       setTimeout(poll,200);
     })();
@@ -3534,7 +3611,7 @@ function _scheduleTokenRefresh(){
 // 탭이 백그라운드에 오래 있다가 돌아온 경우 — 예약된 타이머가 그 사이 안 돌았을 수 있으니
 // 다시 보이는 시점에 만료 임박 여부를 즉시 재확인
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible'&&_gasCredential&&_tokenExpiresAt){
+  if(document.visibilityState==='visible'&&_getToken()&&_tokenExpiresAt){
     if(Date.now()>=_tokenExpiresAt-5*60*1000)_refreshIdToken();
   }
 });
@@ -3588,10 +3665,8 @@ function handleGoogleSignIn(response){
     }
 
     const isNewLogin=!_dashboardEntered; // "처음 로그인인지"는 credential 유무가 아니라 실제 진입 여부 기준
-    _gasCredential=response.credential; // ID 토큰 보관
-    _tokenExpiresAt=(payload.exp||0)*1000;
-    _saveTokenCache(_gasCredential,_tokenExpiresAt); // 다음 방문 때 인증 왕복 없이 바로 쓸 수 있게 저장
-    _gsiLog('토큰 저장 완료(isNewLogin='+isNewLogin+')');
+    _setToken(response.credential,(payload.exp||0)*1000); // 단일 창구 — in-memory + localStorage 캐시 둘 다 여기서 갱신
+    _gsiLog('토큰 저장 완료(isNewLogin='+isNewLogin+', 토큰 앞 10자='+String(response.credential||'').slice(0,10)+'...)');
     _scheduleTokenRefresh(); // 만료 5분 전 백그라운드 자동 갱신 예약(로그인/자동 갱신 둘 다 여길 지나감)
     sessionStorage.setItem('gp_user',JSON.stringify({email,name:payload.name,picture:payload.picture}));
     _hideReloginBanner();
@@ -3651,12 +3726,12 @@ let _presenceTimer=null;
 let _presenceUsers=[];
 let _presencePanelOpen=true;
 async function _sendPresenceHeartbeat(){
-  if(!_gasCredential)return; // 로그아웃 상태
+  if(!_getToken())return; // 로그아웃 상태
   if(_tokenExpiresAt&&Date.now()>=_tokenExpiresAt)return; // 만료된 토큰으로는 전송하지 않음
   const url=localStorage.getItem('gp_gas_url');
   if(!url)return;
   try{
-    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'presence',idToken:_gasCredential})});
+    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'presence',idToken:_getToken()})});
     if(j&&j.success&&Array.isArray(j.users)){
       _presenceUsers=j.users;
       renderPresencePanel();
@@ -3677,7 +3752,7 @@ function _stopPresenceHeartbeat(){
   if(_presenceTimer){clearInterval(_presenceTimer);_presenceTimer=null;}
 }
 document.addEventListener('visibilitychange',()=>{
-  if(!_gasCredential)return;
+  if(!_getToken())return;
   if(document.visibilityState==='hidden')_stopPresenceHeartbeat();
   else if(document.visibilityState==='visible')_startPresenceHeartbeat(); // 즉시 1회 전송 후 30초 간격 재개
 });
@@ -3719,7 +3794,7 @@ window.onGoogleLibraryLoad=function(){
   // 부트스트랩이 이미 유효한 캐시 토큰으로 _gasCredential을 채워뒀으면 여기서 또 조용한 재인증을
   // 시도할 필요 없음 — _scheduleTokenRefresh()가 만료 5분 전에 알아서 처리함. 캐시 토큰이 없거나
   // 이미 만료된 상태로 세션 흔적(gp_user)만 남아있는 경우에만 지금 한 번 시도.
-  if(!_gasCredential&&sessionStorage.getItem('gp_user'))_refreshIdToken();
+  if(!_getToken()&&sessionStorage.getItem('gp_user'))_refreshIdToken();
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -3958,7 +4033,7 @@ function _matchMarkdownPrefix(text){
 async function _reviewLoadList(){
   const host=document.getElementById('reviewListBody');
   const url=localStorage.getItem('gp_gas_url');
-  if(!url||!_gasCredential){host.innerHTML='<div class="page-placeholder">로그인이 필요합니다.</div>';return;}
+  if(!url||!_getToken()){host.innerHTML='<div class="page-placeholder">로그인이 필요합니다.</div>';return;}
   host.innerHTML='<div class="page-placeholder">불러오는 중...</div>';
   try{
     const j=await _gasFetch(_gasUrl(url)+'&review=list',{});
@@ -3997,7 +4072,7 @@ function openNewReview(){
 }
 async function openReviewDetail(id){
   const url=localStorage.getItem('gp_gas_url');
-  if(!url||!_gasCredential)return;
+  if(!url||!_getToken())return;
   document.getElementById('reviewListView').style.display='none';
   document.getElementById('reviewDetailView').style.display='flex';
   document.getElementById('reviewSaveStatus').innerHTML='&nbsp;';
@@ -4045,7 +4120,7 @@ async function saveReviewDoc(manual){
   if(!_curReview)return;
   if(_reviewAutosaveTimer){clearTimeout(_reviewAutosaveTimer);_reviewAutosaveTimer=null;}
   const url=localStorage.getItem('gp_gas_url');
-  if(!url||!_gasCredential){if(manual)showToast('로그인이 필요합니다.');return;}
+  if(!url||!_getToken()){if(manual)showToast('로그인이 필요합니다.');return;}
   _curReview.title=document.getElementById('reviewTitleInput').value;
   _curReview.ym=document.getElementById('reviewYmInput').value;
   _curReview.owner=document.getElementById('reviewOwnerInput').value;
@@ -4053,7 +4128,7 @@ async function saveReviewDoc(manual){
   _curReview.part=document.getElementById('reviewPartInput').value;
   _reviewSaving=true;_renderReviewFooter();
   try{
-    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReview',data:{id:_curReview.id,title:_curReview.title,ym:_curReview.ym,owner:_curReview.owner,team:_curReview.team,part:_curReview.part,blocks:_reviewBlocks},idToken:_gasCredential||''})});
+    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReview',data:{id:_curReview.id,title:_curReview.title,ym:_curReview.ym,owner:_curReview.owner,team:_curReview.team,part:_curReview.part,blocks:_reviewBlocks},idToken:_getToken()||''})});
     _reviewSaving=false;
     if(j.error){
       const el=document.getElementById('reviewSaveStatus');
@@ -4076,9 +4151,9 @@ async function deleteReviewDoc(id){
   const r=_reviews.find(x=>x.id===id);
   if(!confirm(`"${(r&&r.title)||'제목 없음'}" 문서를 삭제하시겠습니까? 되돌릴 수 없습니다.`))return;
   const url=localStorage.getItem('gp_gas_url');
-  if(!url||!_gasCredential)return;
+  if(!url||!_getToken())return;
   try{
-    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteReview',data:{id},idToken:_gasCredential||''})});
+    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteReview',data:{id},idToken:_getToken()||''})});
     if(j.error){showToast('삭제 실패: '+j.error);return;}
     _reviews=_reviews.filter(x=>x.id!==id);
     _renderReviewList();
@@ -4481,7 +4556,7 @@ async function _uploadImageIntoBlock(blockId,file){
   try{
     const res=await resizeImageToDataURL(file,1400,1400,0.82);
     const url=localStorage.getItem('gp_gas_url');
-    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadReviewImage',data:{base64:res.base64,mimeType:res.mimeType},idToken:_gasCredential||''})});
+    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadReviewImage',data:{base64:res.base64,mimeType:res.mimeType},idToken:_getToken()||''})});
     block.uploading=false;
     if(j.error){showToast('이미지 업로드 실패: '+j.error);_reviewOnEdit();_renderReviewEditor();return;}
     block.url=j.url;
@@ -4597,8 +4672,7 @@ function _promptNotionUrl(blockId){
   try{user=savedUserRaw?JSON.parse(savedUserRaw):null;}catch(e){user=null;}
 
   if(tokenCache){
-    _gasCredential=tokenCache.token;
-    _tokenExpiresAt=tokenCache.expiresAt;
+    _setToken(tokenCache.token,tokenCache.expiresAt,false); // 이미 localStorage에서 읽어온 값이라 재저장 불필요(persist=false)
     _scheduleTokenRefresh();
     if(!user){
       // sessionStorage가 없는 상태(예: 브라우저 완전 재시작)에서도 토큰 캐시만으로 복원
