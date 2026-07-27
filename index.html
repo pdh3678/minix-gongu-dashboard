@@ -209,6 +209,13 @@ th.sortable.sorted .sort-ic{opacity:1;color:var(--minix)}
 .relogin-banner.show{display:flex}
 .relogin-banner button{background:#F59E0B;color:#1B2035;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer}
 .relogin-banner button:hover{background:#FBBF24}
+/* 로그인 후처리(credential 콜백 내부) 예외 배너 — #loginScreen(z-index 2000) 안팎 어느 상태에서
+   터지든 항상 보이도록 그보다 높은 z-index로 최상단에 고정 */
+.login-flow-err{position:fixed;top:0;left:0;right:0;background:#7C2D12;color:#FEF3C7;font-size:13px;font-weight:600;padding:10px 16px;display:none;align-items:center;justify-content:center;gap:12px;z-index:2500;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.login-flow-err.show{display:flex}
+.login-flow-err button{background:#F59E0B;color:#1B2035;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0}
+.login-flow-err button:hover{background:#FBBF24}
+.login-flow-err span{text-align:left}
 .ch-name-link{color:inherit;text-decoration:none}
 .ch-name-link:hover{text-decoration:underline}
 .ch-id{font-size:11px;display:inline-block;margin-left:5px}
@@ -488,6 +495,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <div class="relogin-banner" id="reloginBanner">
   <span>⚠ 로그인 세션이 만료되었습니다. 다시 로그인해주세요.</span>
   <button onclick="_showReloginScreen()">다시 로그인</button>
+</div>
+
+<div class="login-flow-err" id="loginFlowErrBanner">
+  <span id="loginFlowErrMsg"></span>
+  <button type="button" onclick="document.getElementById('loginFlowErrBanner').classList.remove('show')">닫기</button>
 </div>
 
 <div class="app-shell" id="appShell">
@@ -1126,7 +1138,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='login-diag-2026-07-27-01';
+const DASHBOARD_VERSION='login-postcred-fix-2026-07-27-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -3531,6 +3543,19 @@ function _showReloginBanner(){document.getElementById('reloginBanner').classList
 function _hideReloginBanner(){document.getElementById('reloginBanner').classList.remove('show');}
 function _showReloginScreen(){_hideReloginBanner();document.getElementById('loginScreen').style.display='flex';}
 
+function _reportLoginFlowError(msg){
+  console.error('[GSI] 로그인 후처리 실패 — '+msg);
+  document.getElementById('loginFlowErrMsg').textContent='로그인 후 처리 중 오류가 발생했습니다: '+msg+' (콘솔에 상세 내용이 남았습니다)';
+  document.getElementById('loginFlowErrBanner').classList.add('show');
+}
+
+// credential 콜백 이후 실제로 대시보드 진입(_enterDashboard)까지 완료됐는지 — "_gasCredential이
+// 있냐 없냐"만으로 신규 로그인 여부를 판단하면, auto_select가 사용자 클릭보다 먼저 조용히(또는
+// 처리 도중 실패하며) credential을 발급해둔 경우, 정작 사용자가 누른 버튼 클릭은 "이미 로그인된
+// 상태의 자동 갱신"으로 오인되어 UI 전환(_enterDashboard) 없이 fetchLive()만 조용히 실행되는
+// 문제가 있었음 — credential 유무가 아니라 "실제로 진입을 마쳤는지"를 별도로 추적해서 방지.
+let _dashboardEntered=false;
+
 // GIS 콜백: 로그인 완료 or 자동 갱신 시 호출
 function handleGoogleSignIn(response){
   // credential이 왔다는 것 자체가 "5초 내 응답 없음" 워치독이 대비하던 실패가 아니라는 뜻이므로,
@@ -3538,32 +3563,49 @@ function handleGoogleSignIn(response){
   if(_gsiAttemptTimer){clearTimeout(_gsiAttemptTimer);_gsiAttemptTimer=null;}
   _hideLoginDiag();
   _gsiLog('credential 수신 완료');
-  let payload;
-  try{payload=_decodeJwt(response.credential);}catch(e){_showLoginErr('로그인 처리 중 오류가 발생했습니다.');return;}
-  const email=payload.email||'';
-  // 서버(_authFailureReason)와 동일한 규칙: hd 클레임(호스팅 도메인)이 있으면 우선 신뢰하고,
-  // 없으면 email의 @ 뒤 문자열로 판정. 대소문자/공백 차이로 정상 계정이 튕기지 않게 정규화 후 비교.
-  const emailNorm=email.trim().toLowerCase();
-  const allowedDomainNorm=ALLOWED_DOMAIN.trim().toLowerCase();
-  const hd=payload.hd?String(payload.hd).trim().toLowerCase():'';
-  const domainOk=hd?(hd===allowedDomainNorm):emailNorm.endsWith('@'+allowedDomainNorm);
-  if(!domainOk){
-    console.warn('[로그인 거절] 클라이언트 도메인 검증 실패 — email='+email+', hd='+(hd||'(없음)')+', 허용 도메인='+ALLOWED_DOMAIN);
-    _showLoginErr(`접속 권한이 없습니다. (${email})\n앳홈 계정(@${ALLOWED_DOMAIN})으로만 로그인할 수 있습니다.`);
-    return;
-  }
-  const isNewLogin=!_gasCredential; // 처음 로그인인지 여부
-  _gasCredential=response.credential; // ID 토큰 보관
-  _tokenExpiresAt=(payload.exp||0)*1000;
-  _saveTokenCache(_gasCredential,_tokenExpiresAt); // 다음 방문 때 인증 왕복 없이 바로 쓸 수 있게 저장
-  _scheduleTokenRefresh(); // 만료 5분 전 백그라운드 자동 갱신 예약(로그인/자동 갱신 둘 다 여길 지나감)
-  sessionStorage.setItem('gp_user',JSON.stringify({email,name:payload.name,picture:payload.picture}));
-  _hideReloginBanner();
-  if(isNewLogin){
-    _enterDashboard(payload); // 처음 로그인 → 전체 진입
-  } else if(!_refreshingPromise){
-    // _refreshIdToken()에 의한 갱신이면 그 호출부(_gasFetch)가 알아서 원래 요청을 재시도하므로 여기서 또 fetchLive를 부르지 않음
-    fetchLive(); // auto_select 자동 갱신 → 데이터만 다시 로드
+  // GIS 라이브러리가 이 콜백을 팝업 postMessage 핸들러 등 내부 이벤트 루프에서 호출하는데, 그 경로에서
+  // 발생한 예외는 라이브러리 쪽에서 조용히 삼켜져 콘솔에도 전혀 안 남는 경우가 있었음(실제 증상:
+  // "credential은 왔는데 그 다음부터 원인 불명으로 멈춤"). 그래서 이 함수 전체를 반드시 우리 쪽에서
+  // try-catch로 감싸서 무슨 일이 있어도 콘솔+화면에 직접 노출시킴.
+  try{
+    let payload;
+    try{payload=_decodeJwt(response.credential);}
+    catch(e){_gsiLog('JWT 디코드 실패: '+e.message);_showLoginErr('로그인 처리 중 오류가 발생했습니다.');return;}
+    _gsiLog('JWT 디코드 완료 — email='+(payload.email||'?')+', exp='+(payload.exp||'?'));
+
+    const email=payload.email||'';
+    // 서버(_authFailureReason)와 동일한 규칙: hd 클레임(호스팅 도메인)이 있으면 우선 신뢰하고,
+    // 없으면 email의 @ 뒤 문자열로 판정. 대소문자/공백 차이로 정상 계정이 튕기지 않게 정규화 후 비교.
+    const emailNorm=email.trim().toLowerCase();
+    const allowedDomainNorm=ALLOWED_DOMAIN.trim().toLowerCase();
+    const hd=payload.hd?String(payload.hd).trim().toLowerCase():'';
+    const domainOk=hd?(hd===allowedDomainNorm):emailNorm.endsWith('@'+allowedDomainNorm);
+    _gsiLog('도메인 검증 '+(domainOk?'통과':'거절')+' — hd='+(hd||'(없음)')+', 허용 도메인='+ALLOWED_DOMAIN);
+    if(!domainOk){
+      console.warn('[로그인 거절] 클라이언트 도메인 검증 실패 — email='+email+', hd='+(hd||'(없음)')+', 허용 도메인='+ALLOWED_DOMAIN);
+      _showLoginErr(`접속 권한이 없습니다. (${email})\n앳홈 계정(@${ALLOWED_DOMAIN})으로만 로그인할 수 있습니다.`);
+      return;
+    }
+
+    const isNewLogin=!_dashboardEntered; // "처음 로그인인지"는 credential 유무가 아니라 실제 진입 여부 기준
+    _gasCredential=response.credential; // ID 토큰 보관
+    _tokenExpiresAt=(payload.exp||0)*1000;
+    _saveTokenCache(_gasCredential,_tokenExpiresAt); // 다음 방문 때 인증 왕복 없이 바로 쓸 수 있게 저장
+    _gsiLog('토큰 저장 완료(isNewLogin='+isNewLogin+')');
+    _scheduleTokenRefresh(); // 만료 5분 전 백그라운드 자동 갱신 예약(로그인/자동 갱신 둘 다 여길 지나감)
+    sessionStorage.setItem('gp_user',JSON.stringify({email,name:payload.name,picture:payload.picture}));
+    _hideReloginBanner();
+    if(isNewLogin){
+      _gsiLog('신규 로그인 → _enterDashboard 호출(UI 전환 시작)');
+      _enterDashboard(payload); // 처음 로그인 → 전체 진입
+      _gsiLog('_enterDashboard 반환 완료');
+    } else if(!_refreshingPromise){
+      // _refreshIdToken()에 의한 갱신이면 그 호출부(_gasFetch)가 알아서 원래 요청을 재시도하므로 여기서 또 fetchLive를 부르지 않음
+      _gsiLog('이미 진입한 상태의 자동 갱신 → fetchLive만 재호출');
+      fetchLive(); // auto_select 자동 갱신 → 데이터만 다시 로드
+    }
+  }catch(err){
+    _reportLoginFlowError((err&&err.message)||String(err));
   }
 }
 
@@ -3573,17 +3615,24 @@ function _showLoginErr(msg){
 }
 
 function _enterDashboard(user){
+  _gsiLog('_enterDashboard: 시작 — 로그인화면 숨김+이름표시');
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('sbUserEmail').textContent=user.name||user.email;
   _applyAdminUI(user.email||'');
+  _gsiLog('_enterDashboard: fetchLive/render 호출');
   fetchLive();render();
   _routeFromHash(); // 주소의 해시(#calendar, #product-더플렌더 등)에 맞는 탭을 열어줌(없으면 기본 탭)
   _startPresenceHeartbeat();
+  _gsiLog('_enterDashboard: 완료(routeFromHash/presence 포함)');
+  // 여기까지 예외 없이 도달해야만 "진입 완료"로 인정 — 도중에 던지면 _dashboardEntered가 false로
+  // 남아, 사용자가 다시 시도했을 때도 정상적으로 재진입(전체 UI 전환) 흐름을 다시 탐
+  _dashboardEntered=true;
 }
 
 function signOut(){
   _gasCredential=null;
   _tokenExpiresAt=0;
+  _dashboardEntered=false; // 다음 로그인은 다시 "신규 진입"으로 취급해 _enterDashboard가 확실히 실행되게 함
   _refreshingPromise=null;
   if(_refreshTimer){clearTimeout(_refreshTimer);_refreshTimer=null;}
   _stopPresenceHeartbeat();
