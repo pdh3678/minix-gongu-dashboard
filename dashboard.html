@@ -1141,8 +1141,23 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='fetchlive-fix-2026-07-28-01';
+const DASHBOARD_VERSION='default-gas-url-2026-07-28-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
+
+// Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
+// 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
+// GAS_URL_MISSING으로 조용히 샘플 데이터에 머무는 문제가 있었음(2026-07-28 확인). 이 상수를 최종
+// 폴백으로 내장해서 설정 없이도 곧바로 실데이터에 연결되게 함 — 우선순위는 항상
+// "localStorage에 사용자가 저장한 값 > 이 기본값" (_getGasUrl() 참고).
+// ⚠ 배포 관리 → 기존 배포 편집 → "새 버전"으로 업데이트하는 경우는 URL이 그대로 유지되므로 이 값을
+// 안 바꿔도 됨. URL이 실제로 바뀌는 경우는 오직 "새 배포"를 완전히 새로 만들 때뿐이며, 그때만 아래
+// 값을 새 URL로 갱신할 것.
+const DEFAULT_GAS_URL='https://script.google.com/macros/s/AKfycbxz5VBbD1IDha4mLCkozP2Q3cofukqCx5d2h1CaONghOOPAAh_D_P9_OKT2UlQBhL5Q/exec';
+// GAS Web App URL 읽기 단일 창구 — 이 함수를 거치지 않고 localStorage.getItem('gp_gas_url')을
+// 직접 읽으면 사용자가 URL을 설정 안 한 브라우저에서 다시 조용히 빈 값이 나오니 반드시 이걸 사용할 것
+// (단, ⚙ 연결 설정 입력창 초기값 표시는 예외 — 사용자가 실제로 저장한 값이 있는지 그대로 보여줘야
+// 하므로 openCfg()는 이 함수를 쓰지 않고 localStorage를 직접 읽음).
+function _getGasUrl(){return localStorage.getItem('gp_gas_url')||DEFAULT_GAS_URL;}
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
   {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:19.8,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
@@ -2270,7 +2285,7 @@ async function _loadThumbBlobUrl(thumb){
   }
   if(_thumbBlobCache.has(fileId))return _thumbBlobCache.get(fileId);
 
-  const gasUrl=localStorage.getItem('gp_gas_url');
+  const gasUrl=_getGasUrl();
   const p=(async()=>{
     if(!gasUrl){console.warn('[썸네일 로드 실패] GAS URL이 설정되지 않았습니다. fileId=',fileId);return null;}
     try{
@@ -2545,7 +2560,7 @@ async function saveSchemeModal(){
   let reels=_modalReels.filter(r=>r.url||r.views!=null||r.thumb).slice(0,10);
   // 릴스가 원래 없었고 지금도 안 건드렸으면(둘 다 빈 상태) 조회수 합계/Q~Z를 건드리지 않음 — 링크만 저장
   const touchReels=reels.length>0||_modalHadReels;
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
 
   console.log('[변경된 필드]',changes,'[상품코드]',codes,codesChanged?'(변경됨)':'(변경없음)');
 
@@ -2613,7 +2628,7 @@ function confirmDeleteDeal(){
 }
 
 function deleteDeal(d){
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(!url){
     const idx=DATA.indexOf(d);if(idx>=0)DATA.splice(idx,1);
     closeSchModal();render();
@@ -2676,7 +2691,7 @@ function showToast(msg){
 
 /* Debug modal — 로그인된 idToken으로 ?debug=1 호출 (시트 값 비인증 노출 없음) */
 async function openDebug(){
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   const body=document.getElementById('debugBody');
   document.getElementById('debugOv').classList.add('open');
   if(!url){body.textContent='먼저 ⚙ 연결 설정에서 Apps Script Web App URL을 등록하세요.';return;}
@@ -2803,7 +2818,7 @@ function _scheduleFetchLiveAuthRetry(){
 }
 
 async function fetchLive(forceFresh){
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   const token=_getToken();
   console.log('[fetchLive] 요청 준비 — GAS URL 설정됨='+(!!url)+', 토큰 존재='+(!!token)+(token?(' (앞 10자: '+token.slice(0,10)+'...)'):''));
   if(!url){
@@ -3243,7 +3258,7 @@ function saveDeal(){
   };
   if(!newDeal.codes.length)newDeal.codes=[''];
 
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(url){
     setLoad(true);
     _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addSalesRow',data:newDeal,idToken:_getToken()||''})})
@@ -3309,7 +3324,7 @@ function savePromo(){
   const isEdit=_promoEditId!=null;
   if(isEdit){payload.row=_promoEditId;payload.origName=_promoEditName;}
 
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(url){
     setLoad(true);
     const action=isEdit?'updateCalendarEvent':'addCalendarEvent';
@@ -3336,7 +3351,7 @@ function deletePromo(){
   if(!confirm('이 프로모션 일정을 삭제하시겠습니까?'))return;
   const row=_promoEditId,origName=_promoEditName;
 
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(url){
     setLoad(true);
     _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteCalendarEvent',data:{row,origName},idToken:_getToken()||''})})
@@ -3728,7 +3743,7 @@ let _presencePanelOpen=true;
 async function _sendPresenceHeartbeat(){
   if(!_getToken())return; // 로그아웃 상태
   if(_tokenExpiresAt&&Date.now()>=_tokenExpiresAt)return; // 만료된 토큰으로는 전송하지 않음
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(!url)return;
   try{
     const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'presence',idToken:_getToken()})});
@@ -4032,7 +4047,7 @@ function _matchMarkdownPrefix(text){
 /* ── 목록 화면 ── */
 async function _reviewLoadList(){
   const host=document.getElementById('reviewListBody');
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(!url||!_getToken()){host.innerHTML='<div class="page-placeholder">로그인이 필요합니다.</div>';return;}
   host.innerHTML='<div class="page-placeholder">불러오는 중...</div>';
   try{
@@ -4071,7 +4086,7 @@ function openNewReview(){
   document.getElementById('reviewTitleInput').focus();
 }
 async function openReviewDetail(id){
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(!url||!_getToken())return;
   document.getElementById('reviewListView').style.display='none';
   document.getElementById('reviewDetailView').style.display='flex';
@@ -4119,7 +4134,7 @@ function _reviewOnEdit(){
 async function saveReviewDoc(manual){
   if(!_curReview)return;
   if(_reviewAutosaveTimer){clearTimeout(_reviewAutosaveTimer);_reviewAutosaveTimer=null;}
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(!url||!_getToken()){if(manual)showToast('로그인이 필요합니다.');return;}
   _curReview.title=document.getElementById('reviewTitleInput').value;
   _curReview.ym=document.getElementById('reviewYmInput').value;
@@ -4150,7 +4165,7 @@ async function saveReviewDoc(manual){
 async function deleteReviewDoc(id){
   const r=_reviews.find(x=>x.id===id);
   if(!confirm(`"${(r&&r.title)||'제목 없음'}" 문서를 삭제하시겠습니까? 되돌릴 수 없습니다.`))return;
-  const url=localStorage.getItem('gp_gas_url');
+  const url=_getGasUrl();
   if(!url||!_getToken())return;
   try{
     const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteReview',data:{id},idToken:_getToken()||''})});
@@ -4555,7 +4570,7 @@ async function _uploadImageIntoBlock(blockId,file){
   block.uploading=true;_renderReviewEditor();
   try{
     const res=await resizeImageToDataURL(file,1400,1400,0.82);
-    const url=localStorage.getItem('gp_gas_url');
+    const url=_getGasUrl();
     const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadReviewImage',data:{base64:res.base64,mimeType:res.mimeType},idToken:_getToken()||''})});
     block.uploading=false;
     if(j.error){showToast('이미지 업로드 실패: '+j.error);_reviewOnEdit();_renderReviewEditor();return;}
