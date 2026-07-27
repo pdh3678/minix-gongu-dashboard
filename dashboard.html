@@ -1117,7 +1117,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='review-editor-2026-07-25-01';
+const DASHBOARD_VERSION='product-name-sheet-fix-2026-07-27-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -1227,6 +1227,30 @@ function isShift(p){
 }
 function shiftModel(p){
   return normP(p).endsWith('pro')?'PRO':'기본';
+}
+
+// 시트 C열(제품명) 데이터 확인 규칙이 실제로 허용하는 표기 — 폼/모달 내부에서 쓰는 공백 없는 값을
+// 저장 직전에 반드시 이 표기로 바꿔야 함(공백 차이로 "데이터 확인 규칙을 위반합니다" 저장 실패 발생했던 이력).
+// ★ '더플렌더NEXT'/'더시프트PRO'는 시트 드롭다운 규칙 목록에 아직 없는 값 — 시트 쪽 데이터 확인
+//   규칙에 추가되기 전까지는 이 두 제품으로 저장하면 여전히 실패함.
+const PRODUCT_SHEET_NAME={
+  '더플렌더PRO':'더 플렌더 PRO',
+  '더플렌더MAX':'더 플렌더 MAX',
+  '더플렌더mini':'더 플렌더 MINI',
+  '더플렌더NEXT':'더 플렌더 NEXT',
+  '더시프트':'더시프트',
+  '더시프트PRO':'더시프트 PRO',
+  '더에어드라이':'더 에어드라이',
+  '더슬림':'더 슬림'
+};
+function toSheetProductName(p){return PRODUCT_SHEET_NAME[p]||p;}
+
+// 시트 저장 실패 원문(Apps Script 예외 메시지)을 사용자에게 그대로 보여주지 않고, 흔한 원인(데이터
+// 확인 규칙 위반)은 이해 가능한 문구로 바꿔서 보여줌 — 원문은 항상 console.error로 남겨 디버깅 가능하게 함.
+function _friendlySaveError(rawMsg){
+  const s=String(rawMsg||'');
+  if(/데이터 확인 규칙/.test(s))return'제품명 표기가 시트 규칙과 달라 저장하지 못했습니다. 관리자에게 문의해주세요.';
+  return s;
 }
 
 // 제품별 뱃지/캘린더 막대 색상 — 색상 정의는 이 맵 한 곳에서만 관리 (변경 시 전체에 반영됨)
@@ -2430,7 +2454,10 @@ function resizeImageToDataURL(file,maxW,maxH,quality){
 function _collectModalChanges(d){
   const line=document.getElementById('mLine').value;
   const model=document.getElementById('mModel').value;
-  const product=LINE_HAS_MODELS[line]?(model||''):line;
+  // 시트 규칙 표기(공백 포함)로 변환해야 원본(d.product, 시트에서 그대로 내려온 값)과 비교했을 때
+  // 사용자가 제품을 바꾸지 않은 경우 changes.product가 생기지 않음 — 실적만 고쳐도 C열이 불필요하게
+  // 다시 쓰이며 데이터 확인 규칙을 위반하던 버그의 원인이 바로 이 비교였음.
+  const product=toSheetProductName(LINE_HAS_MODELS[line]?(model||''):line);
   const influencer=document.getElementById('mInfluencer').value.trim();
   const platform=document.getElementById('mPlatform').value;
   const vendor=document.getElementById('mVendor').value.trim();
@@ -2538,7 +2565,7 @@ async function saveSchemeModal(){
       closeSchModal();
       showToast('저장되었습니다');
       fetchLive();
-    }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+e.message);setLoad(false);});
+    }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+_friendlySaveError(e.message));setLoad(false);});
   } else {
     Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,status:_calcStatus(next.start,next.end)});
     if(codesChanged)d.codes=codes;
@@ -3100,7 +3127,8 @@ function saveDeal(){
   const line=document.getElementById('fLine').value;
   const model=document.getElementById('fModel')?document.getElementById('fModel').value:'';
   // product = model if selected (더플렌더 PRO/MAX/mini/NEXT, 더시프트/더시프트PRO), else line name
-  const product=ADD_LINE_HAS_MODELS[line]?(model||line):line;
+  // 시트 C열 데이터 확인 규칙 표기(공백 포함)로 변환해서 저장 — toSheetProductName 참고
+  const product=toSheetProductName(ADD_LINE_HAS_MODELS[line]?(model||line):line);
   const influencer=document.getElementById('fInfluencer').value.trim();
   const platform=document.getElementById('fPlatform').value;
   const channelId=document.getElementById('fChannelId').value.trim().replace(/^@/,'');
@@ -3143,7 +3171,7 @@ function saveDeal(){
         if(j.error)throw new Error(j.error);
         closeDealForm();fetchLive();
         showToast(`등록 완료 — 실적통합 ${j.mainRow}행에 연결되었습니다`);
-      }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
+      }).catch(e=>{console.error('[등록 실패]',e);alert('저장 실패: '+_friendlySaveError(e.message));setLoad(false);});
   } else {
     newDeal.dealId=crypto.randomUUID(); // 샘플 모드는 서버가 없어 dealId를 로컬에서 즉석 발급(새로고침 시 초기화됨)
     DATA.push(newDeal);
