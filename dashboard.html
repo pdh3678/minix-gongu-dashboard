@@ -356,6 +356,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .login-btn-wrap{display:flex;justify-content:center}
 .login-error{font-size:12px;color:#DC2626;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:7px;padding:10px 14px;margin-top:14px;display:none;text-align:left;line-height:1.5}
 .login-notice{font-size:11px;color:var(--text-3);margin-top:18px}
+/* 로그인 진단 배지 — 콘솔을 못 보는 사용자도 어느 단계에서 막혔는지 화면에서 바로 알 수 있게 */
+.login-diag{display:none;align-items:center;gap:8px;font-size:12px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:10px 14px;margin-top:14px;text-align:left;line-height:1.5}
+.login-diag-msg{flex:1}
+.login-diag-retry{flex-shrink:0;padding:5px 11px;border-radius:6px;border:1px solid #FDE68A;background:#fff;color:#92400E;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+.login-diag-retry:hover{background:#FEF3C7}
 
 /* ── 회고: 문서 목록 ── */
 .review-list{display:flex;flex-direction:column}
@@ -472,6 +477,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div id="gisBtn"></div>
     </div>
     <div class="login-error" id="loginError"></div>
+    <div class="login-diag" id="loginDiag">
+      <span class="login-diag-msg" id="loginDiagMsg"></span>
+      <button type="button" class="login-diag-retry" id="loginDiagRetry" style="display:none" onclick="_retryGsiScript()">다시 시도</button>
+    </div>
     <div class="login-notice">앳홈 조직 계정(@athomecorp.com)만 접속 가능합니다</div>
   </div>
 </div>
@@ -1117,7 +1126,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='product-name-sheet-fix-2026-07-27-01';
+const DASHBOARD_VERSION='login-diag-2026-07-27-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 const SAMPLE=[
   {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
@@ -3275,6 +3284,91 @@ function deletePromo(){
 /* ── 구글 로그인 / OAuth 인증 ── */
 const GAS_CLIENT_ID='379680980952-vcvtnv1le4lmma2f0gv6snita17ve7bd.apps.googleusercontent.com';
 const ALLOWED_DOMAIN='athomecorp.com';
+
+/* ── 로그인 진단(GSI) ──
+   "로그인 시도했는데 아무 반응도 없다"는 문의는 콘솔 에러조차 없는 경우가 많아(스크립트가 아예
+   막혔거나, 팝업이 조용히 차단되거나, FedCM/One Tap이 아무 알림 없이 실패하는 경우 등) 원인 파악이
+   특히 어려움. 그래서 콘솔 로그(_gsiLog)와 별개로, 화면에도 상태 배지(#loginDiag)로 항상 노출함. */
+let _gsiScriptState='loading'; // 'loading' | 'loaded' | 'failed'
+let _gsiAttemptTimer=null; // 로그인 시도(버튼 클릭 추정) 후 5초 워치독
+function _gsiLog(msg){console.log('[GSI] '+msg);}
+
+function _showLoginDiag(msg,opts){
+  opts=opts||{};
+  document.getElementById('loginDiagMsg').textContent=msg;
+  document.getElementById('loginDiagRetry').style.display=opts.retry?'inline-block':'none';
+  document.getElementById('loginDiag').style.display='flex';
+}
+function _hideLoginDiag(){
+  document.getElementById('loginDiag').style.display='none';
+}
+
+function _gsiScriptLoaded(){
+  _gsiScriptState='loaded';
+  _gsiLog('스크립트 로드 성공(onload)');
+}
+function _gsiScriptFailed(){
+  if(_gsiScriptState==='loaded')return; // 재시도 중 이전 태그의 이벤트가 늦게 들어온 경우 무시
+  _gsiScriptState='failed';
+  _gsiLog('스크립트 로드 실패(onerror) — 네트워크/보안 정책이 accounts.google.com 접속을 막고 있을 가능성');
+  _showLoginDiag('로그인 스크립트 로드 실패 — 사내망/보안 프로그램이 accounts.google.com 접속을 막고 있을 수 있습니다.',{retry:true});
+}
+// onload/onerror가 아예 안 뜨는 경우(프록시가 200으로 빈 응답을 주거나 요청이 그냥 멎는 경우 등)를
+// 잡기 위한 안전망 — 이벤트 발생 여부와 무관하게, 일정 시간 뒤에도 GSI 전역객체가 없으면 실패로 간주
+function _armGsiBootWatchdog(){
+  setTimeout(()=>{
+    if(_gsiScriptState==='loading'&&!(window.google&&google.accounts&&google.accounts.id)){
+      _gsiScriptState='failed';
+      _gsiLog('스크립트 로드 타임아웃(8초 경과, onload/onerror 모두 발생 안 함)');
+      _showLoginDiag('로그인 스크립트 로드 실패 — 사내망/보안 프로그램이 accounts.google.com 접속을 막고 있을 수 있습니다.',{retry:true});
+    }
+  },8000);
+}
+_armGsiBootWatchdog();
+
+function _retryGsiScript(){
+  _hideLoginDiag();
+  _gsiScriptState='loading';
+  _gsiLog('스크립트 재시도 시작');
+  const old=document.getElementById('gsiScriptTag');
+  if(old)old.remove();
+  const s=document.createElement('script');
+  s.id='gsiScriptTag';
+  s.src='https://accounts.google.com/gsi/client?_retry='+Date.now(); // 캐시된 실패 응답을 다시 안 쓰게 캐시버스팅
+  s.async=true;s.defer=true;
+  s.onload=_gsiScriptLoaded;
+  s.onerror=_gsiScriptFailed;
+  document.body.appendChild(s);
+  _armGsiBootWatchdog();
+}
+
+// 로그인 시도(버튼 클릭) 감지 — 구글 로그인 버튼은 크로스오리진 iframe이라 그 안에서 일어난 클릭은
+// 부모 문서로 이벤트가 전파되지 않음(표준 스펙상 원천적으로 불가능). 유일하게 관측 가능한 신호는
+// 포커스가 그 iframe으로 넘어가면서 window에 blur가 뜨는 것 — iframe 클릭 감지에 흔히 쓰는 방법.
+// 완벽하진 않지만(클릭 자체를 100% 보장 못함), "5초 내 credential 없으면 배지 표시" 워치독을 시작할
+// 트리거로는 충분함.
+let _loginAttemptWatchArmed=false;
+function _armLoginAttemptWatch(){
+  if(_loginAttemptWatchArmed)return; // 스크립트 재시도로 onGoogleLibraryLoad가 다시 불려도 리스너 중복 등록 방지
+  _loginAttemptWatchArmed=true;
+  window.addEventListener('blur',function(){
+    const gisBtn=document.getElementById('gisBtn');
+    const loginVisible=document.getElementById('loginScreen').style.display!=='none';
+    if(!loginVisible||!gisBtn||!gisBtn.contains(document.activeElement))return;
+    _gsiLog('로그인 버튼 클릭 감지(포커스가 버튼 iframe으로 이동) — 5초 내 credential 대기');
+    _startLoginAttemptWatchdog();
+  });
+}
+function _startLoginAttemptWatchdog(){
+  if(_gsiAttemptTimer)clearTimeout(_gsiAttemptTimer);
+  const credBefore=_gasCredential;
+  _gsiAttemptTimer=setTimeout(()=>{
+    _gsiAttemptTimer=null;
+    if(_gasCredential&&_gasCredential!==credBefore)return; // 그 사이 로그인 성공 — 배지 필요 없음
+    _gsiLog('로그인 시도 후 5초 경과 — credential 콜백 없음');
+    _showLoginDiag('로그인이 완료되지 않았습니다. 팝업이 차단된 것 같습니다 — 주소창의 팝업 차단 아이콘을 확인해 이 사이트의 팝업을 허용해주세요.');
+  },5000);
+}
 // 관리자 전용 컨트롤(상태 필터/새로고침/디버그/설정)을 볼 수 있는 계정 — 나중에 추가할 수 있게 배열로 관리
 const ADMIN_EMAILS=['p_dh_3678@athomecorp.com'];
 function _applyAdminUI(email){
@@ -3382,10 +3476,25 @@ function _refreshIdToken(){
     const finish=ok=>{if(settled)return;settled=true;resolve(ok);};
     try{
       google.accounts.id.prompt(n=>{
+        // moment 타입/사유를 항상 로그로 남김 — FedCM/One Tap이 아무 에러 없이 조용히 실패하는 경우
+        // 콘솔에서 유일하게 확인 가능한 단서가 이 콜백이라 최대한 자세히 남겨둠
+        try{
+          let detail='momentType='+(n&&n.getMomentType?n.getMomentType():'?');
+          if(n){
+            if(n.isDisplayed&&n.isDisplayed())detail+=' display';
+            if(n.isNotDisplayed&&n.isNotDisplayed())detail+=' not_displayed(사유:'+(n.getNotDisplayedReason?n.getNotDisplayedReason():'?')+')';
+            if(n.isSkippedMoment&&n.isSkippedMoment())detail+=' skipped(사유:'+(n.getSkippedReason?n.getSkippedReason():'?')+')';
+            if(n.isDismissedMoment&&n.isDismissedMoment())detail+=' dismissed(사유:'+(n.getDismissedReason?n.getDismissedReason():'?')+')';
+          }
+          _gsiLog('자동 로그인 prompt() 결과 — '+detail);
+        }catch(logErr){}
         const declined=n&&((n.isNotDisplayed&&n.isNotDisplayed())||(n.isSkippedMoment&&n.isSkippedMoment())||(n.isDismissedMoment&&n.isDismissedMoment()));
         if(declined)finish(false);
       });
-    }catch(e){finish(false);return;}
+    }catch(e){
+      _gsiLog('자동 로그인 prompt() 호출 자체가 예외 발생: '+e.message);
+      finish(false);return;
+    }
     const start=Date.now();
     (function poll(){
       if(_gasCredential&&_gasCredential!==prevCred){finish(true);return;}
@@ -3424,6 +3533,11 @@ function _showReloginScreen(){_hideReloginBanner();document.getElementById('logi
 
 // GIS 콜백: 로그인 완료 or 자동 갱신 시 호출
 function handleGoogleSignIn(response){
+  // credential이 왔다는 것 자체가 "5초 내 응답 없음" 워치독이 대비하던 실패가 아니라는 뜻이므로,
+  // 이후 도메인 검증에서 거절되더라도(별도 에러로 안내됨) 진단 배지는 먼저 지움.
+  if(_gsiAttemptTimer){clearTimeout(_gsiAttemptTimer);_gsiAttemptTimer=null;}
+  _hideLoginDiag();
+  _gsiLog('credential 수신 완료');
   let payload;
   try{payload=_decodeJwt(response.credential);}catch(e){_showLoginErr('로그인 처리 중 오류가 발생했습니다.');return;}
   const email=payload.email||'';
@@ -3533,19 +3647,26 @@ function renderPresencePanel(){
     </div>`).join(''):'<div class="presence-empty">접속자 없음</div>';
 }
 
-// GIS 라이브러리 로드 완료 시 자동 호출
+// GIS 라이브러리 로드 완료 시 자동 호출 (script onload와는 별개 콜백 — 스크립트 자체는 받았지만
+// 이 함수가 안 불리는 경우도 이론상 있어 로그를 따로 남김)
 window.onGoogleLibraryLoad=function(){
+  _gsiLog('onGoogleLibraryLoad 실행됨 — GSI 전역객체 준비 완료');
+  if(_gsiScriptState!=='loaded'){_gsiScriptState='loaded';_gsiLog('스크립트 로드 성공(onGoogleLibraryLoad로 확인, onload 이벤트는 못 받았을 수 있음)');}
   google.accounts.id.initialize({
     client_id:GAS_CLIENT_ID,
     callback:handleGoogleSignIn,
     auto_select:true, // 기존 Google 세션이 있으면 자동 credential 발급
-    use_fedcm_for_prompt:true // FedCM 적용(콘솔 deprecated 경고 해결)
+    ux_mode:'popup', // 명시적으로 팝업 방식 고정 — 로그인 버튼 클릭 시 리다이렉트가 아니라 팝업 창으로 진행됨
+    use_fedcm_for_prompt:true // FedCM 적용(콘솔 deprecated 경고 해결) — One Tap(prompt())에만 영향, 아래 renderButton은 FedCM과 무관하게 항상 팝업 기반이라 FedCM 차단 브라우저에서도 로그인 버튼 자체는 동작함
   });
+  _gsiLog('google.accounts.id.initialize 완료(ux_mode=popup)');
   // 로그인 버튼 렌더링
   google.accounts.id.renderButton(
     document.getElementById('gisBtn'),
     {theme:'outline',size:'large',locale:'ko',width:'308',text:'signin_with'}
   );
+  _gsiLog('로그인 버튼 렌더 완료');
+  _armLoginAttemptWatch();
   // 부트스트랩이 이미 유효한 캐시 토큰으로 _gasCredential을 채워뒀으면 여기서 또 조용한 재인증을
   // 시도할 필요 없음 — _scheduleTokenRefresh()가 만료 5분 전에 알아서 처리함. 캐시 토큰이 없거나
   // 이미 만료된 상태로 세션 흔적(gp_user)만 남아있는 경우에만 지금 한 번 시도.
@@ -4464,4 +4585,4 @@ if(location.protocol==='file:'){
   _enterDashboard({email:'local-test@athomecorp.com',name:'로컬 테스트 (인증 우회)'});
 }
 </script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script id="gsiScriptTag" src="https://accounts.google.com/gsi/client" async defer onload="_gsiScriptLoaded()" onerror="_gsiScriptFailed()"></script>
