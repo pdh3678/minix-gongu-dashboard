@@ -17,8 +17,9 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
-// 프론트(DASHBOARD_VERSION)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'product-name-sheet-fix-2026-07-27-01';
+// 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
+// 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
+var SCRIPT_VERSION = 'doPost-error-visibility-2026-07-28-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -783,8 +784,20 @@ function _setChannelLink(sheet, row, url) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function doPost(e) {
+  // 실행 기록(Executions)에서 이 호출이 어떤 액션이었는지, 페이로드에 어떤 키가 실려왔는지 바로
+  // 보이게 진입 시점에 남김 — catch에서 에러만 봐서는 "어떤 요청이 실패했는지" 알 수 없었던 문제 보완.
+  var _actionForLog = '(파싱 전)';
   try {
+    if (!e || !e.postData || !e.postData.contents) {
+      throw new Error('요청 본문(postData)이 비어있습니다 — Content-Type이 예상과 다르거나 body가 누락됐을 수 있습니다.');
+    }
+    Logger.log('[doPost 진입] postData.type=' + e.postData.type + ', length=' + e.postData.length);
+
     var body = JSON.parse(e.postData.contents);
+    _actionForLog = body.action || '(action 없음)';
+    Logger.log('[doPost] action=' + _actionForLog + ' / data 키=' +
+      (body.data ? Object.keys(body.data).join(',') : '(data 없음)'));
+
     var idToken = body.idToken || (e.parameter ? e.parameter.idToken : '') || '';
     if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED', reason: _authFailureReason(idToken) });
 
@@ -810,9 +823,13 @@ function doPost(e) {
     else if (body.action === 'uploadReviewImage') { resp = _uploadReviewImage(body.data); skipCacheInvalidate = true; }
     else throw new Error('Unknown action: ' + body.action);
     if (!skipCacheInvalidate) _invalidateDashboardCache();
+    Logger.log('[doPost 완료] action=' + _actionForLog);
     return resp;
   } catch (err) {
-    return _json({ error: err.toString() });
+    // 이전엔 err.toString()만 남겼는데, 스택이 없으면 "정확히 몇 번째 줄/어느 함수에서" 터졌는지
+    // 실행 기록만 봐서는 알 수 없었음 — 이제 Logger.log(스택 포함)와 응답(JSON) 양쪽에 다 남김.
+    Logger.log('[doPost 실패] action=' + _actionForLog + ' / 에러=' + err + ' / 스택=\n' + (err && err.stack));
+    return _json({ error: err.toString(), action: _actionForLog, stack: (err && err.stack) || '' });
   }
 }
 
