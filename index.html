@@ -1136,10 +1136,19 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 'use strict';
-// 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
-// fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='fetch-cors-harden-2026-07-28-01';
+// 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
+// "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
+// 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
+const DASHBOARD_VERSION='fetch-cors-harden-2026-07-28-02';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
+
+// 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
+// 프론트만 바뀌어도 매번 값이 달라짐)과 분리해서 관리함. 예전엔 fetchLive가 서버 응답의 version을
+// DASHBOARD_VERSION과 직접 비교했는데, 그러면 Code.gs는 그대로인데 프론트만 고친 경우에도 항상
+// "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
+// 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
+// 절대 건드리지 말 것.
+const REQUIRED_SCRIPT_VERSION='product-name-sheet-fix-2026-07-27-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2864,8 +2873,8 @@ async function fetchLive(forceFresh){
     console.log('[fetchLive] 요청 URL(토큰 마스킹)=',reqUrl.replace(/idToken=[^&]+/,'idToken=***'));
     const j=await _gasFetch(reqUrl,{});
     console.log('[fetchLive] 응답 버전(Apps Script):',j.version||'(버전 필드 없음 — 구버전 배포본)',j.cached?'(캐시됨, '+j.execMs+'ms)':'(새로 계산, '+j.execMs+'ms)');
-    if(j.version&&j.version!==DASHBOARD_VERSION){
-      console.warn(`[버전 불일치] 프론트=${DASHBOARD_VERSION} / 배포된 Apps Script=${j.version} — Apps Script를 최신 코드로 재배포했는지 확인하세요.`);
+    if(j.version&&j.version!==REQUIRED_SCRIPT_VERSION){
+      console.warn(`[버전 불일치] 배포된 Apps Script=${j.version} / 프론트가 필요로 하는 버전=${REQUIRED_SCRIPT_VERSION} — Apps Script를 재배포해야 할 수 있습니다(프론트 전용 변경이면 이 경고는 무시해도 됨).`);
     }
     if(j.error==='AUTH_REQUIRED'){
       // _gasFetch가 이미 토큰 자동 갱신+재시도를 한 번 시도한 뒤에도 실패한 경우 — 배너/배지는
@@ -3577,12 +3586,15 @@ async function _gasFetch(url,opts,_authRetried){
     try{
       // headers/Content-Type을 절대 직접 지정하지 말 것 — Apps Script는 OPTIONS(CORS 프리플라이트)에
       // 응답하지 못해서, 커스텀 헤더나 application/json Content-Type이 붙는 순간 브라우저가 프리플라이트를
-      // 보내고 그대로 막혀 "Failed to fetch"가 남음(서버 거절이 아니라 요청이 아예 도달을 못 함).
+      // 보내고 그대로 막혀 "Failed to fetch"/CORS 에러가 남음(서버 거절이 아니라 요청이 아예 도달을 못 함).
       // opts에 body가 있어도 여기선 headers를 절대 추가하지 않으므로(문자열 body → 브라우저가 자동으로
       // Content-Type: text/plain을 붙임, CORS-safelisted라 프리플라이트 없음) 항상 simple request로 남음.
-      // redirect:'follow'는 fetch 기본값과 동일하지만, Apps Script Web App URL이 실행 시 302로
+      // credentials:'omit'을 명시 — 기본값(same-origin)이어도 쿠키를 안 보내는 건 같지만, Apps Script
+      // 도메인으로 자격 증명이 조금이라도 실릴 여지를 원천 차단(우리 인증은 idToken 쿼리 파라미터만 씀).
+      // mode:'cors'도 명시(기본값과 동일) — 이 두 옵션 모두 "simple request" 여부에는 영향 없음.
+      // redirect:'follow'도 fetch 기본값과 동일하지만, Apps Script Web App URL이 실행 시 302로
       // script.googleusercontent.com로 리다이렉트되는 경우가 있어 명시적으로 못박아둠.
-      res=await fetch(url,Object.assign({},opts,{signal:ac.signal,redirect:'follow'}));
+      res=await fetch(url,Object.assign({},opts,{signal:ac.signal,redirect:'follow',mode:'cors',credentials:'omit'}));
       if(res.status>=500)throw new Error('HTTP '+res.status);
       lastErr=null;break;
     }catch(e){
