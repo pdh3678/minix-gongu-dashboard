@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'doPost-error-visibility-2026-07-28-01';
+var SCRIPT_VERSION = 'form-encoded-post-2026-07-28-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -788,12 +788,21 @@ function doPost(e) {
   // 보이게 진입 시점에 남김 — catch에서 에러만 봐서는 "어떤 요청이 실패했는지" 알 수 없었던 문제 보완.
   var _actionForLog = '(파싱 전)';
   try {
-    if (!e || !e.postData || !e.postData.contents) {
-      throw new Error('요청 본문(postData)이 비어있습니다 — Content-Type이 예상과 다르거나 body가 누락됐을 수 있습니다.');
+    // 페이로드 파싱: application/x-www-form-urlencoded로 온 payload= 파라미터를 최우선으로 씀
+    // (2026-07-28부터 프론트가 이 방식으로 통일 — Apps Script가 e.parameter로 안정적으로 파싱해주는
+    // 표준 경로). e.postData.contents(예전 방식 — JSON 문자열을 그대로 POST body로 보냄)는 혹시
+    // 남아있을 수 있는 구버전 호출을 위한 폴백으로만 안전하게 감싸서 둠(하나라도 없으면 즉시 명확한
+    // 에러 메시지로 실패 처리 — 어느 쪽도 없는 상태로 뒤에서 예기치 않게 죽지 않도록).
+    var payloadRaw = (e && e.parameter && e.parameter.payload) ? e.parameter.payload
+      : (e && e.postData && e.postData.contents) ? e.postData.contents
+      : null;
+    if (!payloadRaw) {
+      throw new Error('요청 본문이 비어있습니다 — payload 파라미터도 postData도 없습니다.');
     }
-    Logger.log('[doPost 진입] postData.type=' + e.postData.type + ', length=' + e.postData.length);
+    Logger.log('[doPost 진입] 소스=' + (e.parameter && e.parameter.payload ? 'e.parameter.payload(폼 인코딩)' : 'e.postData(레거시 JSON body)') +
+      ', 길이=' + payloadRaw.length);
 
-    var body = JSON.parse(e.postData.contents);
+    var body = JSON.parse(payloadRaw);
     _actionForLog = body.action || '(action 없음)';
     Logger.log('[doPost] action=' + _actionForLog + ' / data 키=' +
       (body.data ? Object.keys(body.data).join(',') : '(data 없음)'));
