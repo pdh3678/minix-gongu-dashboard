@@ -1138,7 +1138,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='shift-product-fix-2026-07-28-01';
+const DASHBOARD_VERSION='fetch-cors-harden-2026-07-28-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
@@ -1297,10 +1297,15 @@ function toSheetProductName(p){
 }
 
 // 시트 저장 실패 원문(Apps Script 예외 메시지)을 사용자에게 그대로 보여주지 않고, 흔한 원인(데이터
-// 확인 규칙 위반)은 이해 가능한 문구로 바꿔서 보여줌 — 원문은 항상 console.error로 남겨 디버깅 가능하게 함.
+// 확인 규칙 위반, 네트워크/CORS로 요청 자체가 서버에 도달 못함)은 이해 가능한 문구로 바꿔서 보여줌 —
+// 원문은 항상 console.error로 남겨 디버깅 가능하게 함.
+// "Failed to fetch"(TypeError)는 서버가 실제로 거절한 게 아니라 요청이 아예 도달하지 못한 경우
+// (네트워크 끊김, Apps Script 배포 URL이 더 이상 유효하지 않음, CORS 프리플라이트 차단 등)에 뜸 —
+// 서버 쪽 에러(j.error)와는 다른 계열이라 구분해서 안내함.
 function _friendlySaveError(rawMsg){
   const s=String(rawMsg||'');
   if(/데이터 확인 규칙/.test(s))return'제품명 표기가 시트 규칙과 달라 저장하지 못했습니다. 관리자에게 문의해주세요.';
+  if(/failed to fetch/i.test(s))return'서버에 요청이 도달하지 못했습니다(네트워크/CORS). 잠시 후 재시도해 주세요.';
   return s;
 }
 
@@ -2660,7 +2665,7 @@ function deleteDeal(d){
       closeSchModal();render();setLoad(false);
       showToast('삭제됨');
       fetchLive();
-    }).catch(e=>{console.error('[삭제 실패]',e);alert('삭제 실패: '+e.message);setLoad(false);});
+    }).catch(e=>{console.error('[삭제 실패]',e);alert('삭제 실패: '+_friendlySaveError(e.message));setLoad(false);});
 }
 
 document.getElementById('schOv').addEventListener('click',e=>{if(e.target===document.getElementById('schOv'))closeSchModal();});
@@ -3382,7 +3387,7 @@ function savePromo(){
       .then(j=>{
         if(j.error)throw new Error(j.error);
         closePromoForm();fetchLive();
-      }).catch(e=>{alert('저장 실패: '+e.message);setLoad(false);});
+      }).catch(e=>{console.error('[저장 실패]',e);alert('저장 실패: '+_friendlySaveError(e.message));setLoad(false);});
   } else {
     if(isEdit){
       const ev=EVENTS.find(x=>x.id===_promoEditId);
@@ -3408,7 +3413,7 @@ function deletePromo(){
       .then(j=>{
         if(j.error)throw new Error(j.error);
         closePromoForm();fetchLive();
-      }).catch(e=>{alert('삭제 실패: '+e.message);setLoad(false);});
+      }).catch(e=>{console.error('[삭제 실패]',e);alert('삭제 실패: '+_friendlySaveError(e.message));setLoad(false);});
   } else {
     const idx=EVENTS.findIndex(x=>x.id===row);
     if(idx>=0)EVENTS.splice(idx,1);
@@ -3570,7 +3575,14 @@ async function _gasFetch(url,opts,_authRetried){
     const ac=new AbortController();
     const timeoutTimer=setTimeout(()=>ac.abort(),GAS_FETCH_TIMEOUT_MS);
     try{
-      res=await fetch(url,Object.assign({},opts,{signal:ac.signal}));
+      // headers/Content-Type을 절대 직접 지정하지 말 것 — Apps Script는 OPTIONS(CORS 프리플라이트)에
+      // 응답하지 못해서, 커스텀 헤더나 application/json Content-Type이 붙는 순간 브라우저가 프리플라이트를
+      // 보내고 그대로 막혀 "Failed to fetch"가 남음(서버 거절이 아니라 요청이 아예 도달을 못 함).
+      // opts에 body가 있어도 여기선 headers를 절대 추가하지 않으므로(문자열 body → 브라우저가 자동으로
+      // Content-Type: text/plain을 붙임, CORS-safelisted라 프리플라이트 없음) 항상 simple request로 남음.
+      // redirect:'follow'는 fetch 기본값과 동일하지만, Apps Script Web App URL이 실행 시 302로
+      // script.googleusercontent.com로 리다이렉트되는 경우가 있어 명시적으로 못박아둠.
+      res=await fetch(url,Object.assign({},opts,{signal:ac.signal,redirect:'follow'}));
       if(res.status>=500)throw new Error('HTTP '+res.status);
       lastErr=null;break;
     }catch(e){
