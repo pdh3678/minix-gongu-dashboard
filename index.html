@@ -1141,7 +1141,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 'use strict';
 // 배포본 확인용 버전 문자열 — apps-script.js의 SCRIPT_VERSION과 짝을 맞춰서 바꿈.
 // fetchLive()에서 서버 응답의 version과 다르면 콘솔에 경고를 띄워 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-const DASHBOARD_VERSION='default-gas-url-2026-07-28-01';
+const DASHBOARD_VERSION='status-by-date-2026-07-28-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
@@ -1502,7 +1502,7 @@ document.addEventListener('click',ev=>{
 
 /* KPI (기간 필터 기준) */
 function renderKPI(){
-  const f=dashData(),done=f.filter(d=>d.status==='완료'),act=f.filter(d=>d.status==='진행중'),plan=f.filter(d=>d.status==='예정');
+  const f=dashData(),done=f.filter(d=>_displayStatus(d)==='완료'),act=f.filter(d=>_displayStatus(d)==='진행중'),plan=f.filter(d=>_displayStatus(d)==='예정');
   // d.views는 이미 "만" 단위(P열 원값) — 실제 조회수로 환산할 때만 ×10000
   const tRev=done.reduce((s,d)=>s+(d.rev||0),0),tViews=done.reduce((s,d)=>s+(d.views||0),0),tQty=done.reduce((s,d)=>s+(d.qty||0),0);
   const avgV=done.length?tViews/done.length:0;
@@ -1592,7 +1592,7 @@ function renderDashCharts(){
 
   // 검증: 매출 추이 그래프 합계가 KPI 총매출(완료 건 기준)과 일치하는지 확인
   const trendRevSum=periodAll.reduce((s,d)=>s+(d.rev||0),0);
-  const kpiRevSum=periodAll.filter(d=>d.status==='완료').reduce((s,d)=>s+(d.rev||0),0);
+  const kpiRevSum=periodAll.filter(d=>_displayStatus(d)==='완료').reduce((s,d)=>s+(d.rev||0),0);
   if(Math.round(trendRevSum)!==Math.round(kpiRevSum)){
     console.warn('[검증] 매출 추이 합계가 KPI 총매출과 다릅니다',{trendRevSum,kpiRevSum});
   }else{
@@ -1628,7 +1628,7 @@ const SALES_ACC={
   achieveRate:d=>(d.targetQty?d.qty!=null?d.qty/d.targetQty:-Infinity:-Infinity),
   rev:d=>d.rev!=null?d.rev:-Infinity,
   comm:d=>d.s&&d.s.comm!=null?d.s.comm:-Infinity, year:d=>yearOf(d.start)||0,
-  period:d=>d.start||'', status:d=>d.status||'', format:d=>d.format||'',
+  period:d=>d.start||'', status:d=>_displayStatus(d), format:d=>d.format||'',
   views:d=>d.views!=null?d.views:-Infinity,
   code:d=>(d.codes&&d.codes[0])||'', naverLink:d=>(d.codes&&d.codes[0])||'',
   note:d=>(d.s&&d.s.note)||''
@@ -1683,7 +1683,7 @@ const SALES_CELL={
   comm:d=>d.s&&d.s.comm!=null?d.s.comm+'%':'—',
   year:d=>yearOf(d.start)??'—',
   period:d=>`${fmtS(d.start)} ~ ${fmtS(d.end)}`,
-  status:d=>bdg(d.status),
+  status:d=>bdg(_displayStatus(d)),
   views:d=>d.views!=null?d.views.toFixed(1)+'만':'<span style="color:var(--text-3)">—</span>',
   code:d=>{
     const codes=(d.codes||[]).filter(c=>c);
@@ -1820,7 +1820,7 @@ function renderMgmtPage(){
       <td>${d.ch}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
       <td>${won(d.s&&d.s.sale)}</td>
-      <td>${bdg(d.status)}</td>
+      <td>${bdg(_displayStatus(d))}</td>
     </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-3)">실적 미기입 건이 없습니다 🎉</td></tr>`;
 }
 
@@ -2094,7 +2094,7 @@ function _refreshModalHeader(d){
   document.getElementById('mBrand').textContent=`Minix · ${d.product}`;
   document.getElementById('mTitle').textContent=d.ch;
   const durTxt=durDays(d.start,d.end);
-  document.getElementById('mSub').textContent=`${yearOf(d.start)}년 ${monthOf(d.start)}월 · ${fmtF(d.start)} ~ ${fmtF(d.end)}${durTxt?` (${durTxt}일)`:''} · ${d.status}`;
+  document.getElementById('mSub').textContent=`${yearOf(d.start)}년 ${monthOf(d.start)}월 · ${fmtF(d.start)} ~ ${fmtF(d.end)}${durTxt?` (${durTxt}일)`:''} · ${_displayStatus(d)}`;
 }
 
 // dealId(UUID 문자열) 하나로만 공구건을 식별함 — 물리 행 번호/채널명 추측은 전부 폐기.
@@ -3303,12 +3303,40 @@ function openPromoEdit(id){
 function closePromoForm(){document.getElementById('promoOv').classList.remove('open');_promoEditId=null;_promoEditName='';}
 document.getElementById('promoOv').addEventListener('click',e=>{if(e.target===document.getElementById('promoOv'))closePromoForm();});
 
+// 오늘 날짜를 KST(Asia/Seoul) 자정 기준으로 구함 — 브라우저가 다른 시간대에 있어도(예: 해외 출장 중
+// 노트북) 항상 한국 기준 "오늘"로 진행상태가 판정되게 함. new Date()를 그대로 쓰면 브라우저 로컬
+// 시간대를 따라가 버리므로, KST 날짜 문자열(YYYY-MM-DD)을 먼저 뽑아 그걸로 자정 Date를 다시 만듦.
+function _kstTodayDate(){
+  const ymd=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  return new Date(ymd+'T00:00:00');
+}
 function _calcStatus(start,end){
-  const today=new Date();today.setHours(0,0,0,0);
+  const today=_kstTodayDate();
   const sd=new Date(start+'T00:00:00'),ed=new Date((end||start)+'T00:00:00');
   if(ed<today)return'완료';
   if(sd<=today)return'진행중';
   return'예정';
+}
+
+// 화면에 표시할 진행상태 — 시트의 진행상태 열(d.status) 대신 항상 시작일/종료일 기준 자동판정을
+// 우선함(리빙천재 7.27~7.29 건이 오늘인데 시트가 "예정"으로 남아있어 실제와 어긋났던 문제). 시트 값은
+// 무시하지 않고 보조로 씀: 값이 다르면 콘솔에 요약 경고 1줄(시트 정리용 참고). 단, 시트 값이 알려진
+// 3종(예정/진행중/완료)이 아닌 값이면(향후 "중단"/"취소"처럼 날짜로 판정 불가한 특수 상태가 생길
+// 경우 대비) 자동판정을 덮어쓰지 않고 시트 표기를 그대로 우선 표시함.
+// ※ 2026-07-28 조사 기준으로는 시트/서버(apps-script.js) 어디에도 이런 특수값이 실제 쓰인 적이
+// 없음(서버가 못 알아보는 값이 오면 이미 날짜 기준으로 강제 재분류해버려 프론트까지 전달 안 됨) —
+// 그래도 나중에 그런 값을 쓰기 시작하면 이 분기가 그대로 대응하도록 남겨둠.
+const _KNOWN_STATUS=['예정','진행중','완료'];
+function _displayStatus(d){
+  const dateStatus=_calcStatus(d.start,d.end);
+  const sheetStatus=d.status||'';
+  if(!sheetStatus||sheetStatus===dateStatus)return dateStatus;
+  if(!_KNOWN_STATUS.includes(sheetStatus)){
+    console.warn(`[진행상태] ${d.product||'?'}·${d.ch||'?'}(${d.start}~${d.end}) — 시트 값 "${sheetStatus}"은(는) 알려진 상태(예정/진행중/완료)가 아니라 특수 상태로 보고 그대로 표시함(참고: 날짜기준=${dateStatus})`);
+    return sheetStatus;
+  }
+  console.warn(`[진행상태 불일치] ${d.product||'?'}·${d.ch||'?'}(${d.start}~${d.end}) — 시트="${sheetStatus}" / 날짜기준="${dateStatus}" → 화면엔 날짜기준으로 표시(시트 값은 정리 참고용)`);
+  return dateStatus;
 }
 
 function savePromo(){
