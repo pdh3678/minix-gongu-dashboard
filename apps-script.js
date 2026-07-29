@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'bisect-write-stages-2026-07-29-01';
+var SCRIPT_VERSION = 'flush-in-try-2026-07-29-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -908,6 +908,16 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'uploadReviewImage') { resp = _uploadReviewImage(data); skipCacheInvalidate = true; }
     else throw new Error('Unknown action: ' + action);
 
+    // ⚠ 2026-07-29 근본 원인: Apps Script는 setValue/setValues 등 시트 쓰기를 스크립트 실행이
+    // 끝나는 시점에 한꺼번에 flush(반영)하는데, 그때 데이터 확인 규칙(드롭다운) 위반 같은 예외가
+    // 터지면 이미 위에서 resp를 만들고 return하기 전인데도 "실행 자체가 나중에 실패"로 끝나버려서
+    // 이 함수의 try-catch로는 절대 못 잡았음 — 그 결과가 CORS 헤더 없는 에러 페이지로 나가
+    // "CORS 차단"으로 위장돼 있었던 것(진짜 원인은 시트 검증 예외였음). 여기서 명시적으로 flush를
+    // 호출해서, 검증 위반이 있으면 반드시 지금 이 자리에서(아직 try 안에서) 터지게 만들어 catch가
+    // 잡을 수 있게 함 — 이후로 이런 예외는 정상적인 JSON({error:'...데이터 확인 규칙...'}) 응답으로
+    // 나가고, 실행 기록에도 "완료됨"으로 남게 됨(에러 응답을 정상적으로 반환한 것이므로).
+    SpreadsheetApp.flush();
+
     if (!skipCacheInvalidate) _invalidateDashboardCache();
     Logger.log('[doGet 쓰기 완료] action=' + action);
     return resp;
@@ -944,37 +954,62 @@ function _assembleWriteChunks(chunkId, chunkTotal) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ── 수동 테스트: 배포 전에 편집기에서 직접 실행해 쓰기 로직만 단독 검증 ──
+// ── 수동 테스트: 배포 전에 편집기에서 직접 실행해 flush 수정을 검증 ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Apps Script 편집기 상단의 함수 선택 드롭다운에서 "_testWriteActionLocally"를 고르고 ▶ 실행을
-// 누르면, 실제 HTTP 요청 없이(따라서 302 리다이렉트/CORS와 완전히 무관하게) _handleWriteAction을
-// 최소 필드짜리 가짜 e 객체로 직접 호출해봄.
-// - 여기서 예외가 나면: 편집기가 그 자리에서 전체 스택 트레이스를 바로 보여주므로, 실행
-//   기록(Executions) 요약보다 훨씬 자세히 "정확히 어느 줄"에서 죽는지 확인 가능 — 코드 로직
-//   버그일 가능성이 높음.
-// - 여기서 정상 JSON({success:true, ...})이 나오면: 실적통합 시트에 테스트 행이 실제로 하나
-//   생겼을 것(확인 후 지울 것) — 코드 로직 자체는 정상 동작한다는 뜻이라, 문제는 이 함수가 아니라
-//   Web App으로 배포된 상태에서 HTTP 요청을 통해 실행될 때만 벌어지는 무언가(배포 인증/권한 승인
-//   상태, Web App 실행 컨텍스트 등)일 가능성이 높다는 신호.
-function _testWriteActionLocally() {
+// 편집기 상단 함수 선택 드롭다운에서 아래 두 함수를 각각 고르고 ▶ 실행 — 실제 HTTP 요청 없이
+// _handleWriteAction을 가짜 e 객체로 직접 호출하므로 302/CORS와 완전히 무관하게 로직만 검증됨.
+// 배포 전에 반드시 "둘 다" 실행해서 두 결과를 확인할 것:
+//  1) _testWriteAction_validProduct — 시트 검증 규칙에 맞는 정상 제품명("더 플렌더 mini")으로
+//     저장 시도. 기대 결과: 로그에 success:true가 정상 반환되고, 실적통합 시트에 테스트 행이
+//     하나 생김(확인 후 지울 것). 실행 기록(Executions)에도 "완료됨"으로 남아야 함.
+//  2) _testWriteAction_invalidProduct — 시트 드롭다운에 없는 가짜 제품명으로 저장 시도(= C428에서
+//     실제로 터졌던 것과 같은 종류의 데이터 확인 규칙 위반을 일부러 재현).
+//     flush 수정 전에는: 이 실행이 "실패"로 끝나고(예외가 함수 밖에서 터짐), 반환값도 못 받았음.
+//     flush 수정 후 기대 결과: 예외가 이제 이 함수의 try 안에서 잡혀서, 로그에 success 없이
+//     {error:'...데이터 확인 규칙...'} 형태의 정상 JSON이 반환되고, 실행 기록에는 "완료됨"으로
+//     남아야 함(정상적으로 에러를 반환한 것이므로) — "실패"로 남으면 flush 위치가 아직 잘못된 것.
+//     이 케이스는 시트에 행이 남지 않아야 정상(검증 실패로 애초에 안 써졌다는 뜻).
+function _testWriteAction_validProduct() {
   var fakeE = {
     parameter: {
       action: 'addSalesRow',
       payload: JSON.stringify({
-        product: '테스트상품(지워도됨)',
-        ch: '테스트채널_' + Date.now(),
+        product: '더 플렌더 mini',
+        ch: '__검증테스트_정상(지워도됨)__' + Date.now(),
         vendor: '',
         platform: '인스타그램',
         start: '2026-07-29',
         end: '2026-07-29',
         status: '예정',
-        codes: ['TEST-' + Date.now()]
+        codes: ['VERIFY-OK-' + Date.now()]
       })
     }
   };
   var result = _handleWriteAction(fakeE, '');
   var text = result.getContent();
-  Logger.log('[테스트] _handleWriteAction 반환값: ' + text);
+  Logger.log('[검증-정상 제품명] _handleWriteAction 반환값: ' + text);
+  return text;
+}
+
+function _testWriteAction_invalidProduct() {
+  var fakeE = {
+    parameter: {
+      action: 'addSalesRow',
+      payload: JSON.stringify({
+        product: '존재하지않는상품_검증용(지워도됨)',
+        ch: '__검증테스트_오류(지워도됨)__' + Date.now(),
+        vendor: '',
+        platform: '인스타그램',
+        start: '2026-07-29',
+        end: '2026-07-29',
+        status: '예정',
+        codes: ['VERIFY-ERR-' + Date.now()]
+      })
+    }
+  };
+  var result = _handleWriteAction(fakeE, '');
+  var text = result.getContent();
+  Logger.log('[검증-오류 제품명] _handleWriteAction 반환값: ' + text);
   return text;
 }
 
