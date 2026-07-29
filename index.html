@@ -1139,7 +1139,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='restore-plain-json-post-2026-07-29-01';
+const DASHBOARD_VERSION='get-based-writes-2026-07-29-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1148,7 +1148,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='restore-plain-json-post-2026-07-29-01';
+const REQUIRED_SCRIPT_VERSION='get-based-writes-2026-07-29-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2600,7 +2600,7 @@ async function saveSchemeModal(){
     try{
       for(const r of reels){
         if(!r._pendingUpload)continue;
-        const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadThumbnail',data:r._pendingUpload,idToken:_getToken()||''})});
+        const j=await _gasWrite(url,'uploadThumbnail',r._pendingUpload);
         if(j.error)throw new Error(j.error);
         r.thumb=j.url;
       }
@@ -2616,11 +2616,11 @@ async function saveSchemeModal(){
       // updateDeal과 saveReels는 이제 둘 다 dealId로 같은 행을 직접 찾으므로(제품+채널 추측 검증 폐기)
       // 병렬로 보내도 안전하지만, 실패 시 원인 구분이 쉽도록 순차 처리 유지.
       if(Object.keys(changes).length||codesChanged){
-        const r1=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'updateDeal',data:{dealId:d.dealId,changes,codes},idToken:_getToken()||''})});
+        const r1=await _gasWrite(url,'updateDeal',{dealId:d.dealId,changes,codes});
         if(!r1||r1.success!==true||r1.error)throw new Error((r1&&r1.error)||'updateDeal 응답에 success:true가 없습니다');
       }
       if(touchReels){
-        const r2=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReels',data:{dealId:d.dealId,link:next.link,reels},idToken:_getToken()||''})});
+        const r2=await _gasWrite(url,'saveReels',{dealId:d.dealId,link:next.link,reels});
         if(!r2||r2.success!==true||r2.error)throw new Error((r2&&r2.error)||'saveReels 응답에 success:true가 없습니다');
       }
     })().then(()=>{
@@ -2667,7 +2667,7 @@ function deleteDeal(d){
     return;
   }
   setLoad(true);
-  _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteDeal',data:{dealId:d.dealId},idToken:_getToken()||''})})
+  _gasWrite(url,'deleteDeal',{dealId:d.dealId})
     .then(j=>{
       if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'삭제 응답에 success:true가 없습니다');
       const idx=DATA.indexOf(d);if(idx>=0)DATA.splice(idx,1);
@@ -3297,7 +3297,7 @@ function saveDeal(){
   const url=_getGasUrl();
   if(url){
     setLoad(true);
-    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'addSalesRow',data:newDeal,idToken:_getToken()||''})})
+    _gasWrite(url,'addSalesRow',newDeal)
       .then(j=>{
         if(j.error)throw new Error(j.error);
         closeDealForm();fetchLive();
@@ -3392,7 +3392,7 @@ function savePromo(){
   if(url){
     setLoad(true);
     const action=isEdit?'updateCalendarEvent':'addCalendarEvent';
-    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action,data:payload,idToken:_getToken()||''})})
+    _gasWrite(url,action,payload)
       .then(j=>{
         if(j.error)throw new Error(j.error);
         closePromoForm();fetchLive();
@@ -3418,7 +3418,7 @@ function deletePromo(){
   const url=_getGasUrl();
   if(url){
     setLoad(true);
-    _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteCalendarEvent',data:{row,origName},idToken:_getToken()||''})})
+    _gasWrite(url,'deleteCalendarEvent',{row,origName})
       .then(j=>{
         if(j.error)throw new Error(j.error);
         closePromoForm();fetchLive();
@@ -3638,6 +3638,46 @@ async function _gasFetch(url,opts,_authRetried){
     _showReloginBanner();
   }
   return j;
+}
+
+// ⚠ 2026-07-29: POST(어떤 형태로 시도해도 — JSON body, 폼 인코딩 body 전부)가 Apps Script의 302
+// 리다이렉트 처리에서 본문을 유실시키는 문제가 계속 재현되어, 결국 한 번도 실패한 적 없는
+// fetchLive의 GET 파이프라인을 저장/수정/삭제 등 쓰기 액션에도 그대로 재사용하기로 함. action/idToken은
+// 쿼리 파라미터로, 실제 데이터는 JSON 문자열을 URL 인코딩해서 payload= 파라미터에 담아 보냄 — GET은
+// "본문"이 없고 전부 URL에 실리므로, 리다이렉트를 따라가도 유실될 게 없음(URL은 리다이렉트 응답 자체가
+// 아니라 요청 쪽에 속하는 정보라 안전).
+// 페이로드가 길면(릴스 다수/회고 본문/이미지 base64 등) 단일 URL 길이 한도를 피하려고 여러 GET
+// 요청으로 순차 분할 전송하고, 서버(CacheService)가 마지막 청크에서 전부 조립해 실제 처리를 실행함.
+// 일반 공구건 저장/실적 수정처럼 페이로드가 짧은 경우는 항상 단일 요청 하나로 끝남(청크 분기 자체를
+// 안 탐).
+const GAS_GET_SINGLE_MAX=3000; // 인코딩된 payload가 이 길이 이하면 단일 GET, 넘으면 청크 분할
+const GAS_GET_CHUNK_RAW_SIZE=1200; // 청크 1개당 원본(인코딩 전) 문자 수 — 인코딩 후에도 URL 전체가 안전 범위 안에 들어오게 보수적으로 잡음
+
+async function _gasWrite(url,action,data){
+  const payloadStr=JSON.stringify(data||{});
+  const base=_gasUrl(url); // idToken을 여기서 붙여줌 — 아래 청크 요청들도 전부 이 base를 재사용
+  const encoded=encodeURIComponent(payloadStr);
+  const sep=base.includes('?')?'&':'?';
+  if(encoded.length<=GAS_GET_SINGLE_MAX){
+    const reqUrl=base+sep+'action='+encodeURIComponent(action)+'&payload='+encoded;
+    return _gasFetch(reqUrl,{});
+  }
+  // 청크 분할 — 원본 문자열을 GAS_GET_CHUNK_RAW_SIZE 단위로 잘라 순차 전송(동시 전송 아님 — 서버가
+  // 청크 순서와 무관하게 모으긴 하지만, 순차로 보내야 실패 시 몇 번째 청크였는지 바로 알 수 있음).
+  // 마지막 청크의 응답이 곧 실제 처리 결과(그 전 청크들은 서버가 "받았다"는 가벼운 확인만 돌려줌).
+  console.log('[gasWrite] action='+action+' payload 길이(인코딩 후)='+encoded.length+' — 청크 분할 전송');
+  const chunkId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
+  const chunks=[];
+  for(let i=0;i<payloadStr.length;i+=GAS_GET_CHUNK_RAW_SIZE)chunks.push(payloadStr.slice(i,i+GAS_GET_CHUNK_RAW_SIZE));
+  let last=null;
+  for(let i=0;i<chunks.length;i++){
+    const reqUrl=base+sep+'action='+encodeURIComponent(action)+
+      '&chunkId='+encodeURIComponent(chunkId)+'&chunkIndex='+i+'&chunkTotal='+chunks.length+
+      '&payload='+encodeURIComponent(chunks[i]);
+    last=await _gasFetch(reqUrl,{});
+    if(last&&last.error){console.error('[gasWrite] 청크 '+(i+1)+'/'+chunks.length+' 실패:',last.error);return last;}
+  }
+  return last;
 }
 
 // 만료된 idToken을 GIS의 자동 로그인(One Tap 무표시 모드)으로 조용히 갱신 시도.
@@ -4220,7 +4260,7 @@ async function saveReviewDoc(manual){
   _curReview.part=document.getElementById('reviewPartInput').value;
   _reviewSaving=true;_renderReviewFooter();
   try{
-    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'saveReview',data:{id:_curReview.id,title:_curReview.title,ym:_curReview.ym,owner:_curReview.owner,team:_curReview.team,part:_curReview.part,blocks:_reviewBlocks},idToken:_getToken()||''})});
+    const j=await _gasWrite(url,'saveReview',{id:_curReview.id,title:_curReview.title,ym:_curReview.ym,owner:_curReview.owner,team:_curReview.team,part:_curReview.part,blocks:_reviewBlocks});
     _reviewSaving=false;
     if(j.error){
       const el=document.getElementById('reviewSaveStatus');
@@ -4245,7 +4285,7 @@ async function deleteReviewDoc(id){
   const url=_getGasUrl();
   if(!url||!_getToken())return;
   try{
-    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'deleteReview',data:{id},idToken:_getToken()||''})});
+    const j=await _gasWrite(url,'deleteReview',{id});
     if(j.error){showToast('삭제 실패: '+j.error);return;}
     _reviews=_reviews.filter(x=>x.id!==id);
     _renderReviewList();
@@ -4648,7 +4688,7 @@ async function _uploadImageIntoBlock(blockId,file){
   try{
     const res=await resizeImageToDataURL(file,1400,1400,0.82);
     const url=_getGasUrl();
-    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'uploadReviewImage',data:{base64:res.base64,mimeType:res.mimeType},idToken:_getToken()||''})});
+    const j=await _gasWrite(url,'uploadReviewImage',{base64:res.base64,mimeType:res.mimeType});
     block.uploading=false;
     if(j.error){showToast('이미지 업로드 실패: '+j.error);_reviewOnEdit();_renderReviewEditor();return;}
     block.url=j.url;

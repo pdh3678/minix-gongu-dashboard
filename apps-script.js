@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'restore-plain-json-post-2026-07-29-01';
+var SCRIPT_VERSION = 'get-based-writes-2026-07-29-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -173,6 +173,14 @@ function doGet(e) {
   try {
     var idToken = (e && e.parameter) ? (e.parameter.idToken || '') : '';
     if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED', reason: _authFailureReason(idToken) });
+
+    // ⚠ 2026-07-29: 저장/수정/삭제 등 쓰기 액션을 doPost가 아니라 여기 doGet으로 라우팅함 — POST가
+    // Apps Script의 302 리다이렉트 처리에서 본문을 통째로 유실시키는 문제가 여러 형태(JSON body,
+    // 폼 인코딩 body)로 재현됐고, 한 번도 실패한 적 없는 이 GET 파이프라인을 그대로 재사용하는 게
+    // 가장 검증된 방법이었음. 인증은 위에서 이미 확인됐으므로 별도 재검증 없이 바로 처리 함수로 감.
+    if (e && e.parameter && e.parameter.action) {
+      return _handleWriteAction(e, idToken);
+    }
 
     // 썸네일 프록시: 개별 Drive 파일을 사용자에게 직접 공유하는 대신, 스크립트 소유자 권한으로
     // 파일을 읽어 내려줌 — 조직 정책(링크 공유 차단)과 무관하게 항상 접근 가능.
@@ -780,64 +788,117 @@ function _setChannelLink(sheet, row, url) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ── doPost: 공구 추가 / 수정 / 삭제 / 실적 기입 ──
+// ── doPost: 접속자 하트비트(presence) 전용 ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 공구 추가/수정/삭제/실적 기입 등 쓰기 액션은 전부 doGet의 _handleWriteAction으로 이관됨
+// (2026-07-29 — POST가 Apps Script의 302 리다이렉트 처리에서 본문을 유실시키는 문제 때문).
+// presence만 예외로 여기 남겨둠 — 이 경로는 한 번도 실패한 적 없어서 건드릴 이유가 없었음.
 
 function doPost(e) {
-  // 실행 기록(Executions)에서 이 호출이 어떤 액션이었는지, 페이로드에 어떤 키가 실려왔는지 바로
-  // 보이게 진입 시점에 남김 — catch에서 에러만 봐서는 "어떤 요청이 실패했는지" 알 수 없었던 문제 보완.
-  var _actionForLog = '(파싱 전)';
   try {
-    // ⚠ 2026-07-29 확진: 프론트가 잠깐(2026-07-28) POST 본문을 application/x-www-form-urlencoded의
-    // payload= 파라미터로 보내도록 바꿨었는데, 그 형식+redirect/mode/credentials 명시 조합이 Apps
-    // Script의 302 리다이렉트 처리에서 본문 자체를 유실시켜(하트비트 같은 작은 요청까지 전부 doPost
-    // 진입 전에 "요청 본문이 비어있습니다"로 실패) 오히려 문제였음. 실제로 저장이 되던 형식(순수
-    // JSON 문자열을 그대로 POST body로 보내는 방식)으로 되돌림 — 프론트도 함께 되돌렸으니 반드시
-    // 같이 배포할 것. 이 방어 로그(본문 비어있음 체크)는 앞으로 전송 형식이 또 바뀌어 이 문제가
-    // 재발하면 바로 드러나도록 계속 남겨둠.
     if (!e || !e.postData || !e.postData.contents) {
-      throw new Error('요청 본문(postData)이 비어있습니다 — Content-Type이 예상과 다르거나 body가 누락됐을 수 있습니다.');
+      throw new Error('요청 본문(postData)이 비어있습니다.');
     }
-    Logger.log('[doPost 진입] postData.type=' + e.postData.type + ', length=' + e.postData.length);
-
     var body = JSON.parse(e.postData.contents);
-    _actionForLog = body.action || '(action 없음)';
-    Logger.log('[doPost] action=' + _actionForLog + ' / data 키=' +
-      (body.data ? Object.keys(body.data).join(',') : '(data 없음)'));
-
     var idToken = body.idToken || (e.parameter ? e.parameter.idToken : '') || '';
     if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED', reason: _authFailureReason(idToken) });
 
-    // presence는 접속자 하트비트일 뿐 시트 데이터를 바꾸지 않으므로, 아래 데이터 변경 액션들과
-    // 별도로 먼저 처리하고 리턴 — _invalidateDashboardCache()를 거치지 않게 함
     if (body.action === 'presence') return _presenceHeartbeat(idToken);
+    throw new Error('doPost는 presence 전용입니다 — 그 외 액션(' + body.action + ')은 doGet(GET)으로 보내야 합니다.');
+  } catch (err) {
+    return _json({ error: err.toString() });
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 쓰기 액션(GET 경유): 공구 추가 / 수정 / 삭제 / 실적 기입 등 ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// doGet에서 e.parameter.action이 있으면 여기로 라우팅됨. 처리 로직(각 _addDeal/_updateDeal 등)은
+// 예전 doPost가 쓰던 함수를 100% 그대로 재사용 — 바뀐 건 "어떻게 데이터가 도착하는가"뿐, "도착한
+// 데이터를 어떻게 처리하는가"는 전혀 안 바뀜.
+//
+// 페이로드는 e.parameter.payload(JSON 문자열, URL 인코딩된 채로 도착 — Apps Script가 자동으로
+// 디코딩해서 e.parameter에 넣어줌)로 옴. 너무 길어서 프론트가 여러 청크로 쪼개 보낸 경우
+// (e.parameter.chunkTotal > 1)는 CacheService에 청크를 모아뒀다가 마지막 청크가 도착했을 때만
+// 조립해서 실제 처리를 실행함 — 그 전 청크들은 "받았다"는 가벼운 확인 응답만 돌려줌.
+function _handleWriteAction(e, idToken) {
+  var action = e.parameter.action;
+  try {
+    var chunkTotal = e.parameter.chunkTotal ? parseInt(e.parameter.chunkTotal, 10) : 0;
+    var payloadRaw;
+
+    if (chunkTotal > 1) {
+      var chunkIndex = parseInt(e.parameter.chunkIndex, 10);
+      var chunkId = e.parameter.chunkId || '';
+      if (!chunkId) throw new Error('청크 요청에 chunkId가 없습니다.');
+      _storeWriteChunk(chunkId, chunkIndex, e.parameter.payload || '');
+      Logger.log('[doGet 쓰기청크] action=' + action + ' chunkId=' + chunkId + ' ' + (chunkIndex + 1) + '/' + chunkTotal);
+      if (chunkIndex < chunkTotal - 1) {
+        return _json({ success: true, chunkReceived: chunkIndex }); // 마지막 청크 전까지는 확인 응답만
+      }
+      payloadRaw = _assembleWriteChunks(chunkId, chunkTotal);
+      if (payloadRaw == null) {
+        throw new Error('청크 조립 실패 — 일부 청크가 누락되었거나 만료되었습니다(chunkId=' + chunkId + ').');
+      }
+    } else {
+      payloadRaw = e.parameter.payload || '';
+    }
+    if (!payloadRaw) throw new Error('요청 payload가 비어있습니다.');
+
+    var data = JSON.parse(payloadRaw);
+    Logger.log('[doGet 쓰기] action=' + action + ' / data 키=' + (data ? Object.keys(data).join(',') : '(없음)'));
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var resp;
     // 회고 문서는 실적통합과 무관한 별도 시트라 대시보드 캐시를 무효화할 필요가 없음 — 이 액션들만 건너뜀.
     var skipCacheInvalidate = false;
-    if (body.action === 'addSalesRow') resp = _addDeal(ss, body.data);
-    else if (body.action === 'addPerf') resp = _addPerf(ss, body.data);
-    else if (body.action === 'addCalendarEvent') resp = _addCalendarEvent(ss, body.data);
-    else if (body.action === 'updateCalendarEvent') resp = _updateCalendarEvent(ss, body.data);
-    else if (body.action === 'deleteCalendarEvent') resp = _deleteCalendarEvent(ss, body.data);
-    else if (body.action === 'saveReels') resp = _saveReels(ss, body.data);
-    else if (body.action === 'updateDeal') resp = _updateDeal(ss, body.data);
-    else if (body.action === 'deleteDeal') resp = _deleteDeal(ss, body.data);
-    else if (body.action === 'uploadThumbnail') resp = _uploadThumbnail(body.data);
-    else if (body.action === 'saveReview') { resp = _saveReview(ss, body.data, idToken); skipCacheInvalidate = true; }
-    else if (body.action === 'deleteReview') { resp = _deleteReview(ss, body.data); skipCacheInvalidate = true; }
-    else if (body.action === 'uploadReviewImage') { resp = _uploadReviewImage(body.data); skipCacheInvalidate = true; }
-    else throw new Error('Unknown action: ' + body.action);
+    if (action === 'addSalesRow') resp = _addDeal(ss, data);
+    else if (action === 'addPerf') resp = _addPerf(ss, data);
+    else if (action === 'addCalendarEvent') resp = _addCalendarEvent(ss, data);
+    else if (action === 'updateCalendarEvent') resp = _updateCalendarEvent(ss, data);
+    else if (action === 'deleteCalendarEvent') resp = _deleteCalendarEvent(ss, data);
+    else if (action === 'saveReels') resp = _saveReels(ss, data);
+    else if (action === 'updateDeal') resp = _updateDeal(ss, data);
+    else if (action === 'deleteDeal') resp = _deleteDeal(ss, data);
+    else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
+    else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
+    else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
+    else if (action === 'uploadReviewImage') { resp = _uploadReviewImage(data); skipCacheInvalidate = true; }
+    else throw new Error('Unknown action: ' + action);
+
     if (!skipCacheInvalidate) _invalidateDashboardCache();
-    Logger.log('[doPost 완료] action=' + _actionForLog);
+    Logger.log('[doGet 쓰기 완료] action=' + action);
     return resp;
   } catch (err) {
-    // 이전엔 err.toString()만 남겼는데, 스택이 없으면 "정확히 몇 번째 줄/어느 함수에서" 터졌는지
-    // 실행 기록만 봐서는 알 수 없었음 — 이제 Logger.log(스택 포함)와 응답(JSON) 양쪽에 다 남김.
-    Logger.log('[doPost 실패] action=' + _actionForLog + ' / 에러=' + err + ' / 스택=\n' + (err && err.stack));
-    return _json({ error: err.toString(), action: _actionForLog, stack: (err && err.stack) || '' });
+    Logger.log('[doGet 쓰기 실패] action=' + action + ' / 에러=' + err + ' / 스택=\n' + (err && err.stack));
+    return _json({ error: err.toString(), action: action, stack: (err && err.stack) || '' });
   }
+}
+
+// ── 쓰기 액션 청크 버퍼(CacheService) — 큰 payload(이미지 base64, 릴스 다수, 회고 본문 등)를
+// 여러 GET 요청으로 나눠 보낼 때, 도착한 조각을 잠깐 모아두는 용도. doGet 응답 캐시(dashboardData_*)
+// 와는 완전히 별개 키 네임스페이스라 서로 간섭하지 않음.
+var WRITE_CHUNK_CACHE_PREFIX = 'writeChunk_';
+var WRITE_CHUNK_TTL_SEC = 300; // 5분 안에 모든 청크가 도착해야 함(그 안에 다 안 오면 조립 실패로 처리)
+
+function _storeWriteChunk(chunkId, chunkIndex, chunkData) {
+  var cache = CacheService.getScriptCache();
+  cache.put(WRITE_CHUNK_CACHE_PREFIX + chunkId + ':' + chunkIndex, chunkData, WRITE_CHUNK_TTL_SEC);
+}
+
+function _assembleWriteChunks(chunkId, chunkTotal) {
+  var cache = CacheService.getScriptCache();
+  var keys = [];
+  for (var i = 0; i < chunkTotal; i++) keys.push(WRITE_CHUNK_CACHE_PREFIX + chunkId + ':' + i);
+  var got = cache.getAll(keys);
+  var parts = [];
+  for (var i2 = 0; i2 < chunkTotal; i2++) {
+    var part = got[WRITE_CHUNK_CACHE_PREFIX + chunkId + ':' + i2];
+    if (part == null) return null; // 청크 유실/만료 — 조립 불가
+    parts.push(part);
+  }
+  cache.removeAll(keys); // 다 쓴 청크는 정리(재사용 방지)
+  return parts.join('');
 }
 
 // 새 공구건 등록 — 상품코드 개수만큼(1~10) 같은 dealId를 공유하는 행을 만듦.
