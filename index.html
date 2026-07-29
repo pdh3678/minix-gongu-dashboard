@@ -1139,7 +1139,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='form-encoded-post-2026-07-28-01';
+const DASHBOARD_VERSION='restore-plain-json-post-2026-07-29-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1148,7 +1148,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='form-encoded-post-2026-07-28-01';
+const REQUIRED_SCRIPT_VERSION='restore-plain-json-post-2026-07-29-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -3577,41 +3577,27 @@ function _gasUrl(base){
 // 응답이 AUTH_REQUIRED(idToken 만료, ~1시간)면 토큰을 자동 갱신해서 1회만 재시도하고,
 // 갱신까지 실패한 경우에만 재로그인 배너를 띄움. opts.body가 있으면(POST) 그 안의 idToken도 갱신해서 다시 보냄.
 const GAS_FETCH_TIMEOUT_MS=20000;
-// 저장 계열 POST 본문을 Apps Script가 가장 안정적으로 받는 폼 인코딩(application/x-www-form-urlencoded)
-// 으로 감싸는 헬퍼 — 원본 JSON 문자열을 그대로 잃지 않고 payload= 파라미터 하나에 담아 보냄.
-// 2026-07-28 확진: 이전엔 JSON 문자열을 body에 그대로 실어(브라우저가 자동으로 text/plain
-// Content-Type을 붙임) 보냈는데, 그 방식이 어느 정도 크기 이상의 POST 본문에서 Apps Script의
-// e.postData 파싱을 불안정하게 만드는 것으로 확인됨(저장 계열 요청만 doPost 진입 자체 전에 "실패"로
-// 찍히고, 페이로드가 훨씬 작은 하트비트(presence)는 항상 정상). 폼 인코딩은 Apps Script가 e.parameter로
-// 안정적으로 파싱해주는 표준 경로라 이걸로 통일함 — 여전히 CORS-safelisted라 프리플라이트도 안 뜸.
-function _wrapAsFormBody(jsonBodyStr){
-  const form=new URLSearchParams();
-  form.set('payload',jsonBodyStr);
-  return form;
-}
-
+// ⚠ 2026-07-29 확진: POST 본문을 URLSearchParams(application/x-www-form-urlencoded)로 감싸고
+// redirect:'follow'/mode:'cors'/credentials:'omit'을 명시했던 시도(2026-07-28)가 오히려 문제였음 —
+// Apps Script의 302 리다이렉트 처리와 그 조합에서 본문이 유실되어 doPost가 "요청 본문이
+// 비어있습니다"로 실패했음(하트비트처럼 작은 요청도 함께 실패하기 시작한 게 결정적 단서).
+// 그래서 실제로 저장이 되던 시점(2026-07-27, d03d0ca 커밋)의 순수한 형태로 되돌림: body는 JSON
+// 문자열 그대로, fetch 옵션도 opts를 그대로 씀(redirect/mode/credentials 전부 지정 안 함 = 브라우저
+// 기본값). signal(타임아웃)만 유지 — 이건 본문 구성과 무관해서 이번 문제의 원인이 아니었음.
+// 앞으로 이 부분을 다시 건드릴 일이 있으면, 반드시 실제 저장 테스트로 실행 기록의 "완료됨"을
+// 확인한 뒤에 커밋할 것 — 문서만 보고 "이론상 안전하다"고 판단하지 말 것(이번이 그 실패 사례).
 async function _gasFetch(url,opts,_authRetried){
   const MAX_RETRY=2;
   let res,lastErr;
-  // opts.body(호출부가 넘긴 JSON 문자열)를 폼 인코딩으로 감싼 실제 전송용 옵션 — opts 자체는 원본
-  // 그대로 유지해야 아래 AUTH_REQUIRED 재시도 블록이 opts.body를 다시 JSON.parse할 수 있음.
-  const baseOpts=(opts&&opts.method==='POST'&&typeof opts.body==='string')
-    ?Object.assign({},opts,{body:_wrapAsFormBody(opts.body)})
-    :opts;
   for(let attempt=0;attempt<=MAX_RETRY;attempt++){
     const ac=new AbortController();
     const timeoutTimer=setTimeout(()=>ac.abort(),GAS_FETCH_TIMEOUT_MS);
     try{
-      // headers를 절대 직접 지정하지 말 것 — URLSearchParams body는 브라우저가 자동으로
-      // Content-Type: application/x-www-form-urlencoded;charset=UTF-8을 붙이며, 이것도
-      // CORS-safelisted라 프리플라이트가 없음(직접 헤더를 추가하면 프리플라이트가 발생해 Apps
-      // Script가 응답 못 하고 "Failed to fetch"/CORS 에러로 막힘).
-      // credentials:'omit'을 명시 — 기본값(same-origin)이어도 쿠키를 안 보내는 건 같지만, Apps Script
-      // 도메인으로 자격 증명이 조금이라도 실릴 여지를 원천 차단(우리 인증은 idToken 쿼리 파라미터만 씀).
-      // mode:'cors'도 명시(기본값과 동일) — 이 두 옵션 모두 "simple request" 여부에는 영향 없음.
-      // redirect:'follow'도 fetch 기본값과 동일하지만, Apps Script Web App URL이 실행 시 302로
-      // script.googleusercontent.com로 리다이렉트되는 경우가 있어 명시적으로 못박아둠.
-      res=await fetch(url,Object.assign({},baseOpts,{signal:ac.signal,redirect:'follow',mode:'cors',credentials:'omit'}));
+      // headers를 절대 직접 지정하지 말 것 — opts.body가 문자열이면 브라우저가 자동으로
+      // Content-Type: text/plain;charset=UTF-8을 붙이며(CORS-safelisted, 프리플라이트 없음),
+      // Apps Script는 e.postData.contents로 그 문자열을 그대로 받음. redirect/mode/credentials는
+      // 절대 명시하지 말 것(위 주석 참고 — 명시했다가 본문이 유실됐던 이력 있음).
+      res=await fetch(url,Object.assign({},opts,{signal:ac.signal}));
       if(res.status>=500)throw new Error('HTTP '+res.status);
       lastErr=null;break;
     }catch(e){
