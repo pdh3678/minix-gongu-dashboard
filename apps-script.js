@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'get-write-diagnostics-2026-07-29-01';
+var SCRIPT_VERSION = 'bisect-write-stages-2026-07-29-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -837,7 +837,18 @@ function doPost(e) {
 // 조립해서 실제 처리를 실행함 — 그 전 청크들은 "받았다"는 가벼운 확인 응답만 돌려줌.
 function _handleWriteAction(e, idToken) {
   var action = e.parameter.action;
+  // ⚠ 2026-07-29 이분 탐색용 진단 체크포인트 — e.parameter.debugStage가 '0'~'3'이면 그 지점까지만
+  // 실행하고 조기 반환함(실제 시트 변경 없음). 정상 저장 요청은 이 파라미터를 아예 안 보내므로 평소
+  // 동작에는 전혀 영향 없음. 편집기의 가짜 e 객체 테스트는 성공하는데 실제 브라우저 요청만 실패하는
+  // 문제(2026-07-29)의 원인이 "요청 파싱/라우팅"과 "실제 처리 로직" 중 어느 쪽인지 좁히는 용도.
+  // 프론트의 _diagWriteStage(n)으로 각 단계를 개별 호출해볼 수 있음.
+  var debugStage = e.parameter.debugStage;
   try {
+    if (debugStage === '0') {
+      Logger.log('[진단0] action=' + action + ' — payload 파라미터 없이도 쓰기 라우팅까지 도달하는지 확인');
+      return _json({ success: true, stage: 0, note: 'payload 없이도 doGet 쓰기 라우팅까지 도달함' });
+    }
+
     var chunkTotal = e.parameter.chunkTotal ? parseInt(e.parameter.chunkTotal, 10) : 0;
     var payloadRaw;
 
@@ -859,10 +870,27 @@ function _handleWriteAction(e, idToken) {
     }
     if (!payloadRaw) throw new Error('요청 payload가 비어있습니다.');
 
+    if (debugStage === '1') {
+      Logger.log('[진단1] action=' + action + ' — payload 파라미터(길이 ' + payloadRaw.length + ') 수신까지 도달(아직 파싱 전)');
+      return _json({ success: true, stage: 1, note: 'payload 파라미터 수신까지 정상(파싱 전)', payloadLen: payloadRaw.length });
+    }
+
     var data = JSON.parse(payloadRaw);
     Logger.log('[doGet 쓰기] action=' + action + ' / data 키=' + (data ? Object.keys(data).join(',') : '(없음)'));
 
+    if (debugStage === '2') {
+      Logger.log('[진단2] action=' + action + ' — payload JSON.parse 성공, keys=' + Object.keys(data).join(','));
+      return _json({ success: true, stage: 2, note: 'payload JSON.parse까지 정상', dataKeys: Object.keys(data) });
+    }
+
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    if (debugStage === '3') {
+      var sheetCheck = ss.getSheetByName(MAIN_SHEET);
+      Logger.log('[진단3] action=' + action + ' — SpreadsheetApp 접근 성공, sheet=' + (sheetCheck ? sheetCheck.getName() : '(없음)'));
+      return _json({ success: true, stage: 3, note: 'SpreadsheetApp 접근까지 정상', sheetFound: !!sheetCheck });
+    }
+
     var resp;
     // 회고 문서는 실적통합과 무관한 별도 시트라 대시보드 캐시를 무효화할 필요가 없음 — 이 액션들만 건너뜀.
     var skipCacheInvalidate = false;

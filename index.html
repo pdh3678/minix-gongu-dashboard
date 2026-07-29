@@ -1139,7 +1139,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='get-write-diagnostics-2026-07-29-01';
+const DASHBOARD_VERSION='bisect-write-stages-2026-07-29-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1148,7 +1148,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='get-write-diagnostics-2026-07-29-01';
+const REQUIRED_SCRIPT_VERSION='bisect-write-stages-2026-07-29-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -3678,6 +3678,33 @@ async function _gasWrite(url,action,data){
     if(last&&last.error){console.error('[gasWrite] 청크 '+(i+1)+'/'+chunks.length+' 실패:',last.error);return last;}
   }
   return last;
+}
+
+// ⚠ 2026-07-29 이분 탐색 진단 전용 — 개발자도구 콘솔에서 직접 호출: _diagWriteStage(0),
+// _diagWriteStage(1), _diagWriteStage(2), _diagWriteStage(3). 실제 저장 액션(addSalesRow)과
+// 완전히 동일한 요청 경로(현재 로그인 세션의 진짜 토큰, 진짜 배포 URL, 진짜 브라우저 CORS/리다이렉트
+// 컨텍스트)를 그대로 타되, 서버(_handleWriteAction)가 debugStage에서 조기 반환하므로 시트는 전혀
+// 바뀌지 않음. 각 단계가 어디까지 성공/실패하는지 보고 "요청 파싱/라우팅 문제"인지 "실제 처리 로직
+// 문제"인지 좁히는 용도 — 진단이 끝나면 이 함수와 서버의 debugStage 분기는 나중에 정리해도 됨.
+async function _diagWriteStage(stage){
+  const url=_getGasUrl();
+  const base=_gasUrl(url);
+  const sep=base.includes('?')?'&':'?';
+  let reqUrl=base+sep+'action=addSalesRow&debugStage='+stage;
+  if(stage!==0){
+    // stage 0은 payload 파라미터 자체가 없는 요청을 테스트하는 용도라 일부러 안 붙임
+    const minimalPayload=JSON.stringify({product:'진단',ch:'진단',start:'2026-07-29',end:'2026-07-29'});
+    reqUrl+='&payload='+encodeURIComponent(minimalPayload);
+  }
+  console.log('[진단 stage '+stage+'] 요청 URL(토큰 마스킹)=',reqUrl.replace(/idToken=[^&]+/,'idToken=***'));
+  try{
+    const j=await _gasFetch(reqUrl,{});
+    console.log('[진단 stage '+stage+'] 결과:',j);
+    return j;
+  }catch(e){
+    console.error('[진단 stage '+stage+'] 예외:',e);
+    return {error:e.message};
+  }
 }
 
 // 만료된 idToken을 GIS의 자동 로그인(One Tap 무표시 모드)으로 조용히 갱신 시도.
