@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'get-based-writes-2026-07-29-01';
+var SCRIPT_VERSION = 'get-write-diagnostics-2026-07-29-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -171,6 +171,11 @@ function _isAdmin(idToken) {
 function doGet(e) {
   var _t0 = Date.now();
   try {
+    // 실행 기록(Executions)에서 이 호출이 조회인지 쓰기인지, 어떤 파라미터가 실려왔는지 진입
+    // 시점에 항상 남김 — 이후 어디서 죽든 최소한 "이런 요청이 왔었다"는 사실은 반드시 남게 함.
+    Logger.log('[doGet 진입] action=' + (e && e.parameter ? (e.parameter.action || '(없음, 조회 요청)') : '(e.parameter 없음)') +
+      ' / 파라미터 키=' + (e && e.parameter ? Object.keys(e.parameter).join(',') : '(없음)'));
+
     var idToken = (e && e.parameter) ? (e.parameter.idToken || '') : '';
     if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED', reason: _authFailureReason(idToken) });
 
@@ -179,7 +184,16 @@ function doGet(e) {
     // 폼 인코딩 body)로 재현됐고, 한 번도 실패한 적 없는 이 GET 파이프라인을 그대로 재사용하는 게
     // 가장 검증된 방법이었음. 인증은 위에서 이미 확인됐으므로 별도 재검증 없이 바로 처리 함수로 감.
     if (e && e.parameter && e.parameter.action) {
-      return _handleWriteAction(e, idToken);
+      // _handleWriteAction 자체에 이미 try-catch가 있지만(그 catch 블록 안에서 또 예외가 나는
+      // 극단적인 경우까지 포함해서), 쓰기 분기에서 발생하는 어떤 예외든 절대 doGet 밖으로 조용히
+      // 새어나가지 않고 반드시 JSON으로 응답하도록 여기서 한 번 더 감쌈(요청받은 이중 방어).
+      try {
+        return _handleWriteAction(e, idToken);
+      } catch (writeErr) {
+        Logger.log('[doGet 쓰기 최종방어] action=' + e.parameter.action + ' / 에러=' + writeErr +
+          ' / 스택=\n' + (writeErr && writeErr.stack));
+        return _json({ error: writeErr.toString(), action: e.parameter.action, stack: (writeErr && writeErr.stack) || '' });
+      }
     }
 
     // 썸네일 프록시: 개별 Drive 파일을 사용자에게 직접 공유하는 대신, 스크립트 소유자 권한으로
@@ -899,6 +913,41 @@ function _assembleWriteChunks(chunkId, chunkTotal) {
   }
   cache.removeAll(keys); // 다 쓴 청크는 정리(재사용 방지)
   return parts.join('');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 수동 테스트: 배포 전에 편집기에서 직접 실행해 쓰기 로직만 단독 검증 ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Apps Script 편집기 상단의 함수 선택 드롭다운에서 "_testWriteActionLocally"를 고르고 ▶ 실행을
+// 누르면, 실제 HTTP 요청 없이(따라서 302 리다이렉트/CORS와 완전히 무관하게) _handleWriteAction을
+// 최소 필드짜리 가짜 e 객체로 직접 호출해봄.
+// - 여기서 예외가 나면: 편집기가 그 자리에서 전체 스택 트레이스를 바로 보여주므로, 실행
+//   기록(Executions) 요약보다 훨씬 자세히 "정확히 어느 줄"에서 죽는지 확인 가능 — 코드 로직
+//   버그일 가능성이 높음.
+// - 여기서 정상 JSON({success:true, ...})이 나오면: 실적통합 시트에 테스트 행이 실제로 하나
+//   생겼을 것(확인 후 지울 것) — 코드 로직 자체는 정상 동작한다는 뜻이라, 문제는 이 함수가 아니라
+//   Web App으로 배포된 상태에서 HTTP 요청을 통해 실행될 때만 벌어지는 무언가(배포 인증/권한 승인
+//   상태, Web App 실행 컨텍스트 등)일 가능성이 높다는 신호.
+function _testWriteActionLocally() {
+  var fakeE = {
+    parameter: {
+      action: 'addSalesRow',
+      payload: JSON.stringify({
+        product: '테스트상품(지워도됨)',
+        ch: '테스트채널_' + Date.now(),
+        vendor: '',
+        platform: '인스타그램',
+        start: '2026-07-29',
+        end: '2026-07-29',
+        status: '예정',
+        codes: ['TEST-' + Date.now()]
+      })
+    }
+  };
+  var result = _handleWriteAction(fakeE, '');
+  var text = result.getContent();
+  Logger.log('[테스트] _handleWriteAction 반환값: ' + text);
+  return text;
 }
 
 // 새 공구건 등록 — 상품코드 개수만큼(1~10) 같은 dealId를 공유하는 행을 만듦.
