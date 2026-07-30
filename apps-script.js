@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'insert-row-format-2026-07-30-03';
+var SCRIPT_VERSION = 'last-data-row-fix-2026-07-30-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -394,8 +394,11 @@ function _presenceHeartbeat(idToken) {
 
 // ── 디버그: 특정 행의 릴스 저장 상태(릴스 슬롯 하이퍼링크 + 썸네일 JSON) 원본 그대로 반환 ──
 function _debugReelsRaw(sheet, row) {
-  if (!row || row < DATA_START_ROW + 1 || row > sheet.getLastRow()) {
-    return { debug: true, error: '잘못된 행 번호: ' + row + ' (유효 범위 ' + (DATA_START_ROW + 1) + '~' + sheet.getLastRow() + ')' };
+  // getLastRow()는 서식/수식이 미리 적용된 범위(예: 3000행)까지 잡아버려 실제보다 훨씬 넓은
+  // 범위를 "유효"하다고 판단할 수 있음 — _getLastDataRow로 실제 데이터 끝 기준으로 검사함.
+  var lastDataRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (!row || row < DATA_START_ROW + 1 || row > lastDataRow) {
+    return { debug: true, error: '잘못된 행 번호: ' + row + ' (유효 범위 ' + (DATA_START_ROW + 1) + '~' + lastDataRow + ')' };
   }
   var rowVals = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
   var richRow = sheet.getRange(row, REEL_COL_START, 1, REEL_SLOT_COUNT).getRichTextValues()[0];
@@ -1013,6 +1016,21 @@ function _testWriteAction_invalidProduct() {
   return text;
 }
 
+// ⚠ 2026-07-30: 실적통합 시트는 서식/수식이 실제 데이터보다 훨씬 아래(예: 3000행)까지 미리 적용돼
+// 있어서, sheet.getLastRow()가 값이 아니라 "서식/수식이 있는 마지막 행"까지 그대로 잡아버림(빈 값이라도
+// 서식이 있으면 "데이터가 있는 행"으로 침 — Sheets API 공식 동작). 그 결과 실제 데이터는 373행에서
+// 끝나는데 새 공구가 3001행에 추가되는 문제가 있었음. 그래서 getLastRow()를 아예 쓰지 않고, 기준 열
+// (keyCol, 1-based — 보통 채널명 열)의 값을 직접 훑어서 "값이 실제로 있는" 마지막 행을 찾음.
+function _getLastDataRow(sheet, keyCol) {
+  var maxRows = sheet.getMaxRows();
+  if (maxRows <= DATA_START_ROW) return DATA_START_ROW; // 시트에 데이터 행 자체가 없음
+  var vals = sheet.getRange(DATA_START_ROW + 1, keyCol, maxRows - DATA_START_ROW, 1).getValues();
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (String(vals[i][0] || '').trim() !== '') return DATA_START_ROW + 1 + i;
+  }
+  return DATA_START_ROW; // 값이 있는 행이 하나도 없음 → 헤더 마지막 행(2행)
+}
+
 // 새 공구건 등록 — 상품코드 개수만큼(1~10) 같은 dealId를 공유하는 행을 만듦.
 // 시트를 직접 봐도 각 행이 완전한 정보를 담고 있도록, 공통 필드(브랜드/제품/벤더사/채널/플랫폼/
 // 마케팅링크/공구가/수수료율/연도/기간/진행상태/포맷/구성/운영정보/링크)는 모든 행에 동일하게
@@ -1074,21 +1092,22 @@ function _addDeal(ss, data) {
     rows.push(row);
   }
 
-  // ⚠ 2026-07-30: 시트 끝 범위에 setValues로 값만 쓰면 새 행이 기존 행들의 데이터 확인(드롭다운)·
-  // 서식·색상을 전혀 상속받지 못함(범위에 값만 쓰는 건 서식과 완전히 무관한 별개 동작이라, 시트 UI에서
-  // 직접 "행 삽입"할 때와 다름). 그래서 다음 순서로 처리함:
-  //  1) insertRowsAfter로 직전 데이터 행 "아래"에 새 행을 삽입
-  //  2) 직전 데이터 행 → 새 행 범위로 서식/데이터 확인만 명시적으로 copyTo(PASTE_FORMAT +
+  // 시트 끝 범위에 setValues로 값만 쓰면 새 행이 기존 행들의 데이터 확인(드롭다운)·서식·색상을 전혀
+  // 상속받지 못함(범위에 값만 쓰는 건 서식과 완전히 무관한 별개 동작이라, 시트 UI에서 직접 "행 삽입"할
+  // 때와 다름). 그래서 다음 순서로 처리함:
+  //  1) _getLastDataRow로 "진짜" 마지막 데이터 행을 찾고, insertRowsAfter로 그 바로 아래에 새 행을 삽입
+  //     (getLastRow()를 썼으면 서식이 미리 적용된 3000행 뒤에 붙어버렸을 것 — 위 _getLastDataRow 주석 참고)
+  //  2) 그 직전 데이터 행 → 새 행 범위로 서식/데이터 확인만 명시적으로 copyTo(PASTE_FORMAT +
   //     PASTE_DATA_VALIDATION) — 값은 절대 복사하지 않음(직전 행에 실적 값이 남아있어도 새 행엔
   //     옮겨가면 안 되므로 PASTE_VALUES/PASTE_NORMAL은 쓰지 않고 이 둘만 씀). 1행짜리 원본을
   //     여러 행짜리 대상 범위에 copyTo하면 그대로 반복(타일링) 적용됨.
   //  3) 그 다음에야 실제 값을 setValues로 기록 — flush는 호출부(_handleWriteAction)에서 처리.
-  var lastRow = sheet.getLastRow();
-  sheet.insertRowsAfter(lastRow, rows.length);
-  var startRow = lastRow + 1;
+  var lastDataRow = _getLastDataRow(sheet, COL.channel + 1);
+  sheet.insertRowsAfter(lastDataRow, rows.length);
+  var startRow = lastDataRow + 1;
   var newRange = sheet.getRange(startRow, 1, rows.length, numCols);
-  if (lastRow >= 3) { // 1~2행은 제목/헤더라 서식 원본으로 쓰면 안 됨 — 실제 데이터 행이 있을 때만 복사
-    var templateRow = sheet.getRange(lastRow, 1, 1, numCols);
+  if (lastDataRow > DATA_START_ROW) { // 실제 데이터 행이 하나라도 있을 때만 그 행을 서식 원본으로 씀
+    var templateRow = sheet.getRange(lastDataRow, 1, 1, numCols);
     templateRow.copyTo(newRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     templateRow.copyTo(newRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
   }
@@ -1199,8 +1218,21 @@ function _updateDeal(ss, data) {
         newRow[COL.dealId] = data.dealId;
         newRow[COL.codeSeq] = add + 1;
         for (var ci = 0; ci < newRow.length; ci++) if (newRow[ci] === undefined) newRow[ci] = '';
-        sheet.appendRow(newRow);
-        if (linkForNewRows) _setChannelLink(sheet, sheet.getLastRow(), linkForNewRows);
+        // sheet.appendRow(newRow)는 내부적으로 getLastRow()+1에 씀 — 실적통합 시트에 서식/수식이
+        // 실제 데이터보다 훨씬 아래까지 미리 적용돼 있으면 _addDeal과 똑같이 그 서식 끝(예: 3000행)
+        // 다음에 붙어버림. _getLastDataRow 기준으로 직접 위치를 계산해 그 바로 다음 행에 삽입하고,
+        // 서식/데이터 확인도 _addDeal과 동일하게 복사함(추가 코드 행도 드롭다운·색상이 빠지면 안 되므로).
+        var addLastDataRow = _getLastDataRow(sheet, COL.channel + 1);
+        sheet.insertRowsAfter(addLastDataRow, 1);
+        var addRowNum = addLastDataRow + 1;
+        var addRange = sheet.getRange(addRowNum, 1, 1, newRow.length);
+        if (addLastDataRow > DATA_START_ROW) {
+          var addTemplateRow = sheet.getRange(addLastDataRow, 1, 1, newRow.length);
+          addTemplateRow.copyTo(addRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+          addTemplateRow.copyTo(addRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+        }
+        addRange.setValues([newRow]);
+        if (linkForNewRows) _setChannelLink(sheet, addRowNum, linkForNewRows);
       }
     } else if (codes.length < groupRows.length) {
       // 초과 행 삭제 — 물리 행 번호 내림차순으로 지워야 인덱스가 안 밀림
