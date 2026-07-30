@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'flush-in-try-2026-07-29-01';
+var SCRIPT_VERSION = 'insert-row-format-2026-07-30-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1074,11 +1074,30 @@ function _addDeal(ss, data) {
     rows.push(row);
   }
 
-  var startRow = sheet.getLastRow() + 1;
-  sheet.getRange(startRow, 1, rows.length, numCols).setValues(rows);
+  // ⚠ 2026-07-30: 시트 끝 범위에 setValues로 값만 쓰면 새 행이 기존 행들의 데이터 확인(드롭다운)·
+  // 서식·색상을 전혀 상속받지 못함(범위에 값만 쓰는 건 서식과 완전히 무관한 별개 동작이라, 시트 UI에서
+  // 직접 "행 삽입"할 때와 다름). 그래서 다음 순서로 처리함:
+  //  1) insertRowsAfter로 직전 데이터 행 "아래"에 새 행을 삽입
+  //  2) 직전 데이터 행 → 새 행 범위로 서식/데이터 확인만 명시적으로 copyTo(PASTE_FORMAT +
+  //     PASTE_DATA_VALIDATION) — 값은 절대 복사하지 않음(직전 행에 실적 값이 남아있어도 새 행엔
+  //     옮겨가면 안 되므로 PASTE_VALUES/PASTE_NORMAL은 쓰지 않고 이 둘만 씀). 1행짜리 원본을
+  //     여러 행짜리 대상 범위에 copyTo하면 그대로 반복(타일링) 적용됨.
+  //  3) 그 다음에야 실제 값을 setValues로 기록 — flush는 호출부(_handleWriteAction)에서 처리.
+  var lastRow = sheet.getLastRow();
+  sheet.insertRowsAfter(lastRow, rows.length);
+  var startRow = lastRow + 1;
+  var newRange = sheet.getRange(startRow, 1, rows.length, numCols);
+  if (lastRow >= 3) { // 1~2행은 제목/헤더라 서식 원본으로 쓰면 안 됨 — 실제 데이터 행이 있을 때만 복사
+    var templateRow = sheet.getRange(lastRow, 1, 1, numCols);
+    templateRow.copyTo(newRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    templateRow.copyTo(newRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+  }
+  newRange.setValues(rows);
 
   // 인플루언서 링크가 입력됐으면 채널명 셀에도 하이퍼링크를 걸어줌(코드별로 생성된 모든 행에 동일
   // 반영). setValues로는 서식(하이퍼링크)이 안 실리므로 별도 setRichTextValues 호출이 필요함.
+  // 반드시 위의 서식 복사(copyTo)보다 나중에 실행 — 안 그러면 복사해온 서식이 이 하이퍼링크를
+  // 덮어써 버릴 수 있음.
   if (data.link && data.ch) {
     var channelRT = [];
     for (var ri = 0; ri < codes.length; ri++) channelRT.push([_buildChannelRichText(data.ch, data.link)]);
