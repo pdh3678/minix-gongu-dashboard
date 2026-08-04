@@ -2778,7 +2778,9 @@ async function saveCfg(){
 
 /* Live fetch */
 // 연결 상태: 마지막 성공 시각(_lastLiveAt)과 연속 실패 횟수(_connFailStreak)를 추적해서
-// 뱃지가 실제 상태를 반영하게 함. 실패 1회는 "재연결 중"(아직 희망적), 2회 연속이어야 "연결 오류"로 전환.
+// 뱃지가 실제 상태를 반영하게 함. 실패 1회는 일시적 blip일 가능성이 커서 뱃지를 아예 건드리지 않고,
+// 2회 연속부터 "재연결 중", 3회 연속부터 "연결 오류"로 전환(2026-08-04: 1회 실패에도 뱃지가 바로
+// 바뀌어 "재연결 중" 표시가 너무 자주 뜬다는 피드백을 반영해 임계값을 한 단계씩 늦춤).
 let _lastLiveAt=null, _connFailStreak=0;
 function setConn(s){
   const el=document.getElementById('connPill');
@@ -2799,13 +2801,14 @@ function _showCacheBadge(cachedAt){
   document.getElementById('connPill').textContent='◌ '+label+' 데이터 · 갱신 중...';
 }
 function _connOk(){_connFailStreak=0;_lastLiveAt=Date.now();}
-// 실패 시 바로 "연결 실패"로 튀지 않고, 2회 연속 실패해야 전환 — 일시적 blip으로 뱃지가 깜빡이는 걸 방지.
-// 2회째부터는 (구)'연결 오류' 텍스트 배지가 아니라 클릭 유도형 'failed' 상태로 — 샘플 데이터로
+// 1회 실패는 뱃지를 그대로 두고 콘솔 로그만 남김(대부분 일시적 blip이라 굳이 사용자에게 안 보여줌).
+// 2회 연속부터 "재연결 중"(아직 희망적), 3회 연속부터 클릭 유도형 'failed' 상태로 — 샘플 데이터로
 // 오인되지 않게, 그리고 클릭하면 그대로 재시도(connPill onclick=refreshData)되게 함.
 function _connFail(reason){
   _connFailStreak++;
   console.warn('[fetchLive] 연속 실패 '+_connFailStreak+'회'+(reason?' (사유: '+reason+')':''));
-  setConn(_connFailStreak>=2?'failed':'retrying');
+  if(_connFailStreak<2)return;
+  setConn(_connFailStreak>=3?'failed':'retrying');
 }
 function setLoad(on){document.getElementById('loadOv').classList[on?'add':'remove']('open');}
 
@@ -3637,9 +3640,11 @@ function _gasUrl(base){
   return stripped+(stripped.includes('?')?'&':'?')+'idToken='+encodeURIComponent(_getToken());
 }
 
-// 네트워크 오류/일시 실패(5xx)는 지수 백오프로 최대 2회 재시도. 응답이 20초 넘게 안 오면(Apps
+// 네트워크 오류/일시 실패(5xx)는 지수 백오프(1s→2s→4s)로 최대 3회 재시도. 응답이 20초 넘게 안 오면(Apps
 // Script 콜드스타트/네트워크 정체 등) 타임아웃으로 끊어서, "그냥 무한정 조용히 멈춤"이 아니라
-// 명확한 실패로 처리되게 함(끊긴 뒤에도 위 재시도 루프를 그대로 탐).
+// 명확한 실패로 처리되게 함(끊긴 뒤에도 위 재시도 루프를 그대로 탐). AUTH_REQUIRED는 이 백오프 루프와
+// 무관한 별도 분기(아래 j.error==='AUTH_REQUIRED')로 처리됨 — 네트워크/타임아웃 실패만 여기서 재시도하고,
+// 인증 실패는 무조건 silentRefresh(_refreshIdToken) 경로로 가서 두 재시도 전략이 서로 겹치지 않음.
 // 응답이 AUTH_REQUIRED(idToken 만료, ~1시간)면 토큰을 자동 갱신해서 1회만 재시도하고,
 // 갱신까지 실패한 경우에만 재로그인 배너를 띄움. opts.body가 있으면(POST) 그 안의 idToken도 갱신해서 다시 보냄.
 const GAS_FETCH_TIMEOUT_MS=20000;
@@ -3653,7 +3658,7 @@ const GAS_FETCH_TIMEOUT_MS=20000;
 // 앞으로 이 부분을 다시 건드릴 일이 있으면, 반드시 실제 저장 테스트로 실행 기록의 "완료됨"을
 // 확인한 뒤에 커밋할 것 — 문서만 보고 "이론상 안전하다"고 판단하지 말 것(이번이 그 실패 사례).
 async function _gasFetch(url,opts,_authRetried){
-  const MAX_RETRY=2;
+  const MAX_RETRY=3;
   let res,lastErr;
   for(let attempt=0;attempt<=MAX_RETRY;attempt++){
     const ac=new AbortController();
@@ -3669,7 +3674,7 @@ async function _gasFetch(url,opts,_authRetried){
     }catch(e){
       lastErr=e.name==='AbortError'?new Error('TIMEOUT('+(GAS_FETCH_TIMEOUT_MS/1000)+'s)'):e;
       if(attempt===MAX_RETRY)break;
-      await new Promise(r=>setTimeout(r,300*Math.pow(2,attempt))); // 300ms, 600ms
+      await new Promise(r=>setTimeout(r,1000*Math.pow(2,attempt))); // 1s, 2s, 4s
     }finally{
       clearTimeout(timeoutTimer);
     }
@@ -3951,7 +3956,8 @@ function signOut(){
   _applyAdminUI('');
 }
 
-/* ── 접속자 표시(Presence): 30초 간격 하트비트, 탭 숨김 시 중단·복귀 시 즉시 1회+재개 ── */
+/* ── 접속자 표시(Presence): 45초 간격 하트비트, 탭 숨김 시 중단·복귀 시 3초 뒤 1회+재개 ── */
+const PRESENCE_HEARTBEAT_MS=45000;
 let _presenceTimer=null;
 let _presenceUsers=[];
 let _presencePanelOpen=true;
@@ -3970,13 +3976,15 @@ async function _sendPresenceHeartbeat(){
       console.warn('[하트비트] presence 응답 실패로 접속자 목록에 반영되지 않음:',j.error);
     }
   }catch(e){
-    // 네트워크 일시 오류는 조용히 무시 — 30초 후 다음 하트비트에서 자연 복구
+    // 네트워크 일시 오류는 조용히 무시 — 다음 하트비트에서 자연 복구
   }
 }
+// 첫 하트비트를 3초 늦춰서, 로그인/탭 복귀 시점에 fetchLive()와 동시에 GAS로 나가지 않게 분산시킴
+// (둘 다 같은 스크립트의 콜드스타트를 동시에 두드리면 서로의 응답이 함께 느려짐) — 그 이후는 정상 간격.
 function _startPresenceHeartbeat(){
-  _sendPresenceHeartbeat();
   if(_presenceTimer)clearInterval(_presenceTimer);
-  _presenceTimer=setInterval(_sendPresenceHeartbeat,30000);
+  setTimeout(_sendPresenceHeartbeat,3000);
+  _presenceTimer=setInterval(_sendPresenceHeartbeat,PRESENCE_HEARTBEAT_MS);
 }
 function _stopPresenceHeartbeat(){
   if(_presenceTimer){clearInterval(_presenceTimer);_presenceTimer=null;}
@@ -3984,7 +3992,7 @@ function _stopPresenceHeartbeat(){
 document.addEventListener('visibilitychange',()=>{
   if(!_getToken())return;
   if(document.visibilityState==='hidden')_stopPresenceHeartbeat();
-  else if(document.visibilityState==='visible')_startPresenceHeartbeat(); // 즉시 1회 전송 후 30초 간격 재개
+  else if(document.visibilityState==='visible')_startPresenceHeartbeat(); // 3초 후 1회 전송 후 45초 간격 재개
 });
 function togglePresencePanel(){_presencePanelOpen=!_presencePanelOpen;renderPresencePanel();}
 function renderPresencePanel(){

@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'last-data-row-fix-2026-07-30-01';
+var SCRIPT_VERSION = 'perf-cache-lastdatarow-execms-2026-08-04-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -101,8 +101,12 @@ var REVIEW_DATA_START_ROW = 1; // 0-based index — 1행(index 0)은 헤더, 2�
 // doGet 응답 캐시 — 실적통합 파싱이 무거워서(수 초), 여러 사용자가 짧은 간격으로 새로고침할 때
 // 실행 시간·동시 실행 한도 부담이 커짐. 계산 결과를 스크립트 캐시에 잠깐 담아두고 그 안에서는
 // 재계산 없이 그대로 돌려줌. 데이터를 바꾸는 doPost 액션은 성공 시 _invalidateDashboardCache()로 즉시 무효화함.
-var DASHBOARD_CACHE_TTL_SEC = 90;
+var DASHBOARD_CACHE_TTL_SEC = 60;
 var CACHE_CHUNK_SIZE = 30000; // CacheService 값 상한(100KB/키)을 한글 멀티바이트 감안해 안전하게 피하려고 청크 분할
+
+// 이번 doGet/doPost 호출이 시작된 시각 — _json()이 모든 응답에 execMs를 붙여주는 기준점.
+// 요청마다 doGet/doPost 진입 시 새로 설정됨(전역이지만 Apps Script는 요청당 별도 실행이라 안전).
+var _reqStartMs = 0;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 인증 ──
@@ -170,6 +174,7 @@ function _isAdmin(idToken) {
 
 function doGet(e) {
   var _t0 = Date.now();
+  _reqStartMs = _t0;
   try {
     // 실행 기록(Executions)에서 이 호출이 조회인지 쓰기인지, 어떤 파라미터가 실려왔는지 진입
     // 시점에 항상 남김 — 이후 어디서 죽든 최소한 "이런 요청이 왔었다"는 사실은 반드시 남게 함.
@@ -342,6 +347,44 @@ function _invalidateDashboardCache() {
   }
 }
 
+// 캐시 동작 검증용 — Apps Script 편집기에서 이 함수만 선택해 직접 실행(HTTP 왕복 없이 doGet과
+// 동일한 계산 경로를 그대로 태움). ① 캐시 미스 이후 히트로 갈 때 두 번째 조회가 실제로 빨라지는지,
+// ② 무효화 직후엔 다시 미스로 떨어지는지(=쓰기 후 다음 조회가 최신 데이터로 재계산됨)를 로그로 확인.
+function _testCacheBehavior() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) { Logger.log('[캐시테스트] 실적통합 시트를 찾을 수 없어 중단'); return; }
+
+  var cache = CacheService.getScriptCache();
+  var cacheKey = _dashboardCacheKey();
+
+  function computeAndCache() {
+    var t0 = Date.now();
+    var result = parseMainSheet(sheet);
+    var payload = { purchases: result.deals, calendarEvents: _loadCalendarEvents(ss), updatedAt: new Date().toISOString(), version: SCRIPT_VERSION };
+    _cachePutJSON(cache, cacheKey, payload, DASHBOARD_CACHE_TTL_SEC);
+    return Date.now() - t0;
+  }
+
+  _invalidateDashboardCache(); // 이전 실행 잔여 캐시 제거 — 반드시 미스부터 시작
+
+  var msMiss = computeAndCache();
+  Logger.log('[캐시테스트] 1회차(캐시 없음→새로 계산): ' + msMiss + 'ms');
+
+  var t2 = Date.now();
+  var hit2 = _cacheGetJSON(cache, cacheKey);
+  var msHit = Date.now() - t2;
+  Logger.log('[캐시테스트] 2회차(같은 캐시 조회): ' + (hit2 ? '히트' : '미스(예상 밖 — TTL 안인데 없음)') +
+    ', ' + msHit + 'ms' + (hit2 ? ' — 1회차보다 ' + (msMiss - msHit) + 'ms 빠름' : ''));
+
+  _invalidateDashboardCache(); // 쓰기 액션 성공 시 실제로 호출되는 것과 동일한 무효화
+  var hit3 = _cacheGetJSON(cache, cacheKey);
+  Logger.log('[캐시테스트] 무효화 후 3회차: ' + (hit3 ? '히트(실패 — 무효화가 안 먹음)' : '미스(정상 — 다음 조회는 최신 데이터로 재계산됨)'));
+
+  computeAndCache(); // 테스트가 실제 서비스 캐시를 빈 상태로 남기지 않게 정상 캐시 재생성
+  Logger.log('[캐시테스트] 종료 — 정상 캐시 재생성 완료');
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 접속자 표시(Presence) ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -352,7 +395,7 @@ function _invalidateDashboardCache() {
 // 하트비트가 30초 후 다시 오므로 접속자 표시 용도로는 문제되지 않음 — LockService까지는 불필요).
 var PRESENCE_CACHE_KEY = 'presenceRoster_v1';
 var PRESENCE_CACHE_TTL_SEC = 90; // 하트비트가 끊겨도 90초까지는 로스터 자체를 보존
-var PRESENCE_ACTIVE_WINDOW_MS = 60 * 1000; // 응답에 포함할 "최근 접속" 기준(하트비트 주기 30초의 2배)
+var PRESENCE_ACTIVE_WINDOW_MS = 90 * 1000; // 응답에 포함할 "최근 접속" 기준(프론트 하트비트 주기 45초의 2배 — 2026-08-04 30→45초로 완화되면서 같이 조정)
 
 function _presenceHeartbeat(idToken) {
   var payload = _decodeIdTokenPayload(idToken);
@@ -483,12 +526,19 @@ function _debugRawDump(ss, sheet) {
 // 목표수량/상태 등 실적·조건 값은 대표 행에만 있고, 나머지 행은 상품코드만 의미 있음(나머지 칸은 빈값).
 // 제품명/채널명/브랜드/벤더사는 그룹의 모든 행에 동일하게 들어있어 그대로 사용.
 function parseMainSheet(sheet) {
-  var data = sheet.getDataRange().getValues();
+  // ⚠ 2026-08-04: getDataRange()는 getLastRow()와 동일한 매커니즘(서식/수식이 있는 마지막 행)으로
+  // 범위를 잡아서, 실제 데이터가 373행에서 끝나도 서식이 미리 적용된 3000행까지 그대로 읽어버림
+  // (_getLastDataRow 주석 참고). 매 doGet 캐시 미스마다 이 큰 범위를 두 번(getValues+getTextStyles)
+  // 읽는 게 "느리고 재연결 중" 증상의 실제 병목이었음 — _getLastDataRow로 실제 마지막 행까지만,
+  // Range 객체 하나를 재사용해서 값/스타일을 각각 그 범위에서만 가져오도록 수정.
+  var lastDataRow = _getLastDataRow(sheet, COL.channel + 1);
+  var mainRange = sheet.getRange(1, 1, lastDataRow, sheet.getLastColumn());
+  var data = mainRange.getValues();
 
   // 취소선 감지 (B열 기준, 실패해도 파싱은 계속)
   var strikeMap = {};
   try {
-    var styles = sheet.getDataRange().getTextStyles();
+    var styles = mainRange.getTextStyles();
     for (var r = DATA_START_ROW; r < styles.length; r++) {
       if (styles[r] && styles[r][COL.brand] && styles[r][COL.brand].isStrikethrough()) {
         strikeMap[r] = true;
@@ -812,6 +862,7 @@ function _setChannelLink(sheet, row, url) {
 // presence만 예외로 여기 남겨둠 — 이 경로는 한 번도 실패한 적 없어서 건드릴 이유가 없었음.
 
 function doPost(e) {
+  _reqStartMs = Date.now();
   try {
     if (!e || !e.postData || !e.postData.contents) {
       throw new Error('요청 본문(postData)이 비어있습니다.');
@@ -1632,7 +1683,14 @@ function _uploadReviewImage(data) {
 // ── 유틸리티 ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// 모든 응답이 이 함수를 거치므로, 여기 한 곳에서만 execMs를 채우면 읽기/쓰기/에러 응답 전부가
+// 별도 수정 없이 "GAS 처리 시간(ms)"을 갖게 됨 — 프론트가 이 값으로 병목이 GAS인지(execMs가 큼)
+// 네트워크/콜드스타트인지(execMs는 작은데 왕복은 느림) 구분할 수 있음. 호출부가 이미 execMs를
+// 직접 넣어둔 경우(예: doGet의 캐시 히트 경로)는 덮어쓰지 않음.
 function _json(obj) {
+  if (obj && typeof obj === 'object' && !Array.isArray(obj) && obj.execMs === undefined && _reqStartMs) {
+    obj.execMs = Date.now() - _reqStartMs;
+  }
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
