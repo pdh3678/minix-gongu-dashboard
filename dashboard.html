@@ -3802,7 +3802,12 @@ function _refreshIdToken(){
           }
           _gsiLog('자동 로그인 prompt() 결과 — '+detail);
         }catch(logErr){}
-        const declined=n&&((n.isNotDisplayed&&n.isNotDisplayed())||(n.isSkippedMoment&&n.isSkippedMoment())||(n.isDismissedMoment&&n.isDismissedMoment()));
+        // dismissed(사유:credential_returned)는 실패가 아니라 "credential이 정상적으로 반환돼 One Tap이
+        // 닫혔다"는 성공 신호임 — 이걸 무조건 declined로 취급하면 handleGoogleSignIn이 토큰을 이미 정상
+        // 저장했는데도 폴링보다 이 콜백이 먼저 실행되는 타이밍에 재발급을 "실패"로 오판해 배너가 뜸.
+        const dismissed=n&&n.isDismissedMoment&&n.isDismissedMoment();
+        const dismissedReason=dismissed&&n.getDismissedReason?n.getDismissedReason():'';
+        const declined=n&&((n.isNotDisplayed&&n.isNotDisplayed())||(n.isSkippedMoment&&n.isSkippedMoment())||(dismissed&&dismissedReason!=='credential_returned'));
         if(declined)finish(false);
       });
     }catch(e){
