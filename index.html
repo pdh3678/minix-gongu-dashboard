@@ -415,10 +415,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .review-editor .ce-block--selected .ce-block__content{background:var(--minix-lt);border-radius:6px}
 .review-editor .ce-toolbar__plus,.review-editor .ce-toolbar__settings-btn{color:var(--text-2)}
 .review-editor .ce-toolbar__plus:hover,.review-editor .ce-toolbar__settings-btn:hover{background:var(--minix-lt);color:var(--minix)}
-.review-editor .cdx-list{font-size:13.5px}
-.review-editor .cdx-checklist__item-text{font-size:13.5px}
-.review-editor .cdx-checklist__item--checked .cdx-checklist__item-checkbox-check{background:var(--minix)!important;border-color:var(--minix)!important}
-.review-editor .cdx-checklist__item--checked .cdx-checklist__item-text{color:var(--text-3);text-decoration:line-through}
+.review-editor .cdx-list{font-size:13.5px;--color-bg-checked:var(--minix);--color-bg-checked-hover:#2b50ec}
+.review-editor .cdx-list__item:has(> .cdx-list__checkbox--checked) > .cdx-list__item-content{color:var(--text-3);text-decoration:line-through}
 .review-editor .cdx-quote{border-left:3px solid var(--border-s);padding-left:12px;margin:4px 0}
 .review-editor .cdx-quote__text{font-size:13.5px;color:var(--text-2);font-style:italic;border:none;box-shadow:none;min-height:unset;margin-bottom:4px}
 .review-editor .cdx-quote__caption{font-size:11.5px;color:var(--text-3);border:none;box-shadow:none}
@@ -1113,12 +1111,13 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <!-- 회고 블록 에디터(Editor.js) — Chart.js와 동일한 jsdelivr CDN 고정 버전 방식.
-     전역 변수: EditorJS / Header / EditorjsList / Checklist / Quote / CodeTool / Delimiter /
-     ToggleBlock / Alert / Marker / InlineCode / Table -->
+     전역 변수: EditorJS / Header / EditorjsList / Quote / CodeTool / Delimiter /
+     ToggleBlock / Alert / Marker / InlineCode / Table
+     ※ 할 일 목록은 별도 @editorjs/checklist가 아니라 list@2의 checklist 스타일로 통합 —
+       별도 툴은 Tab 들여쓰기(중첩)를 지원하지 않아서 제거함(2026-08-11). -->
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/editorjs@2.31.6/dist/editorjs.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/header@2.8.9/dist/header.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/list@2.0.9/dist/editorjs-list.umd.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@editorjs/checklist@1.6.0/dist/checklist.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/quote@2.7.6/dist/quote.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/code@2.9.4/dist/code.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/delimiter@1.4.2/dist/delimiter.umd.js"></script>
@@ -1132,7 +1131,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-editorjs-2026-08-11-01';
+const DASHBOARD_VERSION='review-list-nest-2026-08-11-02';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -4134,7 +4133,7 @@ const REVIEW_EDITOR_I18N={messages:{
   },
   tools:{
     header:{'Heading 1':'제목 1','Heading 2':'제목 2','Heading 3':'제목 3','Heading 4':'제목 4'},
-    list:{Unordered:'글머리 목록',Ordered:'번호 목록',Checklist:'체크리스트','Start with':'시작 번호','Counter type':'번호 스타일'},
+    list:{Unordered:'글머리 목록',Ordered:'번호 목록',Checklist:'할 일 목록','Start with':'시작 번호','Counter type':'번호 스타일'},
     table:{'Add row above':'위에 행 추가','Add row below':'아래에 행 추가','Delete row':'행 삭제','Add column to left':'왼쪽에 열 추가','Add column to right':'오른쪽에 열 추가','Delete column':'열 삭제','With headings':'머리글 사용','Without headings':'머리글 없음',Stretch:'넓게',Collapse:'좁게'},
     quote:{'Align Left':'왼쪽 정렬','Align Center':'가운데 정렬'},
     callout:{Primary:'파랑',Secondary:'회색',Info:'안내',Success:'성공',Warning:'주의',Danger:'위험',Light:'밝게',Dark:'어둡게','Align left':'왼쪽 정렬','Align center':'가운데 정렬','Align right':'오른쪽 정렬'}
@@ -4149,8 +4148,8 @@ const REVIEW_EDITOR_I18N={messages:{
 function _reviewEditorTools(){
   return{
     header:{class:Header,inlineToolbar:true,config:{levels:[1,2,3,4],defaultLevel:2,placeholder:'제목'}},
-    list:{class:EditorjsList,inlineToolbar:true,config:{defaultStyle:'unordered'}}, // Tab/Shift+Tab 들여쓰기 지원
-    checklist:{class:Checklist,inlineToolbar:true},
+    // 글머리/번호/할 일 전부 list@2 하나로 — 세 스타일 모두 Tab/Shift+Tab 들여쓰기(중첩) 지원
+    list:{class:EditorjsList,inlineToolbar:true,config:{defaultStyle:'unordered'}},
     toggle:{class:ToggleBlock,inlineToolbar:true},
     quote:{class:Quote,inlineToolbar:true,config:{quotePlaceholder:'인용문',captionPlaceholder:'출처(선택)'}},
     callout:{class:Alert,inlineToolbar:true,config:{defaultType:'info',messagePlaceholder:'콜아웃 내용'}},
@@ -4205,14 +4204,44 @@ function _reviewContentToEditorData(raw){
   try{parsed=JSON.parse(s);}catch(e){
     return{blocks:[{type:'paragraph',data:{text:_escapeForHtml(s).replace(/\r?\n/g,'<br>')}}]};
   }
-  if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed)&&Array.isArray(parsed.blocks))return parsed;
+  if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed)&&Array.isArray(parsed.blocks))
+    return Object.assign({},parsed,{blocks:_normalizeEditorBlocks(parsed.blocks)});
   if(Array.isArray(parsed)){
     if(!parsed.length)return{blocks:[]};
     const first=parsed[0];
-    if(first&&typeof first==='object'&&first.data!==undefined&&first.children===undefined)return{blocks:parsed};
-    return{blocks:_legacyTreeToEditorBlocks(parsed)};
+    if(first&&typeof first==='object'&&first.data!==undefined&&first.children===undefined)
+      return{blocks:_normalizeEditorBlocks(parsed)};
+    return{blocks:_normalizeEditorBlocks(_legacyTreeToEditorBlocks(parsed))};
   }
   return{blocks:[{type:'paragraph',data:{text:_escapeForHtml(s)}}]};
+}
+/* ── 목록 블록 마이그레이션/정규화(불러올 때 항상 통과) ──
+   · type:'checklist'(제거된 구 @editorjs/checklist 툴) → list의 checklist 스타일로 변환
+     — 안 하면 미등록 툴이라 블록이 통째로 버려지고, 별도 툴은 Tab 중첩도 안 됐음
+   · list items가 문자열 배열(구버전 @editorjs/list 1.x 형식)이면 {content,meta,items}로 래핑
+   · items가 빈 배열이면 빈 항목 1개로 보정 — list@2는 items[0]에 무방비로 접근해서
+     빈 배열이 들어오면 블록 생성이 통째로 실패할 수 있음(크래시 방어) */
+function _normalizeEditorBlocks(blocks){
+  return(blocks||[]).map(b=>{
+    if(!b||typeof b!=='object'||!b.data)return b;
+    if(b.type==='checklist'&&Array.isArray(b.data.items)){
+      return{type:'list',data:{style:'checklist',meta:{},items:b.data.items.map(it=>({content:(it&&it.text)||'',meta:{checked:!!(it&&it.checked)},items:[]}))}};
+    }
+    if(b.type==='list'){
+      const d=b.data;
+      return Object.assign({},b,{data:{style:d.style||'unordered',meta:d.meta||{},items:_normalizeListItems(d.items,true)}});
+    }
+    return b;
+  });
+}
+function _normalizeListItems(items,isTopLevel){
+  if(!Array.isArray(items)||!items.length)return isTopLevel?[{content:'',meta:{},items:[]}]:[];
+  return items.map(it=>{
+    if(typeof it==='string')return{content:it,meta:{},items:[]}; // 구버전 list(문자열 배열) 항목
+    if(!it||typeof it!=='object')return{content:'',meta:{},items:[]};
+    if(typeof it.text==='string'&&it.content===undefined)return{content:it.text,meta:{checked:!!it.checked},items:[]}; // 구 checklist 항목 형태
+    return{content:it.content||'',meta:it.meta||{},items:_normalizeListItems(it.items,false)};
+  });
 }
 function _legacyTreeToEditorBlocks(tree){
   const out=[];
@@ -4247,11 +4276,11 @@ function _legacyAppend(list,out){
       const items=[],overflow=[];
       while(i<list.length&&list[i]&&list[i].type==='todo'){
         const td=list[i];
-        items.push({text:td.html||'',checked:!!td.checked});
+        items.push({content:td.html||'',meta:{checked:!!td.checked},items:[]});
         if(td.children&&td.children.length)_legacyAppend(td.children,overflow);
         i++;
       }
-      out.push({type:'checklist',data:{items:items}});
+      out.push({type:'list',data:{style:'checklist',meta:{},items:items}});
       overflow.forEach(x=>out.push(x));
       continue;
     }
