@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'review-editorjs-split-2026-08-11-01';
+var SCRIPT_VERSION = 'review-image-upload-2026-08-11-02';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -964,6 +964,8 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
     else if (action === 'uploadReviewImage') { resp = _uploadReviewImage(data); skipCacheInvalidate = true; }
+    else if (action === 'uploadReviewImageByUrl') { resp = _uploadReviewImageByUrl(data); skipCacheInvalidate = true; }
+    else if (action === 'shareReviewImages') { resp = _shareReviewImages(data); skipCacheInvalidate = true; }
     else throw new Error('Unknown action: ' + action);
 
     // ⚠ 2026-07-29 근본 원인: Apps Script는 setValue/setValues 등 시트 쓰기를 스크립트 실행이
@@ -1730,20 +1732,65 @@ function _getReviewImgFolder() {
   return DriveApp.createFolder(REVIEW_IMG_FOLDER_NAME);
 }
 
+// 브라우저 <img>가 로그인 팝업 없이 바로 그릴 수 있는 URL을 돌려줘야 해서(공식 image 툴 사용)
+// 업로드 직후 링크 공유를 설정하고 lh3.googleusercontent.com 형식으로 반환함.
+// 조직(Workspace) 정책이 외부 링크 공유를 금지하면 조직 내 링크 공유로 폴백 —
+// 팀원은 어차피 Google 로그인 상태라 조직 공유로도 이미지가 표시됨.
+function _shareFilePublic(file) {
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
+  catch (e) { file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW); }
+}
+
+function _saveReviewImageBlob(blob, ext) {
+  var folder = _getReviewImgFolder();
+  var file = folder.createFile(blob.setName('review_' + Date.now() + '.' + ext));
+  try { _shareFilePublic(file); } catch (e) { /* 공유 실패해도 업로드 자체는 성공 처리(소유자/도메인 조회는 가능) */ }
+  return _json({ success: true, url: 'https://lh3.googleusercontent.com/d/' + file.getId() });
+}
+
 function _uploadReviewImage(data) {
   if (!data || !data.base64) return _json({ error: '업로드할 이미지 데이터가 없습니다.' });
   try {
-    var folder = _getReviewImgFolder();
     var bytes = Utilities.base64Decode(data.base64);
     var mimeType = data.mimeType || 'image/jpeg';
     var ext = mimeType.indexOf('png') >= 0 ? 'png' : 'jpg';
-    var blob = Utilities.newBlob(bytes, mimeType, 'review_' + Date.now() + '.' + ext);
-    var file = folder.createFile(blob);
-    var url = _canonicalScriptUrl() + '?thumb=' + file.getId();
-    return _json({ success: true, url: url });
+    var blob = Utilities.newBlob(bytes, mimeType);
+    return _saveReviewImageBlob(blob, ext);
   } catch (err) {
     return _json({ error: '이미지 업로드 실패: ' + err.toString() });
   }
+}
+
+// 노션 등 외부 이미지 URL을 서버(UrlFetchApp)가 즉시 가져와 Drive에 영구 저장 —
+// 노션 클립보드의 S3 서명 URL은 곧 만료되므로 프론트가 URL을 그대로 저장하면 안 됨.
+var REVIEW_IMG_URL_MAX_BYTES = 15 * 1024 * 1024;
+function _uploadReviewImageByUrl(data) {
+  var url = String((data && data.url) || '').trim();
+  if (!/^https?:\/\//i.test(url)) return _json({ error: '유효한 이미지 URL이 아닙니다.' });
+  try {
+    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+    if (res.getResponseCode() >= 400) return _json({ error: '이미지를 가져오지 못했습니다 (HTTP ' + res.getResponseCode() + ')' });
+    var blob = res.getBlob();
+    var mimeType = String(blob.getContentType() || '');
+    if (mimeType.indexOf('image/') !== 0) return _json({ error: '이미지 형식이 아닙니다: ' + (mimeType || '알 수 없음') });
+    if (blob.getBytes().length > REVIEW_IMG_URL_MAX_BYTES) return _json({ error: '이미지가 너무 큽니다 (15MB 초과)' });
+    var ext = mimeType.indexOf('png') >= 0 ? 'png' : (mimeType.indexOf('gif') >= 0 ? 'gif' : (mimeType.indexOf('webp') >= 0 ? 'webp' : 'jpg'));
+    return _saveReviewImageBlob(blob, ext);
+  } catch (err) {
+    return _json({ error: '이미지 가져오기 실패: ' + err.toString() });
+  }
+}
+
+// 구버전 회고 이미지(?thumb= 프록시 방식, 비공개)를 새 <img> 직접 표시 방식으로 살리기 위한
+// 지연 마이그레이션 — 프론트가 구형 이미지 블록을 발견하면 fileId 목록을 보내오고,
+// 여기서 링크 공유만 걸어줌(파일 이동/복사 없음). 실패한 id는 조용히 건너뜀.
+function _shareReviewImages(data) {
+  var ids = (data && data.ids) || [];
+  var done = 0;
+  for (var i = 0; i < ids.length && i < 30; i++) {
+    try { _shareFilePublic(DriveApp.getFileById(String(ids[i]))); done++; } catch (e) {}
+  }
+  return _json({ success: true, shared: done });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
