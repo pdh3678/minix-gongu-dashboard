@@ -1120,7 +1120,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <!-- 회고 블록 에디터(Editor.js) — Chart.js와 동일한 jsdelivr CDN 고정 버전 방식.
      전역 변수: EditorJS / Header / EditorjsList / Quote / CodeTool / Delimiter /
-     ToggleBlock / Alert / Marker / InlineCode / Table
+     ToggleBlock / Alert / Marker / InlineCode / Table / Undo
      ※ 할 일 목록은 별도 @editorjs/checklist가 아니라 list@2의 checklist 스타일로 통합 —
        별도 툴은 Tab 들여쓰기(중첩)를 지원하지 않아서 제거함(2026-08-11). -->
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/editorjs@2.31.6/dist/editorjs.umd.js"></script>
@@ -1134,12 +1134,13 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/marker@1.4.0/dist/marker.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/inline-code@1.5.2/dist/inline-code.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/table@2.4.5/dist/table.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/editorjs-undo@2.0.28/dist/bundle.js"></script>
 <script>
 'use strict';
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-list-depth-2026-08-11-03';
+const DASHBOARD_VERSION='review-undo-2026-08-11-04';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -4171,6 +4172,27 @@ function _reviewEditorTools(){
   };
 }
 
+/* editorjs-undo 2.0.x 버그 안전판 — contenteditable 판별이 어긋난 요소(속성이 'true'가 아니라
+   상속인 경우 등)에서 input 전용 setSelectionRange를 호출해 TypeError가 나고 캐럿 복원이
+   실패함(undo 자체는 적용됨). HTMLElement에는 이 메서드가 원래 없으므로, 회고 에디터 내부
+   요소에 한해 Range API로 같은 동작(문자 오프셋에 캐럿 배치)을 해주는 심을 추가함. */
+if(!HTMLElement.prototype.setSelectionRange){
+  HTMLElement.prototype.setSelectionRange=function(start){
+    if(!this.closest||!this.closest('.review-editor'))return; // 에디터 밖 요소는 건드리지 않음
+    const range=document.createRange();
+    let remaining=Math.max(0,start||0),node=null,offset=0,t;
+    const walker=document.createTreeWalker(this,NodeFilter.SHOW_TEXT);
+    while((t=walker.nextNode())){
+      if(remaining<=t.length){node=t;offset=remaining;break;}
+      remaining-=t.length;
+    }
+    if(node){range.setStart(node,offset);range.collapse(true);}
+    else{range.selectNodeContents(this);range.collapse(false);} // 오프셋이 본문보다 길면 끝으로
+    const sel=window.getSelection();
+    sel.removeAllRanges();sel.addRange(range);
+  };
+}
+
 function _destroyReviewEditor(){
   if(_reviewEditor){try{_reviewEditor.destroy();}catch(e){}}
   _reviewEditor=null;
@@ -4193,7 +4215,17 @@ function _initReviewEditor(data){
     tools:_reviewEditorTools(),
     tunes:['duplicate'], // 모든 블록의 ⋮⋮ 설정 메뉴에 복제 추가(이동/삭제는 기본 제공)
     i18n:REVIEW_EDITOR_I18N,
-    onChange:()=>_reviewOnEdit()
+    onChange:()=>_reviewOnEdit(),
+    onReady:()=>{
+      // Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z 실행취소·다시실행(editorjs-undo).
+      // initialize(data)로 "문서를 연 시점"을 undo 스택 바닥에 깔아, 열자마자
+      // Ctrl+Z를 눌러도 문서가 빈 상태로 날아가지 않게 함.
+      if(typeof Undo==='undefined')return; // CDN 로드 실패 시 undo 없이 동작(치명적 아님)
+      try{
+        const undo=new Undo({editor:_reviewEditor});
+        if(data&&data.blocks&&data.blocks.length)undo.initialize(data);
+      }catch(e){console.warn('[회고] 실행취소(undo) 초기화 실패:',e);}
+    }
   });
   _reviewEditor.isReady.catch(e=>{
     console.error('[회고] Editor.js 초기화 실패:',e);
