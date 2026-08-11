@@ -1138,13 +1138,16 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/inline-code@1.5.2/dist/inline-code.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/table@2.4.5/dist/table.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/image@2.10.3/dist/image.umd.js"></script>
+<!-- 다단(@calumk/editorjs-columns@0.4.0)은 검증 실패로 미채택(2026-08-11): 열 블록 삭제 후
+     Ctrl+Z 복원 시 undo 재렌더와 중첩 에디터 초기화가 충돌해 홀더 유실 에러가 발생
+     (기능·데이터는 생존하나 "에러 없음" 채택 기준 위반). 좌우 비교는 표(2열)로 안내. -->
 <script src="https://cdn.jsdelivr.net/npm/editorjs-undo@2.0.28/dist/bundle.js"></script>
 <script>
 'use strict';
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-image-table-2026-08-11-06';
+const DASHBOARD_VERSION='review-toggle-2026-08-11-07';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -4258,6 +4261,11 @@ function _pasteWalk(root,out){
     flush();
     if(/^h[1-6]$/.test(tag)){
       out.push({type:'header',data:{text:_pasteInlineHtml(n,true),level:Math.min(parseInt(tag.slice(1),10),4)}});
+    }else if(tag==='details'){
+      _pasteToggle(n,out); // 노션 토글은 details/summary로 옴
+    }else if((tag==='ul'||tag==='ol')&&n.querySelector(':scope > li > details')){
+      // 노션 토글의 또 다른 형태: <ul class="toggle"><li><details>...</details></li></ul>
+      Array.from(n.querySelectorAll(':scope > li > details')).forEach(d=>_pasteToggle(d,out));
     }else if(tag==='ul'||tag==='ol'){
       const blk=_pasteListBlock(n);
       if(blk.data.items.length)out.push(blk);
@@ -4279,6 +4287,8 @@ function _pasteWalk(root,out){
       // GAS(uploadByUrl)가 Drive로 재업로드하면 image 블록으로 치환(비동기, 실패 시 링크 폴백)
       const src=n.getAttribute('src')||'';
       if(src)out.push({type:'__pendingImage__',src:src,alt:n.getAttribute('alt')||''});
+    }else if(/column-list/i.test(n.className||'')){
+      _pasteColumnList(n,out); // 노션 다단 — 열별 내용이 단순하면 columns 블록, 아니면 세로 나열
     }else if(n.querySelector&&n.querySelector('h1,h2,h3,h4,h5,h6,ul,ol,blockquote,pre,table,p,div,li')){
       _pasteWalk(n,out); // 블록 자식을 품은 컨테이너(div 등)는 재귀
     }else{
@@ -4287,6 +4297,24 @@ function _pasteWalk(root,out){
     }
   });
   flush();
+}
+// 노션 토글(details/summary) → 토글 블록 + 이어지는 items개의 자식 블록.
+// editorjs-toggle-block은 "토글 다음에 오는 items개 블록"을 자식으로 삼는 구조라
+// 자식을 먼저 변환해 개수를 세고 나서 토글 블록을 앞에 놓음.
+function _pasteToggle(detailsEl,out){
+  const summary=detailsEl.querySelector(':scope > summary');
+  const rest=document.createElement('div');
+  Array.from(detailsEl.childNodes).forEach(c=>{if(c!==summary)rest.appendChild(c.cloneNode(true));});
+  const childOut=[];
+  _pasteWalk(rest,childOut);
+  const title=summary?_pasteChildrenInline(summary).trim():'';
+  out.push({type:'toggle',data:{text:title||'토글',status:detailsEl.hasAttribute('open')?'open':'closed',items:childOut.length}});
+  childOut.forEach(x=>out.push(x));
+}
+// 노션 다단(column-list) — 다단 플러그인(editorjs-columns)이 undo 복원 검증에 실패해 미채택
+// (상단 CDN 주석 참고). 열 내용을 왼쪽 열부터 순서대로 세로 나열해 유실 없이 보존함.
+function _pasteColumnList(el,out){
+  Array.from(el.children).filter(c=>c.nodeType===Node.ELEMENT_NODE).forEach(c=>_pasteWalk(c,out));
 }
 function _pasteListBlock(listEl){
   const isTodo=/to-do|to_do|todo/i.test(listEl.className||'')||!!listEl.querySelector('input[type="checkbox"]');
