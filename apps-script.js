@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'review-image-upload-2026-08-11-02';
+var SCRIPT_VERSION = 'review-image-domain-share-2026-08-11-03';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1732,13 +1732,11 @@ function _getReviewImgFolder() {
   return DriveApp.createFolder(REVIEW_IMG_FOLDER_NAME);
 }
 
-// 브라우저 <img>가 로그인 팝업 없이 바로 그릴 수 있는 URL을 돌려줘야 해서(공식 image 툴 사용)
-// 업로드 직후 링크 공유를 설정하고 lh3.googleusercontent.com 형식으로 반환함.
-// 조직(Workspace) 정책이 외부 링크 공유를 금지하면 조직 내 링크 공유로 폴백 —
-// 팀원은 어차피 Google 로그인 상태라 조직 공유로도 이미지가 표시됨.
+// 회고 이미지는 조직 내(도메인) 링크 공유로 고정 — 외부 공개(ANYONE_WITH_LINK)는 쓰지 않음
+// (2026-08-11 결정: 내부 자료라 링크 유출 시 외부 열람 가능성을 차단). 팀원은 대시보드 로그인
+// 과정에서 이미 Google 세션이 있으므로 lh3.googleusercontent.com <img>가 그대로 표시됨.
 function _shareFilePublic(file) {
-  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
-  catch (e) { file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW); }
+  file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
 }
 
 function _saveReviewImageBlob(blob, ext) {
