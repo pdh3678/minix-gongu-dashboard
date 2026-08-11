@@ -417,6 +417,14 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .review-editor .ce-toolbar__plus:hover,.review-editor .ce-toolbar__settings-btn:hover{background:var(--minix-lt);color:var(--minix)}
 .review-editor .cdx-list{font-size:13.5px;--color-bg-checked:var(--minix);--color-bg-checked-hover:#2b50ec}
 .review-editor .cdx-list__item:has(> .cdx-list__checkbox--checked) > .cdx-list__item-content{color:var(--text-3);text-decoration:line-through}
+/* 중첩 목록 레벨 구분 — list@2 기본 레이아웃은 하위 목록 들여쓰기가 글머리 글자 폭(~7px)뿐이라
+   레벨이 눈에 안 보임(전역 리셋 침범이 아니라 플러그인 자체 기본값). 에디터 스코프 안에서만
+   노션처럼 깊이당 약 24px(기호 폭 7px + 여백 17px) 들여쓰기 + 깊이별 기호 • ◦ ▪ 로 보강.
+   체크리스트(.cdx-list-checklist)는 아래 규칙이 안 걸려서 기호 없음이 유지됨 */
+.review-editor .cdx-list__item-children{margin-left:17px}
+.review-editor .cdx-list-unordered .cdx-list__item::before{content:'•'}
+.review-editor .cdx-list-unordered .cdx-list__item-children .cdx-list__item::before{content:'◦'}
+.review-editor .cdx-list-unordered .cdx-list__item-children .cdx-list__item-children .cdx-list__item::before{content:'▪'}
 .review-editor .cdx-quote{border-left:3px solid var(--border-s);padding-left:12px;margin:4px 0}
 .review-editor .cdx-quote__text{font-size:13.5px;color:var(--text-2);font-style:italic;border:none;box-shadow:none;min-height:unset;margin-bottom:4px}
 .review-editor .cdx-quote__caption{font-size:11.5px;color:var(--text-3);border:none;box-shadow:none}
@@ -1131,7 +1139,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-list-nest-2026-08-11-02';
+const DASHBOARD_VERSION='review-list-depth-2026-08-11-03';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
