@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'perf-cache-lastdatarow-execms-2026-08-04-01';
+var SCRIPT_VERSION = 'review-editorjs-split-2026-08-11-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -97,6 +97,10 @@ var EVENT_DATA_START_ROW = 1; // 0-based index — 1행(index 0)은 헤더, 2행
 var REVIEW_SHEET = '회고';
 var REVIEW_COL = { id: 0, title: 1, ym: 2, owner: 3, team: 4, part: 5, body: 6, updatedAt: 7, editedBy: 8 };
 var REVIEW_DATA_START_ROW = 1; // 0-based index — 1행(index 0)은 헤더, 2행부터 데이터
+// 본문(Editor.js JSON 문자열)이 시트 셀당 50,000자 제한을 넘지 않도록 분할 저장하는 기준.
+// 첫 조각은 기존 '본문'(G열)에, 나머지는 J열('본문2')부터 순서대로 이어 씀 — 읽을 때 전부 이어붙임.
+var REVIEW_BODY_CHUNK_MAX = 45000;
+var REVIEW_BODY_EXTRA_START_COL = 10; // 1-based — J열('본문2')부터 오버플로우
 
 // doGet 응답 캐시 — 실적통합 파싱이 무거워서(수 초), 여러 사용자가 짧은 간격으로 새로고침할 때
 // 실행 시간·동시 실행 한도 부담이 커짐. 계산 결과를 스크립트 캐시에 잠깐 담아두고 그 안에서는
@@ -1544,7 +1548,7 @@ function _ensureReviewSheet(ss) {
   return sheet;
 }
 
-// doGet ?review=list / ?review=get&id=... 진입점
+// doGet ?review=list / ?review=get&id=... / ?review=meta&id=... 진입점
 function _handleReviewGet(reviewParam, id) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (reviewParam === 'list') return _json({ success: true, reviews: _listReviews(ss) });
@@ -1552,6 +1556,19 @@ function _handleReviewGet(reviewParam, id) {
     var doc = _getReviewDoc(ss, id);
     if (!doc) return _json({ error: '해당 회고 문서를 찾을 수 없습니다.' });
     return _json({ success: true, review: doc });
+  }
+  if (reviewParam === 'meta') {
+    // 저장 직전 동시 편집 충돌 감지용 경량 조회 — 본문 없이 최종 편집 시각/편집자만 돌려줌
+    var sheet = ss.getSheetByName(REVIEW_SHEET);
+    if (!sheet || !id) return _json({ error: '해당 회고 문서를 찾을 수 없습니다.' });
+    var row = _findReviewRow(sheet, id);
+    if (!row) return _json({ error: '해당 회고 문서를 찾을 수 없습니다.' });
+    var vals = sheet.getRange(row, 1, 1, 9).getValues()[0];
+    return _json({
+      success: true,
+      updatedAt: _reviewUpdatedAtStr(vals[REVIEW_COL.updatedAt]),
+      editedBy: String(vals[REVIEW_COL.editedBy] || '')
+    });
   }
   return _json({ error: 'Unknown review request: ' + reviewParam });
 }
@@ -1601,8 +1618,16 @@ function _getReviewDoc(ss, id) {
   for (var i = REVIEW_DATA_START_ROW; i < data.length; i++) {
     var row = data[i];
     if (String(row[REVIEW_COL.id] || '') !== id) continue;
+    // 본문은 분할 저장됐을 수 있음 — '본문'(G열) + '본문2'(J열)부터 순서대로 이어붙여 원문 복원
+    var content = String(row[REVIEW_COL.body] || '');
+    for (var c = REVIEW_BODY_EXTRA_START_COL - 1; c < row.length; c++) {
+      if (row[c] === '' || row[c] === null || row[c] === undefined) break; // 오버플로우는 연속으로만 존재
+      content += String(row[c]);
+    }
+    // blocks는 구버전 프론트(자체 블록 에디터) 호환용 — 본문이 배열 JSON일 때만 채워짐.
+    // 신 프론트는 content(원문 문자열)만 사용하므로 GAS를 먼저 재배포해도 기존 화면이 깨지지 않음.
     var blocks = [];
-    try { blocks = JSON.parse(row[REVIEW_COL.body] || '[]'); } catch (e) { blocks = []; }
+    try { var p = JSON.parse(content || '[]'); if (Object.prototype.toString.call(p) === '[object Array]') blocks = p; } catch (e) { blocks = []; }
     return {
       id: String(row[REVIEW_COL.id] || ''),
       title: String(row[REVIEW_COL.title] || ''),
@@ -1610,6 +1635,7 @@ function _getReviewDoc(ss, id) {
       owner: String(row[REVIEW_COL.owner] || ''),
       team: String(row[REVIEW_COL.team] || ''),
       part: String(row[REVIEW_COL.part] || ''),
+      content: content,
       blocks: blocks,
       updatedAt: _reviewUpdatedAtStr(row[REVIEW_COL.updatedAt]),
       editedBy: String(row[REVIEW_COL.editedBy] || '')
@@ -1620,12 +1646,16 @@ function _getReviewDoc(ss, id) {
 
 // 저장(신규/수정 겸용) — id가 없으면 새로 발급해 새 행 추가, 있으면 기존 행을 덮어씀.
 // 로그인한 athomecorp.com 사용자 누구나 읽기/쓰기 가능(REQUIRE_AUTH 도메인 검증 외 추가 제한 없음).
+// 본문: 신 프론트는 content(Editor.js JSON 문자열), 구 프론트는 blocks(블록 트리 배열)를 보냄 —
+// 재배포 순서와 무관하게 둘 다 수용. 45,000자 초과분은 '본문2','본문3',...(J열~)에 분할 저장.
 function _saveReview(ss, data, idToken) {
   var sheet = _ensureReviewSheet(ss);
   var payload = _decodeIdTokenPayload(idToken);
   var editor = (payload && (payload.name || payload.email)) || '';
   var id = String((data && data.id) || '').trim() || Utilities.getUuid();
   var now = new Date().toISOString();
+  var content = (data && typeof data.content === 'string') ? data.content : JSON.stringify((data && data.blocks) || []);
+  var chunks = _splitReviewBody(content);
   var rowData = [
     id,
     String((data && data.title) || '').trim(),
@@ -1633,14 +1663,51 @@ function _saveReview(ss, data, idToken) {
     String((data && data.owner) || '').trim(),
     String((data && data.team) || '').trim(),
     String((data && data.part) || '').trim(),
-    JSON.stringify((data && data.blocks) || []),
+    chunks[0],
     now,
     editor
   ];
   var row = _findReviewRow(sheet, id);
   if (row) sheet.getRange(row, 1, 1, rowData.length).setValues([rowData]);
-  else sheet.appendRow(rowData);
+  else { sheet.appendRow(rowData); row = _findReviewRow(sheet, id); }
+  // 오버플로우 조각 기록 + 이전 저장이 남긴 잔여 오버플로우 셀 청소(본문이 짧아진 경우 대비)
+  var extra = chunks.length - 1;
+  if (extra > 0) {
+    _ensureReviewOverflowHeaders(sheet, extra);
+    sheet.getRange(row, REVIEW_BODY_EXTRA_START_COL, 1, extra).setValues([chunks.slice(1)]);
+  }
+  var lastCol = sheet.getLastColumn();
+  var clearFrom = REVIEW_BODY_EXTRA_START_COL + extra;
+  if (lastCol >= clearFrom) sheet.getRange(row, clearFrom, 1, lastCol - clearFrom + 1).clearContent();
   return _json({ success: true, id: id, updatedAt: now, editedBy: editor });
+}
+
+// 본문을 셀당 45,000자 조각으로 분할 — 조각 경계가 서로게이트 페어(이모지 등) 한가운데를
+// 지나면 셀에 깨진 문자가 저장될 수 있어 경계를 한 글자 양보함(이어붙이면 원문과 동일).
+function _splitReviewBody(content) {
+  var s = String(content || '');
+  var chunks = [];
+  var i = 0;
+  while (i < s.length) {
+    var end = Math.min(i + REVIEW_BODY_CHUNK_MAX, s.length);
+    if (end < s.length) {
+      var c = s.charCodeAt(end - 1);
+      if (c >= 0xD800 && c <= 0xDBFF) end--;
+    }
+    chunks.push(s.slice(i, end));
+    i = end;
+  }
+  if (!chunks.length) chunks.push('');
+  return chunks;
+}
+
+// '본문2','본문3',... 헤더가 필요한 만큼 존재하도록 보장(없을 때만 씀)
+function _ensureReviewOverflowHeaders(sheet, extraCount) {
+  for (var k = 0; k < extraCount; k++) {
+    var col = REVIEW_BODY_EXTRA_START_COL + k;
+    var h = sheet.getRange(1, col);
+    if (!h.getValue()) h.setValue('본문' + (k + 2)).setFontWeight('bold');
+  }
 }
 
 function _deleteReview(ss, data) {
