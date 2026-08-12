@@ -430,7 +430,49 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .review-editor .cdx-quote__caption{font-size:11.5px;color:var(--text-3);border:none;box-shadow:none}
 .review-editor .ce-code__textarea{background:#1B2035;color:#E2E8F0;font-family:'SF Mono','Fira Code','Courier New',monospace;font-size:12.5px;line-height:1.6;border-radius:8px;border:none;box-shadow:none}
 .review-editor .ce-delimiter{padding:10px 0}
-.review-editor .cdx-alert{border-radius:8px;font-size:13px;margin:6px 0}
+/* 콜아웃(자체 툴) */
+.rv-callout{display:flex;gap:10px;background:var(--surface-2);border-radius:8px;padding:12px 14px;align-items:flex-start;margin:6px 0}
+.rv-callout-ic{flex-shrink:0;font-size:16px;cursor:pointer;user-select:none}
+.rv-callout-text{flex:1;outline:none;font-size:13.5px;line-height:1.6;word-break:break-word}
+.rv-callout-text:empty::before{content:attr(data-placeholder);color:var(--text-3)}
+/* Notion 링크 카드(자체 툴) */
+.rv-link-ph{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--surface-2);border:1.5px dashed var(--border-s);border-radius:8px;padding:22px;color:var(--text-3);font-size:12px;cursor:pointer;margin:4px 0}
+.rv-link-ph:hover{border-color:var(--minix);color:var(--minix)}
+.rv-link-card{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;padding:10px 14px;background:var(--surface-2);margin:4px 0}
+.rv-link-card-ic{font-size:17px}
+.rv-link-card-body{flex:1;min-width:0}
+.rv-link-card-title{font-size:13px;font-weight:700;outline:none}
+.rv-link-card-title:empty::before{content:attr(data-placeholder);color:var(--text-3)}
+.rv-link-card-url{font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-link-card-open{flex-shrink:0;border:1px solid var(--border);background:var(--surface);border-radius:6px;padding:4px 10px;font-size:11px;color:var(--text-2);cursor:pointer;font-family:inherit}
+.rv-link-card-open:hover{border-color:var(--minix);color:var(--minix)}
+/* 다단(자체 최소 구현) */
+.rv-cols{display:grid;gap:14px;margin:6px 0;padding:6px 0}
+.rv-cols-2{grid-template-columns:1fr 1fr}
+.rv-cols-3{grid-template-columns:1fr 1fr 1fr}
+.rv-col{border:1px dashed var(--border);border-radius:8px;padding:8px 10px;min-height:40px;display:flex;flex-direction:column;gap:4px}
+.rv-col:focus-within{border-color:var(--border-s)}
+.rv-col-p{outline:none;font-size:13px;line-height:1.6;word-break:break-word;min-height:20px}
+.rv-col-p:empty::before{content:attr(data-placeholder);color:var(--text-3)}
+/* 블록 핸들 메뉴(⋮⋮) */
+.rvm-pop{position:fixed;z-index:600;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 36px rgba(17,24,39,.22);width:246px;max-height:min(480px,80vh);overflow-y:auto;padding:4px 6px 8px}
+.rvm-sec-title{font-size:10px;font-weight:700;color:var(--text-3);padding:8px 8px 3px;text-transform:uppercase;letter-spacing:.3px}
+.rvm-item{display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:6px;cursor:pointer;font-size:12.5px;color:var(--text)}
+.rvm-item:hover,.rvm-item.sel{background:var(--minix-lt)}
+.rvm-item.dis{opacity:.38;cursor:default}
+.rvm-item.dis:hover{background:transparent}
+.rvm-ic{width:18px;text-align:center;flex-shrink:0;color:var(--text-2);font-size:12px}
+.rvm-check{margin-left:auto;color:var(--minix);font-weight:700}
+.rvm-dot{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid var(--border-s)}
+.rvm-swatch-row{padding:2px 8px 4px}
+.rvm-swatch-lbl{font-size:10.5px;color:var(--text-3);margin-bottom:3px}
+.rvm-swatches{display:grid;grid-template-columns:repeat(10,1fr);gap:3px}
+.rvm-swatch{width:20px;height:20px;border-radius:5px;border:1px solid var(--border);background:var(--surface);font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;padding:0}
+.rvm-swatch:hover{border-color:var(--minix)}
+.rvm-swatch:disabled{opacity:.35;cursor:default}
+/* 인라인 툴바 색상 패널 */
+.rvm-color-panel{padding:6px 8px;min-width:236px}
+.rvm-color-panel .rvm-sec-title{padding:4px 0 3px}
 .review-editor .cdx-marker,.review-editor mark{background:rgba(250,225,110,.65);padding:1px 0;border-radius:2px}
 .review-editor .inline-code{background:var(--minix-lt);color:#B0399A;font-size:12px;border-radius:4px;padding:2px 5px}
 .review-editor .tc-wrap{--color-border:var(--border);margin:6px 0}
@@ -460,7 +502,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
   .ce-toolbar,.ce-inline-toolbar,.review-editor .cdx-button{display:none!important}
   .review-title-input,.review-ym-input{border:none;background:transparent}
   .review-editor .codex-editor__redactor{padding-bottom:0!important;min-height:0}
-  .review-editor .ce-code__textarea,.image-tool__image,.cdx-alert,.tc-wrap{break-inside:avoid}
+  .review-editor .ce-code__textarea,.image-tool__image,.rv-callout,.rv-cols,.tc-wrap{break-inside:avoid}
 }
 </style>
 
@@ -1123,7 +1165,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <!-- 회고 블록 에디터(Editor.js) — Chart.js와 동일한 jsdelivr CDN 고정 버전 방식.
      전역 변수: EditorJS / Header / EditorjsList / Quote / CodeTool / Delimiter /
-     ToggleBlock / Alert / Marker / InlineCode / Table / ImageTool / Undo
+     ToggleBlock / Marker / InlineCode / Table / ImageTool / Undo
      ※ 할 일 목록은 별도 @editorjs/checklist가 아니라 list@2의 checklist 스타일로 통합 —
        별도 툴은 Tab 들여쓰기(중첩)를 지원하지 않아서 제거함(2026-08-11). -->
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/editorjs@2.31.6/dist/editorjs.umd.js"></script>
@@ -1133,7 +1175,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/code@2.9.4/dist/code.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/delimiter@1.4.2/dist/delimiter.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/editorjs-toggle-block@0.3.16/dist/bundle.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/editorjs-alert@1.1.4/dist/bundle.js"></script>
+<!-- editorjs-alert는 자체 콜아웃 툴(이모지 아이콘 변경 지원)로 대체되어 제거(2026-08-12) -->
+
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/marker@1.4.0/dist/marker.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/inline-code@1.5.2/dist/inline-code.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@editorjs/table@2.4.5/dist/table.umd.js"></script>
@@ -1147,7 +1190,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-toggle-2026-08-11-07';
+const DASHBOARD_VERSION='review-block-menu-2026-08-12-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -4057,6 +4100,7 @@ window.onGoogleLibraryLoad=function(){
 let _reviews=[];              // 목록 캐시
 let _curReview=null;          // 현재 열린 문서 {id,title,ym,owner,team,part,updatedAt,editedBy}
 let _reviewEditor=null;       // Editor.js 인스턴스(문서 열 때마다 destroy 후 재생성)
+let _reviewUndo=null;         // editorjs-undo 인스턴스 — 메뉴 동작 후 히스토리 강제 기록에 사용
 let _reviewAutosaveTimer=null;
 let _reviewSaving=false;
 let _reviewDirty=false;
@@ -4064,25 +4108,6 @@ let _reviewBaseUpdatedAt='';  // 문서를 연(또는 마지막 저장 성공) �
 
 function _escapeForHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function _currentYm(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
-
-/* ── Editor.js 커스텀 튠: 블록 복제(기본 튠에는 이동/삭제만 있음) ── */
-class ReviewDuplicateTune{
-  static get isTune(){return true;}
-  constructor({api,block}){this.api=api;this.block=block;}
-  render(){
-    return{
-      icon:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
-      label:'복제',
-      closeOnActivate:true,
-      onActivate:async()=>{
-        const idx=this.api.blocks.getCurrentBlockIndex();
-        const saved=await this.block.save();
-        if(!saved)return;
-        this.api.blocks.insert(this.block.name,saved.data,undefined,idx+1,true);
-      }
-    };
-  }
-}
 
 /* ── 이미지 업로더(공식 @editorjs/image 툴에 주입) ──
    uploadByFile: 스크린샷 Ctrl+V·파일 선택 → 리사이즈 → base64를 검증된 GET 청크 파이프라인
@@ -4109,6 +4134,632 @@ async function _reviewImageUploadByUrl(url){
   return{success:1,file:{url:j.url}};
 }
 
+/* ── 커스텀 툴: 콜아웃 — 아이콘(클릭해 이모지 변경) + 배경 박스 ──
+   editorjs-alert를 대체(2026-08-12): 명세의 "아이콘 클릭 변경"을 지원하지 않아서.
+   기존 Alert 형식({type,align,message})은 _normalizeEditorBlocks가 {icon,text}로 마이그레이션. */
+const REVIEW_CALLOUT_ICONS=['💡','📌','⚠️','✅','📝','🔥','⭐','❗'];
+class ReviewCalloutTool{
+  static get toolbox(){return{title:'콜아웃',icon:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg>'};}
+  static get isReadOnlySupported(){return true;}
+  static get sanitize(){return{icon:false,text:{b:true,i:true,u:true,a:{href:true,target:true,rel:true},code:{class:true},mark:{class:true,style:true},span:{style:true},br:true}};}
+  constructor({data,readOnly}){
+    // 구 Alert 형식(message) 겸용 수용
+    this.data={icon:(data&&data.icon)||'💡',text:(data&&(data.text!==undefined?data.text:data.message))||''};
+    this.readOnly=!!readOnly;
+  }
+  render(){
+    const wrap=document.createElement('div');wrap.className='rv-callout';
+    const ic=document.createElement('span');ic.className='rv-callout-ic';ic.textContent=this.data.icon;ic.title='클릭하여 아이콘 변경';
+    if(!this.readOnly)ic.addEventListener('click',()=>{
+      const cur=REVIEW_CALLOUT_ICONS.indexOf(this.data.icon);
+      this.data.icon=REVIEW_CALLOUT_ICONS[(cur+1)%REVIEW_CALLOUT_ICONS.length];
+      ic.textContent=this.data.icon;
+      _reviewOnEdit();
+    });
+    const txt=document.createElement('div');txt.className='rv-callout-text';
+    txt.contentEditable=this.readOnly?'false':'true';
+    txt.dataset.placeholder='콜아웃 내용';
+    txt.innerHTML=this.data.text||'';
+    wrap.appendChild(ic);wrap.appendChild(txt);
+    this._txt=txt;
+    return wrap;
+  }
+  save(){return{icon:this.data.icon,text:this._txt?this._txt.innerHTML:this.data.text};}
+}
+
+/* ── 커스텀 툴: Notion 페이지 연결 — 링크 카드(제목 직접 입력, 새 탭 열기). API 인증 없음 ── */
+class ReviewNotionLinkTool{
+  static get toolbox(){return{title:'Notion 페이지 연결',icon:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>'};}
+  static get isReadOnlySupported(){return true;}
+  static get sanitize(){return{url:false,title:{}};}
+  constructor({data,readOnly}){
+    this.data={url:(data&&data.url)||'',title:(data&&data.title)||''};
+    this.readOnly=!!readOnly;
+  }
+  render(){
+    this.wrapper=document.createElement('div');
+    this._paint();
+    return this.wrapper;
+  }
+  _paint(){
+    const w=this.wrapper;w.innerHTML='';
+    if(!this.data.url){
+      const ph=document.createElement('div');ph.className='rv-link-ph';
+      ph.innerHTML='<span>🔗</span><span>클릭하여 노션 페이지 URL 입력</span>';
+      if(!this.readOnly)ph.addEventListener('click',()=>{
+        const url=prompt('노션 페이지 URL을 입력하세요');
+        if(!url)return;
+        this.data.url=url.trim();
+        if(!this.data.title){
+          try{
+            const u=new URL(this.data.url);
+            this.data.title=decodeURIComponent(u.pathname.split('/').filter(Boolean).pop()||u.hostname).replace(/-/g,' ');
+          }catch(e){this.data.title='노션 페이지';}
+        }
+        this._paint();_reviewOnEdit();
+      });
+      w.appendChild(ph);return;
+    }
+    const card=document.createElement('div');card.className='rv-link-card';
+    const ic=document.createElement('span');ic.className='rv-link-card-ic';ic.textContent='🔗';
+    const body=document.createElement('div');body.className='rv-link-card-body';
+    const title=document.createElement('div');title.className='rv-link-card-title';
+    title.contentEditable=this.readOnly?'false':'true';
+    title.dataset.placeholder='링크 제목';
+    title.textContent=this.data.title||'';
+    const url=document.createElement('div');url.className='rv-link-card-url';url.textContent=this.data.url;
+    body.appendChild(title);body.appendChild(url);
+    const open=document.createElement('button');open.type='button';open.className='rv-link-card-open';open.textContent='열기 ↗';
+    open.addEventListener('click',e=>{e.preventDefault();window.open(this.data.url,'_blank','noopener');});
+    card.appendChild(ic);card.appendChild(body);card.appendChild(open);
+    this._title=title;
+    w.appendChild(card);
+  }
+  save(){return{url:this.data.url,title:this._title?this._title.textContent:this.data.title};}
+}
+
+/* ── 커스텀 툴: 다단(2열/3열) 최소 구현 ──
+   외부 플러그인(@calumk/editorjs-columns)은 undo 복원 검증 실패로 미채택(2026-08-11).
+   이 구현은 중첩 EditorJS 인스턴스를 만들지 않고 열마다 문단 스택(contenteditable)만 둠 —
+   비동기 초기화가 없어 undo 재렌더에 안전함. 열 내 블록은 문단만 지원(최소 구현),
+   Enter로 문단 추가·빈 문단 Backspace로 삭제. 열 간 드래그 등 고급 동작은 3단계 과제. */
+class ReviewColumnsTool{
+  static get toolbox(){
+    const ic2='<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/></svg>';
+    const ic3='<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="5.4" height="16" rx="1.2"/><rect x="9.3" y="4" width="5.4" height="16" rx="1.2"/><rect x="16.6" y="4" width="5.4" height="16" rx="1.2"/></svg>';
+    return[
+      {title:'2열',icon:ic2,data:{cols:[[{type:'paragraph',data:{text:''}}],[{type:'paragraph',data:{text:''}}]]}},
+      {title:'3열',icon:ic3,data:{cols:[[{type:'paragraph',data:{text:''}}],[{type:'paragraph',data:{text:''}}],[{type:'paragraph',data:{text:''}}]]}}
+    ];
+  }
+  static get isReadOnlySupported(){return true;}
+  static get sanitize(){return{cols:false};}
+  constructor({data,readOnly}){
+    const cols=(data&&Array.isArray(data.cols)&&data.cols.length)?data.cols:[[],[]];
+    // 각 열은 paragraph 블록 배열 — 다른 타입이 들어와도 text만 취해 문단으로 강등(유실 방지)
+    this.cols=cols.map(col=>(Array.isArray(col)&&col.length?col:[{type:'paragraph',data:{text:''}}])
+      .map(b=>({type:'paragraph',data:{text:(b&&b.data&&(b.data.text!==undefined?b.data.text:b.data.message||''))||''}})));
+    this.readOnly=!!readOnly;
+  }
+  render(){
+    const host=document.createElement('div');
+    host.className='rv-cols rv-cols-'+this.cols.length;
+    this.colEls=this.cols.map(col=>{
+      const colEl=document.createElement('div');colEl.className='rv-col';
+      col.forEach(p=>colEl.appendChild(this._makeP(p.data.text)));
+      this._wireCol(colEl);
+      host.appendChild(colEl);
+      return colEl;
+    });
+    return host;
+  }
+  _makeP(html){
+    const p=document.createElement('div');p.className='rv-col-p';
+    p.contentEditable=this.readOnly?'false':'true';
+    p.dataset.placeholder='내용 입력';
+    p.innerHTML=html||'';
+    return p;
+  }
+  _wireCol(colEl){
+    if(this.readOnly)return;
+    colEl.addEventListener('keydown',e=>{
+      const p=e.target.closest('.rv-col-p');
+      if(!p)return;
+      if(e.key==='Enter'&&!e.shiftKey){
+        e.preventDefault();e.stopPropagation(); // 바깥 에디터의 "새 블록" 동작 차단
+        const np=this._makeP('');
+        p.after(np);np.focus();
+      }else if(e.key==='Backspace'&&!p.textContent&&colEl.querySelectorAll('.rv-col-p').length>1){
+        e.preventDefault();e.stopPropagation();
+        const prev=p.previousElementSibling;
+        p.remove();
+        if(prev&&prev.classList.contains('rv-col-p')){
+          prev.focus();
+          const r=document.createRange();r.selectNodeContents(prev);r.collapse(false);
+          const s=getSelection();s.removeAllRanges();s.addRange(r);
+        }
+      }else if(e.key==='Tab'){
+        e.preventDefault();e.stopPropagation(); // 열 안에서는 Tab 이동/중첩 미지원(최소 구현)
+      }
+    });
+  }
+  save(){
+    return{cols:(this.colEls||[]).map(colEl=>
+      Array.from(colEl.querySelectorAll('.rv-col-p')).map(p=>({type:'paragraph',data:{text:p.innerHTML}}))
+    )};
+  }
+}
+
+/* ── 글자 색: 노션 팔레트(글자색+배경색 각 10) + 인라인 툴 + 최근 색 기억(세션) ── */
+const REVIEW_PALETTE=[
+  {k:'default',label:'기본',c:'',bg:''},
+  {k:'gray',label:'회색',c:'#787774',bg:'#F1F1EF'},
+  {k:'brown',label:'갈색',c:'#9F6B53',bg:'#F4EEEE'},
+  {k:'orange',label:'주황',c:'#D9730D',bg:'#FBECDD'},
+  {k:'yellow',label:'노랑',c:'#CB912F',bg:'#FBF3DB'},
+  {k:'green',label:'초록',c:'#448361',bg:'#EDF3EC'},
+  {k:'blue',label:'파랑',c:'#337EA9',bg:'#E7F3F8'},
+  {k:'purple',label:'보라',c:'#9065B0',bg:'#F6F3F9'},
+  {k:'pink',label:'분홍',c:'#C14C8A',bg:'#FAF1F5'},
+  {k:'red',label:'빨강',c:'#D44C47',bg:'#FDEBEC'}
+];
+let _reviewRecentColor=null; // {mode:'text'|'bg', k} — 세션 내 최근 사용 1개
+
+// 색 적용: range가 주어지면 그 선택 영역에만, 없으면 blockEl 내 모든 편집 영역 전체에.
+function _reviewApplyColor(mode,key,range,blockEl){
+  const pal=REVIEW_PALETTE.find(p=>p.k===key);
+  if(!pal)return;
+  const sel=window.getSelection();
+  const value=mode==='text'
+    ?(pal.c||getComputedStyle(document.body).getPropertyValue('--text').trim()||'#111827')
+    :(pal.bg||'transparent');
+  const run=()=>{
+    try{document.execCommand('styleWithCSS',false,true);}catch(e){}
+    document.execCommand(mode==='text'?'foreColor':'hiliteColor',false,value);
+  };
+  if(range&&!range.collapsed){
+    sel.removeAllRanges();sel.addRange(range);
+    run();
+  }else if(blockEl){
+    // 블록 전체: 편집 영역이 여러 개(목록 항목 등)면 각각 전체 선택해 순서대로 적용
+    const editables=blockEl.querySelectorAll('[contenteditable="true"]');
+    let lastEl=null;
+    (editables.length?Array.from(editables):[blockEl]).forEach(el=>{
+      if(!el.textContent)return;
+      const r=document.createRange();r.selectNodeContents(el);
+      sel.removeAllRanges();sel.addRange(r);
+      run();
+      lastEl=el;
+    });
+    // selection을 비워두면 안 됨 — editorjs-undo의 save()가 상태 push 직전에 캐럿 위치를
+    // getRangeAt(0)으로 읽는데, selection이 없으면 throw되어 undo 기록이 통째로 유실됨(실측).
+    // 마지막 편집 요소 끝에 캐럿을 남겨 기록이 정상 동작하게 함.
+    if(lastEl){
+      const r=document.createRange();r.selectNodeContents(lastEl);r.collapse(false);
+      sel.removeAllRanges();sel.addRange(r);
+    }
+  }
+  if(key!=='default')_reviewRecentColor={mode:mode,k:key};
+  _reviewOnEdit();
+}
+
+// 인라인 툴바용 글자 색 버튼 — 클릭하면 팔레트 패널(renderActions)이 열림
+class ReviewColorInlineTool{
+  static get isInline(){return true;}
+  static get title(){return'글자 색';}
+  static get sanitize(){return{span:{style:true}};} // execCommand가 만드는 <span style> 보존
+  constructor({api}){this.api=api;this._range=null;}
+  render(){
+    this.button=document.createElement('button');
+    this.button.type='button';
+    this.button.className='ce-inline-tool';
+    this.button.innerHTML='<span style="font-weight:700;font-size:13px;background:linear-gradient(180deg,transparent 62%,rgba(59,86,229,.35) 62%)">A</span>';
+    return this.button;
+  }
+  surround(range){this._range=range?range.cloneRange():null;}
+  checkState(){return false;}
+  renderActions(){
+    this.panel=document.createElement('div');
+    this.panel.className='rvm-color-panel';
+    const mk=(mode,label)=>{
+      const row=document.createElement('div');
+      row.innerHTML='<div class="rvm-sec-title">'+label+'</div>';
+      const grid=document.createElement('div');grid.className='rvm-swatches';
+      REVIEW_PALETTE.forEach(p=>{
+        const b=document.createElement('button');b.type='button';b.className='rvm-swatch';b.title=p.label;
+        if(mode==='text'){b.textContent='A';b.style.color=p.c||'var(--text)';}
+        else{b.textContent='A';b.style.background=p.bg||'transparent';}
+        b.addEventListener('mousedown',e=>{
+          e.preventDefault();e.stopPropagation();
+          _reviewApplyColor(mode,p.k,this._range,null);
+          this.api.inlineToolbar.close();
+        });
+        grid.appendChild(b);
+      });
+      row.appendChild(grid);
+      return row;
+    };
+    this.panel.appendChild(mk('text','글자 색'));
+    this.panel.appendChild(mk('bg','배경색'));
+    return this.panel;
+  }
+}
+
+/* ══ 블록 핸들(⋮⋮) 메뉴 — 4섹션: 동작 / 전환 / 아래에 삽입 / 글자 색 ══
+   Editor.js 기본 설정 팝오버는 섹션 구조·항목 순서를 명세대로 재구성할 수 없어,
+   기본 ⋮⋮ 버튼 클릭을 캡처 단계에서 가로채 이 커스텀 메뉴를 대신 띄움.
+   모든 구조 변경은 editor.save() → 데이터 변환 → editor.render() 경로로 수행해
+   토글의 "다음 N개 블록이 자식" 구조(items 카운트)를 데이터 차원에서 일관되게 유지함. */
+
+// ── 토글 그룹 헬퍼: blocks[i]가 이끄는 그룹의 끝(exclusive). 토글은 자식 그룹을 재귀 포함 ──
+function _menuGroupEnd(blocks,i){
+  if(!blocks[i]||blocks[i].type!=='toggle')return i+1;
+  let n=(blocks[i].data&&blocks[i].data.items)||0,j=i+1;
+  while(n>0&&j<blocks.length){j=_menuGroupEnd(blocks,j);n--;}
+  return j;
+}
+// idx 블록의 직계 부모 토글 index(-1이면 최상위)
+function _menuParentToggle(blocks,idx){
+  let res=-1;
+  (function walk(start,end,parent){
+    let i=start;
+    while(i<end){
+      const e=_menuGroupEnd(blocks,i);
+      if(i===idx){res=parent;return;}
+      if(idx>i&&idx<e&&blocks[i].type==='toggle'){walk(i+1,e,i);return;}
+      i=e;
+    }
+  })(0,blocks.length,-1);
+  return res;
+}
+// idx가 속한 형제 범위 [s,e)
+function _menuSiblingRange(blocks,idx){
+  const p=_menuParentToggle(blocks,idx);
+  if(p<0)return[0,blocks.length];
+  return[p+1,_menuGroupEnd(blocks,p)];
+}
+function _menuAdjustParentItems(blocks,parentIdx,delta){
+  if(parentIdx>=0&&blocks[parentIdx]&&blocks[parentIdx].type==='toggle')
+    blocks[parentIdx].data.items=Math.max(0,((blocks[parentIdx].data.items||0)+delta));
+}
+
+// 저장→변환→재렌더 공통 경로. fn(blocks,idx)이 false를 반환하면 중단.
+async function _reviewMenuTransform(targetIdx,fn){
+  const ed=_reviewEditor;
+  if(!ed)return;
+  const out=await ed.save();
+  const blocks=out.blocks;
+  if(fn(blocks,targetIdx)===false)return;
+  if(!blocks.length)blocks.push({type:'paragraph',data:{text:''}});
+  await ed.render({blocks:blocks});
+  // undo 기록은 editorjs-undo의 MutationObserver가 render로 인한 DOM 변화를 감지해 자동으로
+  // 1개 상태로 쌓음 — 인스턴스의 save()는 "상태를 인자로 받는" 내부 메서드라 직접 부르면
+  // undefined가 스택에 들어가 Ctrl+Z가 한 단계 어긋나므로 절대 호출하지 말 것.
+  _reviewOnEdit();
+}
+
+// ── 전환: 11종 상호 변환(내용·인라인 서식 보존) ──
+const REVIEW_CONVERT_TARGETS=[
+  {k:'paragraph',label:'텍스트'},
+  {k:'header1',label:'제목1'},{k:'header2',label:'제목2'},{k:'header3',label:'제목3'},
+  {k:'bullet',label:'글머리 목록'},{k:'number',label:'번호 목록'},{k:'checklist',label:'할 일'},
+  {k:'toggle',label:'토글'},{k:'quote',label:'인용'},{k:'callout',label:'콜아웃'},{k:'code',label:'코드'}
+];
+function _menuHtmlToPlain(html){const d=document.createElement('div');d.innerHTML=html||'';return d.textContent||'';}
+function _menuCurrentKind(b){ // 현재 블록이 11종 중 무엇인지(해당 없으면 null)
+  if(!b)return null;
+  if(b.type==='paragraph')return'paragraph';
+  if(b.type==='header')return'header'+Math.min(b.data.level||2,3);
+  if(b.type==='list')return b.data.style==='ordered'?'number':(b.data.style==='checklist'?'checklist':'bullet');
+  if(b.type==='toggle')return'toggle';
+  if(b.type==='quote')return'quote';
+  if(b.type==='callout')return'callout';
+  if(b.type==='code')return'code';
+  return null;
+}
+function _menuMakeBlock(kind,html){
+  switch(kind){
+    case'paragraph':return{type:'paragraph',data:{text:html}};
+    case'header1':return{type:'header',data:{text:html,level:1}};
+    case'header2':return{type:'header',data:{text:html,level:2}};
+    case'header3':return{type:'header',data:{text:html,level:3}};
+    case'bullet':return{type:'list',data:{style:'unordered',meta:{},items:[{content:html,meta:{},items:[]}]}};
+    case'number':return{type:'list',data:{style:'ordered',meta:{},items:[{content:html,meta:{},items:[]}]}};
+    case'checklist':return{type:'list',data:{style:'checklist',meta:{},items:[{content:html,meta:{checked:false},items:[]}]}};
+    case'toggle':return{type:'toggle',data:{text:html,status:'open',items:0}};
+    case'quote':return{type:'quote',data:{text:html,caption:'',alignment:'left'}};
+    case'callout':return{type:'callout',data:{icon:'💡',text:html}};
+    case'code':return{type:'code',data:{code:_menuHtmlToPlain(html)}};
+    default:return{type:'paragraph',data:{text:html}};
+  }
+}
+// 목록 items를 깊이 우선으로 평탄화한 content 배열
+function _menuFlattenListItems(items,acc){
+  (items||[]).forEach(it=>{
+    acc.push(it.content||'');
+    _menuFlattenListItems(it.items,acc);
+  });
+  return acc;
+}
+function _menuConvert(blocks,idx,targetKind){
+  const b=blocks[idx];
+  if(!b)return false;
+  const curKind=_menuCurrentKind(b);
+  if(curKind===targetKind)return false;
+  const parent=_menuParentToggle(blocks,idx);
+  // ① 목록 → 다른 목록: 스타일만 변경(중첩 구조 그대로 보존)
+  const listStyles={bullet:'unordered',number:'ordered',checklist:'checklist'};
+  if(b.type==='list'&&listStyles[targetKind]){
+    b.data.style=listStyles[targetKind];
+    return;
+  }
+  // ② 목록 → 비목록: 항목마다 별도 블록으로 분리(깊이 우선, 유실 금지)
+  if(b.type==='list'){
+    const contents=_menuFlattenListItems(b.data.items,[]);
+    if(!contents.length)contents.push('');
+    if(targetKind==='toggle'){
+      // 첫 항목이 토글 제목, 나머지는 자식 문단
+      const kids=contents.slice(1).map(c=>({type:'paragraph',data:{text:c}}));
+      blocks.splice(idx,1,{type:'toggle',data:{text:contents[0],status:'open',items:kids.length}},...kids);
+      _menuAdjustParentItems(blocks,parent>=0?parent:-1,0); // 그룹 1개 유지(자식은 토글 내부)
+    }else{
+      const made=contents.map(c=>_menuMakeBlock(targetKind,c));
+      blocks.splice(idx,1,...made);
+      _menuAdjustParentItems(blocks,parent>=0?parent:-1,made.length-1);
+    }
+    return;
+  }
+  // ③ 토글 → 다른 유형: 머리글만 전환, children은 뒤에 순서대로 풀어놓음(유실 금지)
+  if(b.type==='toggle'){
+    const releasedKids=(b.data.items||0);
+    const html=b.data.text||'';
+    blocks.splice(idx,1,targetKind==='toggle'?b:_menuMakeBlock(targetKind,html));
+    if(targetKind!=='toggle')_menuAdjustParentItems(blocks,parent,releasedKids); // 부모가 자식들을 흡수
+    return;
+  }
+  // ④ 일반 → 일반/목록/토글: 텍스트(인라인 서식 포함) 이관
+  const html=b.type==='code'?_escapeForHtml(b.data.code||''):(b.data.text!==undefined?b.data.text:(b.data.message||''));
+  blocks.splice(idx,1,_menuMakeBlock(targetKind,html));
+}
+
+// ── 메뉴 상태/렌더 ──
+let _reviewMenuEl=null;
+let _reviewMenuSel=-1;
+let _reviewMenuItems=[];
+let _reviewHoverBlockEl=null;
+let _reviewMenuSavedRange=null; // 메뉴 열기 직전의 텍스트 선택(색 적용용)
+let _reviewMenuWired=false;
+
+function _reviewBlockIndexOf(blockEl){
+  const list=document.querySelectorAll('#reviewEditor .codex-editor__redactor > .ce-block');
+  return Array.prototype.indexOf.call(list,blockEl);
+}
+function _closeReviewMenu(){
+  if(_reviewMenuEl){_reviewMenuEl.remove();_reviewMenuEl=null;}
+  _reviewMenuItems=[];_reviewMenuSel=-1;
+  document.removeEventListener('mousedown',_reviewMenuOutside,true);
+  document.removeEventListener('keydown',_reviewMenuKeydown,true);
+}
+function _reviewMenuOutside(e){if(_reviewMenuEl&&!_reviewMenuEl.contains(e.target))_closeReviewMenu();}
+function _reviewMenuKeydown(e){
+  if(!_reviewMenuEl)return;
+  if(e.key==='Escape'){e.preventDefault();e.stopPropagation();_closeReviewMenu();return;}
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();e.stopPropagation();
+    if(!_reviewMenuItems.length)return;
+    const d=e.key==='ArrowDown'?1:-1;
+    _reviewMenuSel=(_reviewMenuSel+d+_reviewMenuItems.length)%_reviewMenuItems.length;
+    _reviewMenuItems.forEach((it,i)=>it.classList.toggle('sel',i===_reviewMenuSel));
+    _reviewMenuItems[_reviewMenuSel].scrollIntoView({block:'nearest'});
+    return;
+  }
+  if(e.key==='Enter'){
+    e.preventDefault();e.stopPropagation();
+    if(_reviewMenuSel>=0&&_reviewMenuItems[_reviewMenuSel])_reviewMenuItems[_reviewMenuSel].click();
+  }
+}
+function _reviewMenuItem(label,ic,onRun,disabled,checked){
+  const it=document.createElement('div');
+  it.className='rvm-item'+(disabled?' dis':'');
+  it.innerHTML='<span class="rvm-ic">'+(ic||'')+'</span><span class="rvm-label">'+label+'</span>'+(checked?'<span class="rvm-check">✓</span>':'');
+  if(!disabled)it.addEventListener('click',()=>{_closeReviewMenu();onRun();});
+  return it;
+}
+function _reviewMenuSection(title){
+  const sec=document.createElement('div');
+  sec.className='rvm-sec';
+  sec.innerHTML='<div class="rvm-sec-title">'+title+'</div>';
+  return sec;
+}
+
+async function _openReviewBlockMenu(anchorEl,blockEl){
+  _closeReviewMenu();
+  const idx=_reviewBlockIndexOf(blockEl);
+  if(idx<0||!_reviewEditor)return;
+  const out=await _reviewEditor.save();
+  const blocks=out.blocks;
+  const b=blocks[idx];
+  if(!b)return;
+  const curKind=_menuCurrentKind(b);
+  const menu=document.createElement('div');
+  menu.className='rvm-pop';
+
+  // ── 섹션 1: 동작 ──
+  const sec1=_reviewMenuSection('동작');
+  sec1.appendChild(_reviewMenuItem('복제','⧉',()=>_reviewMenuTransform(idx,(bs,i)=>{
+    const end=_menuGroupEnd(bs,i);
+    const copy=JSON.parse(JSON.stringify(bs.slice(i,end))).map(x=>{delete x.id;return x;});
+    bs.splice(end,0,...copy);
+    _menuAdjustParentItems(bs,_menuParentToggle(bs,i),1);
+  })));
+  sec1.appendChild(_reviewMenuItem('위로 이동','↑',()=>_reviewMenuTransform(idx,(bs,i)=>{
+    const[s]=_menuSiblingRange(bs,i);
+    let p=s,prev=-1;
+    while(p<i){prev=p;p=_menuGroupEnd(bs,p);} // 형제 그룹 시작점들을 훑어 직전 그룹을 찾음
+    if(p!==i||prev<0)return false; // 첫 형제(위 그룹 없음)이거나 그룹 경계가 아님
+    const gEnd=_menuGroupEnd(bs,i);
+    const moved=bs.splice(i,gEnd-i);
+    bs.splice(prev,0,...moved);
+  })));
+  sec1.appendChild(_reviewMenuItem('아래로 이동','↓',()=>_reviewMenuTransform(idx,(bs,i)=>{
+    const[,e]=_menuSiblingRange(bs,i);
+    const gEnd=_menuGroupEnd(bs,i);
+    if(gEnd>=e)return false; // 다음 형제 없음
+    const nextEnd=_menuGroupEnd(bs,gEnd);
+    const moved=bs.splice(i,gEnd-i);
+    bs.splice(i+(nextEnd-gEnd),0,...moved);
+  })));
+  // 들여쓰기/내어쓰기: 목록 블록은 Tab/Shift+Tab과 동일하게(항목 기준) 동작, 그 외 비활성
+  const isList=b.type==='list';
+  sec1.appendChild(_reviewMenuItem('들여쓰기','→',()=>_reviewMenuListTab(blockEl,false),!isList));
+  sec1.appendChild(_reviewMenuItem('내어쓰기','←',()=>_reviewMenuListTab(blockEl,true),!isList));
+  sec1.appendChild(_reviewMenuItem('삭제','🗑',()=>_reviewMenuTransform(idx,(bs,i)=>{
+    const end=_menuGroupEnd(bs,i);
+    _menuAdjustParentItems(bs,_menuParentToggle(bs,i),-1);
+    bs.splice(i,end-i);
+  })));
+  menu.appendChild(sec1);
+
+  // ── 섹션 2: 전환 ──
+  const sec2=_reviewMenuSection('전환');
+  const convertible=curKind!==null;
+  REVIEW_CONVERT_TARGETS.forEach(t=>{
+    sec2.appendChild(_reviewMenuItem(t.label,'⇄',()=>_reviewMenuTransform(idx,(bs,i)=>_menuConvert(bs,i,t.k)),!convertible||curKind===t.k,curKind===t.k));
+  });
+  menu.appendChild(sec2);
+
+  // ── 섹션 3: 아래에 삽입 ──
+  const sec3=_reviewMenuSection('아래에 삽입');
+  const insertBelow=(mk)=>_reviewMenuTransform(idx,(bs,i)=>{
+    const end=_menuGroupEnd(bs,i);
+    const nb=mk();
+    if(!nb)return false;
+    bs.splice(end,0,nb);
+    _menuAdjustParentItems(bs,_menuParentToggle(bs,i),1);
+  });
+  sec3.appendChild(_reviewMenuItem('이미지','🖼',()=>insertBelow(()=>({type:'image',data:{}}))));
+  sec3.appendChild(_reviewMenuItem('표','▦',()=>insertBelow(()=>({type:'table',data:{withHeadings:true,content:[['',''],['','']]}}))));
+  sec3.appendChild(_reviewMenuItem('구분선','―',()=>insertBelow(()=>({type:'delimiter',data:{}}))));
+  sec3.appendChild(_reviewMenuItem('2열 (병렬 배치)','❘❘',()=>insertBelow(()=>({type:'columns',data:{cols:[[{type:'paragraph',data:{text:''}}],[{type:'paragraph',data:{text:''}}]]}}))));
+  sec3.appendChild(_reviewMenuItem('3열 (병렬 배치)','❘❘❘',()=>insertBelow(()=>({type:'columns',data:{cols:[[{type:'paragraph',data:{text:''}}],[{type:'paragraph',data:{text:''}}],[{type:'paragraph',data:{text:''}}]]}}))));
+  sec3.appendChild(_reviewMenuItem('Notion 페이지 연결','🔗',()=>insertBelow(()=>{
+    const url=prompt('노션 페이지 URL을 입력하세요');
+    if(!url)return null;
+    let title='노션 페이지';
+    try{const u=new URL(url.trim());title=decodeURIComponent(u.pathname.split('/').filter(Boolean).pop()||u.hostname).replace(/-/g,' ');}catch(e){}
+    return{type:'notionLink',data:{url:url.trim(),title:title}};
+  })));
+  menu.appendChild(sec3);
+
+  // ── 섹션 4: 글자 색 ──
+  const sec4=_reviewMenuSection('글자 색');
+  const colorable=['paragraph','header','list','quote','callout','toggle'].includes(b.type);
+  const savedRange=_reviewMenuSavedRange;
+  const applyColor=(mode,k)=>{
+    _closeReviewMenu();
+    const useRange=savedRange&&!savedRange.collapsed&&blockEl.contains(savedRange.commonAncestorContainer);
+    _reviewApplyColor(mode,k,useRange?savedRange:null,useRange?null:blockEl);
+  };
+  if(_reviewRecentColor){
+    const rp=REVIEW_PALETTE.find(p=>p.k===_reviewRecentColor.k);
+    if(rp)sec4.appendChild(_reviewMenuItem('최근: '+rp.label+(_reviewRecentColor.mode==='bg'?' 배경':''),
+      '<span class="rvm-dot" style="'+(_reviewRecentColor.mode==='bg'?'background:'+rp.bg:'background:'+(rp.c||'var(--text)'))+'"></span>',
+      ()=>applyColor(_reviewRecentColor.mode,_reviewRecentColor.k),!colorable));
+  }
+  const mkSwatchRow=(mode,label)=>{
+    const wrap=document.createElement('div');
+    wrap.className='rvm-swatch-row';
+    wrap.innerHTML='<div class="rvm-swatch-lbl">'+label+'</div>';
+    const grid=document.createElement('div');grid.className='rvm-swatches';
+    REVIEW_PALETTE.forEach(p=>{
+      const sw=document.createElement('button');sw.type='button';sw.className='rvm-swatch';sw.title=p.label;
+      sw.textContent='A';
+      if(mode==='text')sw.style.color=p.c||'var(--text)';
+      else sw.style.background=p.bg||'transparent';
+      if(colorable)sw.addEventListener('click',()=>applyColor(mode,p.k));
+      else sw.disabled=true;
+      grid.appendChild(sw);
+    });
+    wrap.appendChild(grid);
+    return wrap;
+  };
+  sec4.appendChild(mkSwatchRow('text','글자색'));
+  sec4.appendChild(mkSwatchRow('bg','배경색'));
+  menu.appendChild(sec4);
+
+  document.body.appendChild(menu);
+  _reviewMenuEl=menu;
+  // 위치: 앵커 옆, 화면 하단에 잘리면 위로 펼침
+  const r=anchorEl.getBoundingClientRect();
+  menu.style.left=Math.max(8,Math.min(r.left,window.innerWidth-menu.offsetWidth-8))+'px';
+  let top=r.bottom+4;
+  if(top+menu.offsetHeight>window.innerHeight-8)top=Math.max(8,r.top-menu.offsetHeight-4);
+  menu.style.top=top+'px';
+  // 키보드 탐색 대상(비활성·스와치 제외한 일반 항목 + 스와치 포함)
+  _reviewMenuItems=Array.from(menu.querySelectorAll('.rvm-item:not(.dis)'));
+  _reviewMenuSel=-1;
+  document.addEventListener('mousedown',_reviewMenuOutside,true);
+  document.addEventListener('keydown',_reviewMenuKeydown,true);
+}
+
+// 목록 블록 들여쓰기/내어쓰기 — 캐럿이 그 목록 안에 있으면 그 항목에, 아니면 첫 항목에
+// Tab/Shift+Tab 키 이벤트를 그대로 흘려서 list@2의 자체 로직을 재사용(동일 동작 보장)
+function _reviewMenuListTab(blockEl,shift){
+  let target=null;
+  // 메뉴를 여는 클릭이 캐럿을 지우므로, 메뉴 열기 직전(mousedown)에 저장해 둔 위치를 우선 사용
+  const saved=_reviewMenuSavedRange;
+  if(saved){
+    const node=saved.commonAncestorContainer;
+    const host=node.nodeType===1?node:node.parentElement;
+    if(host&&blockEl.contains(host))target=host.closest('.cdx-list__item');
+  }
+  if(!target){
+    const sel=window.getSelection();
+    if(sel&&sel.anchorNode){
+      const host=(sel.anchorNode.nodeType===1?sel.anchorNode:sel.anchorNode.parentElement);
+      if(host&&blockEl.contains(host))target=host.closest('.cdx-list__item');
+    }
+  }
+  if(!target)target=blockEl.querySelector('.cdx-list__item');
+  if(!target)return;
+  const editable=target.querySelector('[contenteditable]')||target;
+  editable.focus();
+  const r=document.createRange();r.selectNodeContents(editable);r.collapse(false);
+  const s=window.getSelection();s.removeAllRanges();s.addRange(r);
+  editable.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:!!shift,bubbles:true,cancelable:true}));
+  _reviewOnEdit();
+}
+
+// 기본 ⋮⋮(설정) 버튼 클릭을 캡처 단계에서 가로채 커스텀 메뉴를 띄움.
+// mousedown 시점에 선택 영역을 스냅샷(클릭이 selection을 지우기 전) — 색 적용에 사용.
+function _wireReviewBlockMenu(){
+  if(_reviewMenuWired)return;
+  _reviewMenuWired=true;
+  const holder=document.getElementById('reviewEditor');
+  holder.addEventListener('mousemove',e=>{
+    const blk=e.target&&e.target.closest?e.target.closest('#reviewEditor .codex-editor__redactor > .ce-block'):null;
+    if(blk)_reviewHoverBlockEl=blk;
+  },{passive:true});
+  document.addEventListener('mousedown',e=>{
+    if(e.target&&e.target.closest&&e.target.closest('.ce-toolbar__settings-btn')&&e.target.closest('#reviewEditor')){
+      // 캐럿(collapsed)도 저장 — 목록 들여쓰기의 대상 항목 판별에 필요. 색 적용은 collapsed 여부를 따로 봄.
+      const sel=window.getSelection();
+      _reviewMenuSavedRange=(sel&&sel.rangeCount)?sel.getRangeAt(0).cloneRange():null;
+    }
+  },true);
+  document.addEventListener('click',e=>{
+    const btn=e.target&&e.target.closest?e.target.closest('.ce-toolbar__settings-btn'):null;
+    if(!btn||!btn.closest('#reviewEditor'))return;
+    e.preventDefault();e.stopPropagation(); // Editor.js 기본 설정 팝오버 차단
+    let blockEl=_reviewHoverBlockEl;
+    if(!blockEl||!blockEl.isConnected){
+      const list=document.querySelectorAll('#reviewEditor .codex-editor__redactor > .ce-block');
+      blockEl=list[list.length-1]||null;
+    }
+    if(blockEl)_openReviewBlockMenu(btn,blockEl);
+  },true);
+}
+
 /* ── Editor.js 한국어 번역(공식 i18n 딕셔너리 형식) ── */
 const REVIEW_EDITOR_I18N={messages:{
   ui:{
@@ -4127,8 +4778,7 @@ const REVIEW_EDITOR_I18N={messages:{
     list:{Unordered:'글머리 목록',Ordered:'번호 목록',Checklist:'할 일 목록','Start with':'시작 번호','Counter type':'번호 스타일'},
     table:{'Add row above':'위에 행 추가','Add row below':'아래에 행 추가','Delete row':'행 삭제','Add column to left':'왼쪽에 열 추가','Add column to right':'오른쪽에 열 추가','Delete column':'열 삭제','With headings':'머리글 사용','Without headings':'머리글 없음',Stretch:'넓게',Collapse:'좁게'},
     quote:{'Align Left':'왼쪽 정렬','Align Center':'가운데 정렬'},
-    image:{'With border':'테두리','Stretch image':'가로로 늘리기','With background':'배경 넣기','Select an Image':'이미지 선택',Caption:'이미지 설명','Couldn’t upload image. Please try another.':'이미지 업로드에 실패했습니다. 다시 시도해주세요.'},
-    callout:{Primary:'파랑',Secondary:'회색',Info:'안내',Success:'성공',Warning:'주의',Danger:'위험',Light:'밝게',Dark:'어둡게','Align left':'왼쪽 정렬','Align center':'가운데 정렬','Align right':'오른쪽 정렬'}
+    image:{'With border':'테두리','Stretch image':'가로로 늘리기','With background':'배경 넣기','Select an Image':'이미지 선택',Caption:'이미지 설명','Couldn’t upload image. Please try another.':'이미지 업로드에 실패했습니다. 다시 시도해주세요.'}
   },
   blockTunes:{
     delete:{Delete:'삭제','Click to delete':'한 번 더 누르면 삭제'},
@@ -4144,7 +4794,10 @@ function _reviewEditorTools(){
     list:{class:EditorjsList,inlineToolbar:true,config:{defaultStyle:'unordered'}},
     toggle:{class:ToggleBlock,inlineToolbar:true},
     quote:{class:Quote,inlineToolbar:true,config:{quotePlaceholder:'인용문',captionPlaceholder:'출처(선택)'}},
-    callout:{class:Alert,inlineToolbar:true,config:{defaultType:'info',messagePlaceholder:'콜아웃 내용'}},
+    callout:{class:ReviewCalloutTool,inlineToolbar:true},
+    notionLink:{class:ReviewNotionLinkTool},
+    columns:{class:ReviewColumnsTool},
+    textColor:{class:ReviewColorInlineTool},
     code:{class:CodeTool,config:{placeholder:'코드를 입력하세요'}},
     delimiter:Delimiter,
     table:{class:Table,inlineToolbar:true,config:{rows:2,cols:2,withHeadings:true}},
@@ -4155,8 +4808,7 @@ function _reviewEditorTools(){
       uploader:{uploadByFile:_reviewImageUploadByFile,uploadByUrl:_reviewImageUploadByUrl}
     }},
     marker:{class:Marker},
-    inlineCode:{class:InlineCode},
-    duplicate:ReviewDuplicateTune
+    inlineCode:{class:InlineCode}
   };
 }
 
@@ -4387,12 +5039,62 @@ if(!HTMLElement.prototype.setSelectionRange){
 
 function _destroyReviewEditor(){
   if(_reviewEditor){try{_reviewEditor.destroy();}catch(e){}}
-  _reviewEditor=null;
+  _reviewEditor=null;_reviewUndo=null;
+  _closeReviewMenu();
   const host=document.getElementById('reviewEditor');
   if(host)host.innerHTML='';
 }
 function _initReviewEditor(data){
   _destroyReviewEditor();
+  // ToggleBlock의 자체 undo 보정 MutationObserver 무력화 — editorjs-undo의 전체 재렌더와
+  // 충돌해 실행취소 후 낡은 토글 블록이 문서에 잔재로 재삽입되는 버그를 만듦(실측 확인).
+  // 재렌더가 데이터(items 카운트) 기준으로 토글을 다시 조립하므로 이 옵저버 없이도 정상.
+  if(typeof ToggleBlock!=='undefined'&&!ToggleBlock.__rvUndoPatched){
+    ToggleBlock.__rvUndoPatched=true;
+    ToggleBlock.prototype.addSupportForUndoAndRedoActions=function(){};
+    // 드래그앤드롭 지원은 유지하되, 문서 재렌더로 이미 제거된(detached) 낡은 인스턴스의
+    // 지연 콜백(setTimeout 재시도)이 null.parentNode를 참조해 콘솔 에러를 내는 것만 차단
+    const origDnd=ToggleBlock.prototype.addSupportForDragAndDropActions;
+    ToggleBlock.prototype.addSupportForDragAndDropActions=function(){
+      if(this.readOnly)return;
+      if(this.wrapper===undefined){setTimeout(()=>this.addSupportForDragAndDropActions(),250);return;}
+      if(!this.wrapper.isConnected||!document.querySelector('#'+this.wrapper.id))return;
+      return origDnd.call(this);
+    };
+  }
+  // editorjs-undo 정밀 분기 보정 — 블록 "개수"가 달라지는 undo/redo는 플러그인의 휴리스틱
+  // 분기가 토글 그룹에서 오판해 잔재 블록을 남기는 것을 실측으로 확인(문단만은 정상).
+  // 개수가 달라지는 전이는 상태 전체를 재렌더해 정확히 복원하고, 개수가 같은 전이(타이핑 등)는
+  // 원래 경로를 유지해 커서 정밀 복원을 보존함.
+  if(typeof Undo!=='undefined'&&!Undo.__rvRenderPatched){
+    Undo.__rvRenderPatched=true;
+    const origUndo=Undo.prototype.undo;
+    const origRedo=Undo.prototype.redo;
+    const fullRestore=async function(self,target){
+      self.shouldSaveHistory=false;
+      if(self.onUpdate)self.onUpdate();
+      await self.blocks.render({blocks:target.state});
+      try{self.caret.setToBlock(Math.max(0,Math.min(target.index||0,target.state.length-1)),'end');}catch(e){}
+    };
+    Undo.prototype.undo=async function(){
+      if(!this.canUndo())return;
+      const cur=this.stack[this.position],prev=this.stack[this.position-1];
+      if(prev&&cur&&prev.state&&cur.state&&prev.state.length!==cur.state.length){
+        this.position-=1;
+        return fullRestore(this,prev);
+      }
+      return origUndo.apply(this,arguments);
+    };
+    Undo.prototype.redo=async function(){
+      if(!this.canRedo())return;
+      const cur=this.stack[this.position],next=this.stack[this.position+1];
+      if(next&&cur&&next.state&&cur.state&&next.state.length!==cur.state.length){
+        this.position+=1;
+        return fullRestore(this,next);
+      }
+      return origRedo.apply(this,arguments);
+    };
+  }
   const host=document.getElementById('reviewEditor');
   if(typeof EditorJS==='undefined'){
     if(host)host.innerHTML='<div class="page-placeholder">에디터 라이브러리(CDN)를 불러오지 못했습니다.<br>네트워크 연결을 확인하고 새로고침해주세요.</div>';
@@ -4405,7 +5107,6 @@ function _initReviewEditor(data){
     defaultBlock:'paragraph',
     minHeight:320,
     tools:_reviewEditorTools(),
-    tunes:['duplicate'], // 모든 블록의 ⋮⋮ 설정 메뉴에 복제 추가(이동/삭제는 기본 제공)
     i18n:REVIEW_EDITOR_I18N,
     onChange:()=>_reviewOnEdit(),
     onReady:()=>{
@@ -4414,8 +5115,8 @@ function _initReviewEditor(data){
       // Ctrl+Z를 눌러도 문서가 빈 상태로 날아가지 않게 함.
       if(typeof Undo==='undefined')return; // CDN 로드 실패 시 undo 없이 동작(치명적 아님)
       try{
-        const undo=new Undo({editor:_reviewEditor});
-        if(data&&data.blocks&&data.blocks.length)undo.initialize(data);
+        _reviewUndo=new Undo({editor:_reviewEditor});
+        if(data&&data.blocks&&data.blocks.length)_reviewUndo.initialize(data);
       }catch(e){console.warn('[회고] 실행취소(undo) 초기화 실패:',e);}
     }
   });
@@ -4424,6 +5125,7 @@ function _initReviewEditor(data){
     if(host)host.innerHTML='<div class="page-placeholder">에디터 초기화에 실패했습니다.<br>'+_escapeForHtml(String((e&&e.message)||e))+'</div>';
   });
   _wireReviewPasteHandler();
+  _wireReviewBlockMenu();
 }
 
 /* ── 하위 호환: 시트에 저장된 과거 포맷 → Editor.js data ──
@@ -4464,6 +5166,10 @@ function _normalizeEditorBlocks(blocks){
     if(b.type==='list'){
       const d=b.data;
       return Object.assign({},b,{data:{style:d.style||'unordered',meta:d.meta||{},items:_normalizeListItems(d.items,true)}});
+    }
+    if(b.type==='callout'&&b.data.message!==undefined&&b.data.text===undefined){
+      // 구 editorjs-alert 형식({type,align,message}) → 자체 콜아웃({icon,text}) 마이그레이션
+      return{type:'callout',data:{icon:'💡',text:b.data.message||''}};
     }
     if(b.type==='image'){
       if(b.data.file&&b.data.file.url)return b; // 이미 공식(@editorjs/image) 형식
@@ -4540,13 +5246,13 @@ function _legacyAppend(list,out){
     if(t==='text')out.push({type:'paragraph',data:{text:b.html||''}});
     else if(t==='h1'||t==='h2'||t==='h3')out.push({type:'header',data:{text:b.html||'',level:t==='h1'?1:(t==='h2'?2:3)}});
     else if(t==='quote')out.push({type:'quote',data:{text:b.html||'',caption:'',alignment:'left'}});
-    else if(t==='callout')out.push({type:'callout',data:{type:'info',align:'left',message:(b.icon?b.icon+' ':'')+(b.html||'')}});
+    else if(t==='callout')out.push({type:'callout',data:{icon:b.icon||'💡',text:b.html||''}});
     else if(t==='code')out.push({type:'code',data:{code:b.text||''}});
     else if(t==='divider')out.push({type:'delimiter',data:{}});
     else if(t==='image'){if(b.url)out.push({type:'image',data:{url:b.url}});}
     else if(t==='table')out.push({type:'table',data:{withHeadings:false,content:(b.rows||[]).map(r=>(r||[]).map(c=>_escapeForHtml(c||'')))}});
     else if(t==='columns2'||t==='columns3'){(b.cols||[]).forEach(col=>_legacyAppend(col||[],out));}
-    else if(t==='notionLink'){if(b.url)out.push({type:'paragraph',data:{text:'🔗 <a href="'+_escAttr(b.url)+'">'+_escapeForHtml(b.title||b.url)+'</a>'}});}
+    else if(t==='notionLink'){if(b.url)out.push({type:'notionLink',data:{url:b.url,title:b.title||'노션 페이지'}});}
     else if(b.html!==undefined)out.push({type:'paragraph',data:{text:b.html||''}});
     if(kids.length)_legacyAppend(kids,out); // 목록/토글 외 타입의 자식은 순서대로 뒤에 평탄화
   }
