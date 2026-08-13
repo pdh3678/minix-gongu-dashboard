@@ -39,3 +39,7 @@
    모달 오버레이보다 확실히 높게 올려 전부 한 번에 해결. .bn-root는 이 리액트 앱에만 있는
    클래스라 대시보드의 다른 요소와 충돌 없음. */
 .bn-root{--bn-ui-base-z-index:1000}
+
+/* ⋮⋮ 핸들 메뉴의 "전환" 서브메뉴 항목 아이콘 */
+.rv2-turn-into-ic{display:inline-block;width:20px;text-align:center;flex-shrink:0;color:var(--text-3);font-size:11px;margin-right:2px}
+.rv2-turn-into-dropdown{min-width:150px}

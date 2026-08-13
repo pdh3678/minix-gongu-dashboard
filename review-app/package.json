@@ -8,6 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@blocknote/code-block": "0.53.0",
     "@blocknote/core": "0.53.0",
     "@blocknote/mantine": "0.53.0",
     "@blocknote/react": "0.53.0",

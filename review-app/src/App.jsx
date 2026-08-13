@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlockNoteView } from '@blocknote/mantine';
-import { SuggestionMenuController, getDefaultReactSlashMenuItems, useCreateBlockNote } from '@blocknote/react';
+import { SuggestionMenuController, SideMenuController, getDefaultReactSlashMenuItems, useCreateBlockNote } from '@blocknote/react';
 // Inter 폰트(@blocknote/core/fonts/inter.css)는 일부러 로드하지 않음 — theme.js가 폰트를
 // Pretendard(대시보드 기본 폰트)로 덮어써서 안 쓰는데, 그 CSS를 로드하면 폰트 파일이
 // data URI로 번들에 통째로 인라인되어 review.css가 700KB 넘게 불어남.
@@ -9,6 +9,7 @@ import { schema, dictionary, dropCursor, makeGetSlashMenuItems } from './schema.
 import { reviewTheme } from './theme.js';
 import { makeUploadFile, reuploadExternalImagesInDocument } from './imageUpload.js';
 import { makeNotionPasteHandler } from './notionPaste.js';
+import { CustomSideMenu } from './turnInto.jsx';
 import { listReviews, getReview, getReviewMetaQuick, saveReview, deleteReview } from './api.js';
 
 const AUTOSAVE_DELAY_MS = 3000;
@@ -227,8 +228,10 @@ function ReviewEditor({ bridge, docId, onBack }) {
           // z-index:60)가 이 서브트리 전체보다 위 스택 레이어에 있어(형제 관계, 서브트리 쪽엔
           // 명시적 z-index/position이 없음) 메뉴 자신의 z-index(300)가 아무리 높아도 사이드바에
           // 가려짐 — 스태킹 컨텍스트 경계를 못 넘는 문제라 z-index를 올려서는 해결 안 됨(실측 확인).
-          <BlockNoteView editor={editor} theme={reviewTheme} slashMenu={false} onChange={onEdit} portalElements={{ default: null }}>
+          <BlockNoteView editor={editor} theme={reviewTheme} slashMenu={false} sideMenu={false} onChange={onEdit} portalElements={{ default: null }}>
             <SuggestionMenuController triggerCharacter="/" getItems={getSlashMenuItems} />
+            {/* 기본 사이드 메뉴(⋮⋮) 대신 "전환" 서브메뉴가 추가된 커스텀 메뉴로 교체 — turnInto.jsx */}
+            <SideMenuController sideMenu={CustomSideMenu} />
           </BlockNoteView>
         )}
       </div>
