@@ -1190,7 +1190,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-block-menu-2026-08-13-01';
+const DASHBOARD_VERSION='review-columns-guard-2026-08-13-02';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -4260,27 +4260,75 @@ class ReviewColumnsTool{
     p.innerHTML=html||'';
     return p;
   }
+  _focusEnd(p){
+    p.focus();
+    const r=document.createRange();r.selectNodeContents(p);r.collapse(false);
+    const s=getSelection();s.removeAllRanges();s.addRange(r);
+  }
+  _caretAtStart(p){
+    const sel=getSelection();
+    if(!sel||!sel.rangeCount||!sel.isCollapsed)return false;
+    const r=sel.getRangeAt(0);
+    if(!p.contains(r.startContainer))return false;
+    const pre=r.cloneRange();pre.selectNodeContents(p);pre.setEnd(r.startContainer,r.startOffset);
+    return pre.toString()==='';
+  }
   _wireCol(colEl){
     if(this.readOnly)return;
+    // 편집 키는 열 내부에서 완결하고 전파를 끊음 — Backspace/Delete/'/'가 바깥 Editor.js의
+    // "빈 블록 삭제·병합·툴박스" 경로에 닿으면 columns 블록 전체가 삭제/교체됨(실측 확인).
     colEl.addEventListener('keydown',e=>{
       const p=e.target.closest('.rv-col-p');
       if(!p)return;
+      const composing=e.isComposing||e.keyCode===229; // IME 조합 중에는 브라우저에 맡김(전파만 차단)
       if(e.key==='Enter'&&!e.shiftKey){
-        e.preventDefault();e.stopPropagation(); // 바깥 에디터의 "새 블록" 동작 차단
+        e.stopPropagation(); // 바깥 에디터의 "새 블록" 동작 차단
+        if(composing)return; // 조합 확정 Enter — 줄바꿈 아님
+        e.preventDefault();
         const np=this._makeP('');
         p.after(np);np.focus();
-      }else if(e.key==='Backspace'&&!p.textContent&&colEl.querySelectorAll('.rv-col-p').length>1){
-        e.preventDefault();e.stopPropagation();
-        const prev=p.previousElementSibling;
-        p.remove();
-        if(prev&&prev.classList.contains('rv-col-p')){
-          prev.focus();
-          const r=document.createRange();r.selectNodeContents(prev);r.collapse(false);
-          const s=getSelection();s.removeAllRanges();s.addRange(r);
+      }else if(e.key==='Backspace'){
+        e.stopPropagation();
+        if(composing)return;
+        if(!p.textContent){
+          e.preventDefault();
+          if(colEl.querySelectorAll('.rv-col-p').length>1){
+            const prev=p.previousElementSibling;
+            p.remove();
+            if(prev&&prev.classList.contains('rv-col-p'))this._focusEnd(prev);
+          }else{
+            p.innerHTML=''; // 마지막 문단은 지우지 않고 유지(<br> 잔재 제거 → 플레이스홀더 복귀)
+          }
+        }else if(this._caretAtStart(p)){
+          const prev=p.previousElementSibling;
+          if(prev&&prev.classList.contains('rv-col-p')){ // 문단 맨 앞 Backspace → 위 문단과 병합
+            e.preventDefault();
+            const at=prev.textContent.length;
+            prev.innerHTML=(prev.innerHTML==='<br>'?'':prev.innerHTML)+p.innerHTML;
+            p.remove();
+            prev.focus();prev.setSelectionRange(at); // 병합점에 캐럿(회고 에디터 전용 심)
+          }
+          // 열의 첫 문단 맨 앞이면 아무것도 안 함 — 브라우저 기본도 no-op, 열은 유지
         }
+      }else if(e.key==='Delete'){
+        e.stopPropagation(); // 전방삭제의 "다음 블록과 병합"도 차단(문단 내 삭제는 브라우저 기본)
       }else if(e.key==='Tab'){
         e.preventDefault();e.stopPropagation(); // 열 안에서는 Tab 이동/중첩 미지원(최소 구현)
+      }else if(e.key==='/'&&!p.textContent){
+        e.stopPropagation(); // 빈 문단 '/'가 바깥 툴박스를 열어 columns 블록을 교체하는 것 차단
       }
+    });
+    // 문단을 다 지운 자리의 <br> 잔재 제거 — :empty 플레이스홀더가 다시 보이게
+    colEl.addEventListener('input',e=>{
+      const p=e.target.closest&&e.target.closest('.rv-col-p');
+      if(p&&p.innerHTML==='<br>')p.innerHTML='';
+    });
+    // 열 여백(문단 아래 빈 공간) 클릭 → 마지막 문단으로 캐럿(입력 유실 방지)
+    colEl.addEventListener('mousedown',e=>{
+      if(e.target!==colEl)return;
+      e.preventDefault();
+      const ps=colEl.querySelectorAll('.rv-col-p');
+      if(ps.length)this._focusEnd(ps[ps.length-1]);
     });
   }
   save(){
@@ -4833,6 +4881,31 @@ function _wireReviewPasteHandler(){
     if(!cd)return;
     const types=Array.from(cd.types||[]);
     if(window._reviewPasteDebug)console.log('[회고 paste 진단] types=',types,'\nhtml=',cd.getData('text/html'),'\nplain=',cd.getData('text/plain'));
+    // 열(rv-col-p) 안 붙여넣기는 열 내부에서 완결 — 아래의 블록 삽입 경로나 Editor.js 내장
+    // 붙여넣기에 닿으면 빈 columns 블록이 교체되거나 내용이 열 밖에 삽입됨(실측 확인).
+    const colP=e.target&&e.target.closest?e.target.closest('.rv-col-p'):null;
+    if(colP){
+      e.preventDefault();e.stopPropagation();
+      if(types.includes('Files')){showToast('열 안에는 이미지를 붙여넣을 수 없습니다. 열 밖에 붙여넣어주세요.');return;}
+      const text=cd.getData('text/plain')||'';
+      if(!text)return;
+      if(document.activeElement!==colP)colP.focus();
+      const lines=text.replace(/\r/g,'').split('\n');
+      document.execCommand('insertText',false,lines[0]); // 캐럿 위치/선택 영역을 존중 + undo 가능
+      let cur=colP;
+      for(let i=1;i<lines.length;i++){ // 여러 줄은 열 안 새 문단으로(Enter와 동일한 모델)
+        const np=document.createElement('div');np.className='rv-col-p';np.contentEditable='true';np.dataset.placeholder='내용 입력';
+        np.textContent=lines[i];
+        cur.after(np);cur=np;
+      }
+      if(cur!==colP){
+        cur.focus();
+        const r=document.createRange();r.selectNodeContents(cur);r.collapse(false);
+        const s=getSelection();s.removeAllRanges();s.addRange(r);
+      }
+      _reviewOnEdit();
+      return;
+    }
     if(types.includes('Files'))return;
     if(types.includes('application/x-editor-js'))return;
     const html=cd.getData('text/html');
