@@ -710,9 +710,12 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
     </div>
 
-    <!-- ⑤ 회고 페이지 -->
+    <!-- ⑤ 회고 페이지 — React+BlockNote로 교체(2026-08-13). 아래 구 Editor.js 마크업은
+         배포 검증 통과 후 정리 예정이라 display:none으로만 감춰두고 삭제하지 않음. -->
     <div class="main page" id="page-review">
-      <div class="card" id="reviewListView">
+      <div id="reviewRoot"></div>
+
+      <div class="card" id="reviewListView" style="display:none">
         <div class="card-hd">회고 <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="openNewReview()">＋ 새 회고</button></div>
         <div class="review-list" id="reviewListBody"><div class="page-placeholder">불러오는 중...</div></div>
       </div>
@@ -1200,12 +1203,19 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
      Ctrl+Z 복원 시 undo 재렌더와 중첩 에디터 초기화가 충돌해 홀더 유실 에러가 발생
      (기능·데이터는 생존하나 "에러 없음" 채택 기준 위반). 좌우 비교는 표(2열)로 안내. -->
 <script src="https://cdn.jsdelivr.net/npm/editorjs-undo@2.0.28/dist/bundle.js"></script>
+
+<!-- 회고 에디터 React+BlockNote 전환(2026-08-13) — review-app/(Vite)의 빌드 산출물.
+     render.yaml buildCommand가 배포마다 review-assets/review.{js,css}를 새로 생성함.
+     회고 메뉴는 이제 이 번들을 쓰고, 위 Editor.js 스크립트/아래 구 회고 코드는 배포 검증이
+     끝난 뒤 정리 예정이라 당장은 로드만 되고 호출되지 않는 상태로 남아있음. -->
+<link rel="stylesheet" href="review-assets/review.css">
+<script src="review-assets/review.js" defer></script>
 <script>
 'use strict';
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-columns-blocks-2026-08-13-04';
+const DASHBOARD_VERSION='review-blocknote-react-2026-08-13-05';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -3161,7 +3171,9 @@ window.addEventListener('hashchange',_routeFromHash);
 // 페이지 전환 (사이드바 단일 항목: 공구 캘린더 / 대시보드 / 실적 미기입 목록)
 function navPage(pageId,el){
   // 회고 페이지를 떠나는 경우, 대기 중인 자동저장이 있으면 먼저 흘려보냄(사이드바로 다른 탭 이동 시 유실 방지)
+  // ※ _reviewDirty는 구 Editor.js 전용 상태라 항상 false — 새 회고 에디터의 저장은 언마운트 훅이 처리함
   if(pageId!=='review'&&document.getElementById('page-review').classList.contains('active')&&_reviewDirty)saveReviewDoc(false);
+  if(pageId!=='review'&&document.getElementById('page-review').classList.contains('active'))_unmountReviewApp();
   _sbClearActive();
   if(el)el.classList.add('active');
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -3170,7 +3182,31 @@ function navPage(pageId,el){
   const hash=PAGE_ID_TO_HASH[pageId]||pageId;
   _currentPageHash=hash;
   _setHash(hash);
-  if(pageId==='review')_reviewEnterPage();
+  if(pageId==='review')_mountReviewApp();
+}
+
+// ── 회고 에디터(React+BlockNote, review-assets/review.js) 마운트/언마운트 ──
+// 같은 window에 마운트되므로 대시보드가 이미 가진 인증/네트워크 함수를 bridge로 그대로 넘김
+// (별도 재구현 없음). 페이지를 오가며 인스턴스가 누적되지 않도록 진입 시 항상 언마운트 후 마운트.
+function _reviewAppBridge(){
+  return{
+    getGasUrl:_getGasUrl,getToken:_getToken,gasUrl:_gasUrl,gasFetch:_gasFetch,
+    // _gasWrite(url,action,data,opts) — 회고 쪽 API는 (action,data,opts)만 알면 되게 URL을 여기서 채움
+    gasWrite:(action,data,opts)=>_gasWrite(_getGasUrl(),action,data,opts),
+    showToast:showToast,resizeImageToDataURL:resizeImageToDataURL,
+  };
+}
+function _mountReviewApp(){
+  const host=document.getElementById('reviewRoot');
+  if(!host)return;
+  if(typeof window.ReviewApp==='undefined'){
+    host.innerHTML='<div class="page-placeholder">회고 에디터를 불러오지 못했습니다.<br>네트워크 연결을 확인하고 새로고침해주세요.</div>';
+    return;
+  }
+  window.ReviewApp.mount(host,_reviewAppBridge());
+}
+function _unmountReviewApp(){
+  if(typeof window.ReviewApp!=='undefined')window.ReviewApp.unmount();
 }
 
 // 제품군별 모델 탭 구성 — 탭이 없는 제품(슬림/에어드라이)은 목록에서 빠져 subTabs가 숨겨짐

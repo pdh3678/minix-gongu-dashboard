@@ -1,0 +1,32 @@
+/* 대시보드 CSS(index.html)의 .card/.review-* 톤을 rv2- 접두사로 그대로 재현 — 5단계에서
+   구 에디터 코드를 정리해도 이 번들은 index.html의 클래스에 의존하지 않아 영향받지 않음. */
+.rv2-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;box-shadow:var(--sh)}
+.rv2-card-hd{font-size:13px;font-weight:600;margin-bottom:15px;display:flex;justify-content:space-between;align-items:center}
+.rv2-list{display:flex;flex-direction:column}
+.rv2-list-item{display:flex;align-items:center;gap:10px;padding:11px 6px;border-bottom:1px solid var(--border);cursor:pointer;border-radius:6px}
+.rv2-list-item:hover{background:var(--surface-2)}
+.rv2-list-title{flex:1;font-size:13px;font-weight:600;color:var(--text)}
+.rv2-list-meta{font-size:11px;color:var(--text-3);white-space:nowrap}
+.rv2-placeholder{padding:70px 20px;text-align:center;color:var(--text-3);font-size:13px;line-height:1.7}
+
+.rv2-detail{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:22px 26px;display:flex;flex-direction:column;gap:14px}
+.rv2-detail-top{display:flex;align-items:center;gap:12px}
+.rv2-title-input{flex:1;border:none;background:transparent;font-size:20px;font-weight:800;color:var(--text);font-family:inherit;padding:4px 2px;min-width:0;outline:none}
+.rv2-title-input::placeholder{color:var(--text-3);font-weight:700}
+.rv2-top-r{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.rv2-ym-input{border:1px solid var(--border);border-radius:7px;padding:6px 9px;font-size:12px;font-family:inherit;background:var(--surface-2);color:var(--text-2)}
+.rv2-meta-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.rv2-f-grp{display:flex;flex-direction:column;gap:4px}
+.rv2-f-lbl{font-size:11px;font-weight:700;color:var(--text-2)}
+.rv2-f-inp{padding:8px 11px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:inherit;color:var(--text);background:var(--surface-2);width:100%;outline:none}
+.rv2-save-status{font-size:11px;color:var(--text-3);text-align:right}
+.rv2-save-status.err{color:#DC2626}
+.rv2-editor{min-height:320px}
+.rv2-link-btn{background:none;border:none;color:var(--minix);cursor:pointer;font-size:13px;text-decoration:underline;font-family:inherit}
+
+.rv2-btn-primary{padding:8px 22px;border-radius:7px;border:none;background:var(--minix);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.rv2-card-hd .rv2-btn-primary{padding:6px 14px;font-size:12px}
+.rv2-btn-cancel{padding:8px 18px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
+
+/* BlockNote 표면을 대시보드 배경에 맞춤 — 세부 색상은 theme.js가 CSS 변수로 주입 */
+.rv2-editor .bn-container{font-size:13px}
