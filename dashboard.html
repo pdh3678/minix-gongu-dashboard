@@ -454,6 +454,21 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .rv-col:focus-within{border-color:var(--border-s)}
 .rv-col-p{outline:none;font-size:13px;line-height:1.6;word-break:break-word;min-height:20px}
 .rv-col-p:empty::before{content:attr(data-placeholder);color:var(--text-3)}
+/* 열 내부 확장 블록(제목/인용/구분선/목록) — 전부 .rv-col 하위 전용 클래스 */
+.rv-col-h{outline:none;font-weight:700;line-height:1.4;word-break:break-word;margin-top:4px}
+.rv-col-h1{font-size:19px}.rv-col-h2{font-size:16.5px}.rv-col-h3{font-size:14.5px}
+.rv-col-h:empty::before,.rv-col-q:empty::before{content:attr(data-placeholder);color:var(--text-3)}
+.rv-col-q{outline:none;font-size:13px;line-height:1.6;word-break:break-word;border-left:3px solid var(--border-s);padding-left:9px;color:var(--text-2)}
+.rv-col-hr{padding:7px 0;cursor:default}
+.rv-col-hr::before{content:'';display:block;border-top:1px solid var(--border-s)}
+.rv-col-list{display:flex;flex-direction:column;gap:3px}
+.rv-cli{display:flex;align-items:flex-start;gap:6px}
+.rv-cli-mk{flex-shrink:0;min-width:16px;text-align:center;font-size:12px;color:var(--text-2);line-height:1.6;user-select:none}
+.rv-cli-mk input{margin:4px 0 0;accent-color:var(--minix);cursor:pointer}
+.rv-cli-t{flex:1;outline:none;font-size:13px;line-height:1.6;word-break:break-word;min-height:20px}
+.rv-cli-t:empty::before{content:attr(data-placeholder);color:var(--text-3)}
+.rv-cli.done .rv-cli-t{text-decoration:line-through;color:var(--text-3)}
+.rv-minibox{width:186px}
 /* 블록 핸들 메뉴(⋮⋮) */
 .rvm-pop{position:fixed;z-index:600;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 14px 36px rgba(17,24,39,.22);width:246px;max-height:min(480px,80vh);overflow-y:auto;padding:4px 6px 8px}
 .rvm-sec-title{font-size:10px;font-weight:700;color:var(--text-3);padding:8px 8px 3px;text-transform:uppercase;letter-spacing:.3px}
@@ -1190,7 +1205,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-columns-guard-2026-08-13-02';
+const DASHBOARD_VERSION='review-columns-blocks-2026-08-13-04';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -4218,11 +4233,250 @@ class ReviewNotionLinkTool{
   save(){return{url:this.data.url,title:this._title?this._title.textContent:this.data.title};}
 }
 
-/* ── 커스텀 툴: 다단(2열/3열) 최소 구현 ──
+/* ── 커스텀 툴: 다단(2열/3열) ──
    외부 플러그인(@calumk/editorjs-columns)은 undo 복원 검증 실패로 미채택(2026-08-11).
-   이 구현은 중첩 EditorJS 인스턴스를 만들지 않고 열마다 문단 스택(contenteditable)만 둠 —
-   비동기 초기화가 없어 undo 재렌더에 안전함. 열 내 블록은 문단만 지원(최소 구현),
-   Enter로 문단 추가·빈 문단 Backspace로 삭제. 열 간 드래그 등 고급 동작은 3단계 과제. */
+   중첩 EditorJS 인스턴스 없이 열마다 블록 요소 스택(contenteditable)을 직접 관리 —
+   비동기 초기화가 없어 undo 재렌더에 안전함.
+   열 내 지원 블록: 문단 / 제목1~3 / 글머리·번호·할 일 목록(중첩) / 인용 / 구분선.
+   표·이미지·토글·열 중첩은 미지원(복잡도 통제). 목록은 평탄한 행+depth로 편집하고
+   저장 시 depth 시퀀스를 중첩 items로 복원(바깥 list@2와 같은 데이터 형태).
+   편집 키(Enter/Backspace/Delete/Tab/'/')는 열 내부에서 완결하고 전파를 차단 —
+   바깥 Editor.js의 블록 삭제·병합·툴박스가 오발동하면 열 전체가 삭제/교체됨(실측 확인).
+   방향키는 Editor.js의 블록 입력 간 캐럿 이동을 그대로 사용(열 안팎 이동, 실측상 안전). */
+
+// 열 안 허용 블록으로 정규화 — 구(문단 전용) 데이터도 같은 형태라 이 경로로 그대로 수용.
+// 미지원 유형은 텍스트만 보존해 문단으로 강등(유실 방지).
+function _rvColNormalizeBlock(b){
+  if(!b||typeof b!=='object')return{type:'paragraph',data:{text:''}};
+  const d=b.data||{};
+  switch(b.type){
+    case'paragraph':return{type:'paragraph',data:{text:d.text||''}};
+    case'header':return{type:'header',data:{text:d.text||'',level:Math.min(Math.max(+d.level||2,1),3)}};
+    case'list':return{type:'list',data:{style:d.style==='ordered'?'ordered':(d.style==='checklist'?'checklist':'unordered'),meta:{},items:_normalizeListItems(d.items,true)}};
+    case'quote':return{type:'quote',data:{text:d.text||''}};
+    case'delimiter':return{type:'delimiter',data:{}};
+    default:return{type:'paragraph',data:{text:(d.text!==undefined?d.text:(d.message||''))||''}};
+  }
+}
+// 블록 데이터 → 열 내부 DOM 요소. data-t로 유형을 새겨 save()가 DOM만 보고 복원 가능.
+function _rvColBlockEl(b,readOnly){
+  const ce=readOnly?'false':'true';
+  if(b.type==='header'){
+    const h=document.createElement('div');h.className='rv-col-h rv-col-h'+(b.data.level||2);
+    h.dataset.t='header';h.dataset.level=b.data.level||2;
+    h.contentEditable=ce;h.dataset.placeholder='제목';h.innerHTML=b.data.text||'';return h;
+  }
+  if(b.type==='quote'){
+    const q=document.createElement('div');q.className='rv-col-q';q.dataset.t='quote';
+    q.contentEditable=ce;q.dataset.placeholder='인용문';q.innerHTML=b.data.text||'';return q;
+  }
+  if(b.type==='delimiter'){
+    const el=document.createElement('div');el.className='rv-col-hr';el.dataset.t='delimiter';
+    el.contentEditable='false';return el;
+  }
+  if(b.type==='list'){
+    const l=document.createElement('div');l.className='rv-col-list';l.dataset.t='list';l.dataset.style=b.data.style||'unordered';
+    (function walk(items,depth){
+      (items||[]).forEach(it=>{
+        l.appendChild(_rvCliEl(it.content||'',depth,l.dataset.style,!!(it.meta&&it.meta.checked),readOnly));
+        walk(it.items,Math.min(depth+1,3));
+      });
+    })(b.data.items,0);
+    if(!l.children.length)l.appendChild(_rvCliEl('',0,l.dataset.style,false,readOnly));
+    _rvColRenumber(l);
+    return l;
+  }
+  const p=document.createElement('div');p.className='rv-col-p';p.dataset.t='paragraph';
+  p.contentEditable=ce;p.dataset.placeholder='내용 입력';p.innerHTML=(b.data&&b.data.text)||'';return p;
+}
+// 목록 항목 행: [마커(불릿/번호/체크박스)] + [텍스트 편집 영역], depth는 들여쓰기 픽셀로 표현
+function _rvCliEl(html,depth,style,checked,readOnly){
+  const row=document.createElement('div');row.className='rv-cli'+(checked?' done':'');
+  row.dataset.depth=depth;row.style.marginLeft=(depth*18)+'px';
+  const mk=document.createElement('span');mk.className='rv-cli-mk';mk.contentEditable='false';
+  if(style==='checklist'){
+    const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!checked;
+    if(readOnly)cb.disabled=true;
+    cb.addEventListener('change',()=>{row.classList.toggle('done',cb.checked);_reviewOnEdit();});
+    mk.appendChild(cb);
+  }
+  const t=document.createElement('div');t.className='rv-cli-t';
+  t.contentEditable=readOnly?'false':'true';t.dataset.placeholder='목록';t.innerHTML=html||'';
+  row.appendChild(mk);row.appendChild(t);
+  return row;
+}
+// 번호/글머리 마커 갱신 — 깊이별 카운터(하위로 갔다 돌아오면 이어서 셈), 체크리스트는 마커 불변
+function _rvColRenumber(listEl){
+  const style=listEl.dataset.style;
+  if(style==='checklist')return;
+  const counters=[];
+  Array.from(listEl.querySelectorAll('.rv-cli')).forEach(row=>{
+    const d=+row.dataset.depth||0;
+    counters.length=d+1;
+    counters[d]=(counters[d]||0)+1;
+    row.querySelector('.rv-cli-mk').textContent=style==='ordered'?(counters[d]+'.'):['•','◦','▪'][Math.min(d,2)];
+  });
+}
+// 열 내부 DOM 요소 → 블록 데이터(save 경로). 알 수 없는 요소는 제외.
+function _rvColParseEl(el){
+  const t=el.dataset&&el.dataset.t;
+  const clean=h=>(h==='<br>'?'':(h||''));
+  if(t==='header')return{type:'header',data:{text:clean(el.innerHTML),level:+el.dataset.level||2}};
+  if(t==='quote')return{type:'quote',data:{text:clean(el.innerHTML)}};
+  if(t==='delimiter')return{type:'delimiter',data:{}};
+  if(t==='list'){
+    const rows=Array.from(el.querySelectorAll('.rv-cli')).map(r=>({
+      content:clean((r.querySelector('.rv-cli-t')||{innerHTML:''}).innerHTML),
+      checked:!!(r.querySelector('input[type=checkbox]')||{}).checked,
+      depth:+r.dataset.depth||0
+    }));
+    if(!rows.length)return null;
+    const root={items:[]},stack=[{node:root,depth:-1}]; // depth 시퀀스 → 중첩 items
+    rows.forEach(r=>{
+      const item={content:r.content,meta:el.dataset.style==='checklist'?{checked:r.checked}:{},items:[]};
+      while(stack.length>1&&stack[stack.length-1].depth>=r.depth)stack.pop();
+      stack[stack.length-1].node.items.push(item);
+      stack.push({node:item,depth:r.depth});
+    });
+    return{type:'list',data:{style:el.dataset.style||'unordered',meta:{},items:root.items}};
+  }
+  if(t==='paragraph'||(el.classList&&el.classList.contains('rv-col-p')))return{type:'paragraph',data:{text:clean(el.innerHTML)}};
+  return null;
+}
+// e.target → 열 내부 편집 컨텍스트(텍스트 블록 or 목록 항목)
+function _rvColCtx(target){
+  const t=target&&target.closest?target.closest('.rv-col-p,.rv-col-h,.rv-col-q,.rv-cli-t'):null;
+  if(!t)return null;
+  const colEl=t.closest('.rv-col');
+  if(!colEl)return null;
+  if(t.classList.contains('rv-cli-t')){
+    const row=t.closest('.rv-cli'),list=t.closest('.rv-col-list');
+    return{kind:'li',t:t,row:row,list:list,block:list,colEl:colEl};
+  }
+  return{kind:'text',t:t,block:t,colEl:colEl};
+}
+// 블록 요소의 편집 영역(목록은 첫/마지막 항목, 구분선은 null)
+function _rvColEditableOf(block,last){
+  if(!block)return null;
+  if(block.classList.contains('rv-col-list')){
+    const ts=block.querySelectorAll('.rv-cli-t');
+    return ts.length?ts[last?ts.length-1:0]:null;
+  }
+  if(block.classList.contains('rv-col-hr'))return null;
+  return block;
+}
+function _rvColLastEditable(colEl){
+  const els=colEl.querySelectorAll('.rv-col-p,.rv-col-h,.rv-col-q,.rv-cli-t');
+  return els.length?els[els.length-1]:null;
+}
+function _rvColFocusEnd(el){
+  if(!el)return;
+  el.focus();
+  const r=document.createRange();r.selectNodeContents(el);r.collapse(false);
+  const s=getSelection();s.removeAllRanges();s.addRange(r);
+}
+function _rvColFocusStart(el){
+  if(!el)return;
+  el.focus();
+  const r=document.createRange();r.selectNodeContents(el);r.collapse(true);
+  const s=getSelection();s.removeAllRanges();s.addRange(r);
+}
+function _rvCaretAtStartEl(el){
+  const sel=getSelection();
+  if(!sel||!sel.rangeCount||!sel.isCollapsed)return false;
+  const r=sel.getRangeAt(0);
+  if(!el.contains(r.startContainer))return false;
+  const pre=r.cloneRange();pre.selectNodeContents(el);pre.setEnd(r.startContainer,r.startOffset);
+  return pre.toString()==='';
+}
+// 캐럿 뒤 내용을 잘라내 반환(Enter 분할용) — 캐럿이 요소 밖이면 빈 fragment
+function _rvColExtractAfterCaret(el){
+  const sel=getSelection();
+  if(!sel||!sel.rangeCount||!el.contains(sel.getRangeAt(0).startContainer))return document.createDocumentFragment();
+  const r=sel.getRangeAt(0);
+  const after=r.cloneRange();
+  after.selectNodeContents(el);
+  after.setStart(r.endContainer,r.endOffset);
+  return after.extractContents();
+}
+
+/* ── 열 전용 축소 툴박스('/' 메뉴) — 열 안 지원 블록만 노출 ── */
+const RV_COL_TOOLS=[
+  {k:'paragraph',label:'텍스트',ic:'¶'},
+  {k:'header1',label:'제목1',ic:'H1'},{k:'header2',label:'제목2',ic:'H2'},{k:'header3',label:'제목3',ic:'H3'},
+  {k:'bullet',label:'글머리 목록',ic:'•'},{k:'number',label:'번호 목록',ic:'1.'},{k:'checklist',label:'할 일',ic:'☑'},
+  {k:'quote',label:'인용',ic:'❝'},{k:'delimiter',label:'구분선',ic:'—'}
+];
+function _rvColBlockData(kind){
+  switch(kind){
+    case'header1':return{type:'header',data:{text:'',level:1}};
+    case'header2':return{type:'header',data:{text:'',level:2}};
+    case'header3':return{type:'header',data:{text:'',level:3}};
+    case'bullet':return{type:'list',data:{style:'unordered',meta:{},items:[{content:'',meta:{},items:[]}]}};
+    case'number':return{type:'list',data:{style:'ordered',meta:{},items:[{content:'',meta:{},items:[]}]}};
+    case'checklist':return{type:'list',data:{style:'checklist',meta:{},items:[{content:'',meta:{checked:false},items:[]}]}};
+    case'quote':return{type:'quote',data:{text:''}};
+    case'delimiter':return{type:'delimiter',data:{}};
+    default:return{type:'paragraph',data:{text:''}};
+  }
+}
+let _rvMiniEl=null,_rvMiniSel=0,_rvMiniItems=[],_rvMiniTarget=null;
+function _rvMiniClose(){
+  if(_rvMiniEl){_rvMiniEl.remove();_rvMiniEl=null;}
+  _rvMiniItems=[];_rvMiniSel=0;_rvMiniTarget=null;
+  document.removeEventListener('mousedown',_rvMiniOutside,true);
+  document.removeEventListener('keydown',_rvMiniKeydown,true);
+}
+function _rvMiniOutside(e){if(_rvMiniEl&&!_rvMiniEl.contains(e.target))_rvMiniClose();}
+function _rvMiniKeydown(e){
+  if(!_rvMiniEl)return;
+  if(e.key==='Escape'){e.preventDefault();e.stopPropagation();_rvMiniClose();return;}
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();e.stopPropagation();
+    const d=e.key==='ArrowDown'?1:-1;
+    _rvMiniSel=(_rvMiniSel+d+_rvMiniItems.length)%_rvMiniItems.length;
+    _rvMiniItems.forEach((it,i)=>it.classList.toggle('sel',i===_rvMiniSel));
+    _rvMiniItems[_rvMiniSel].scrollIntoView({block:'nearest'});
+    return;
+  }
+  if(e.key==='Enter'){e.preventDefault();e.stopPropagation();if(_rvMiniItems[_rvMiniSel])_rvMiniItems[_rvMiniSel].click();return;}
+  _rvMiniClose(); // 그 외 키(계속 타이핑 등)는 메뉴만 닫고 원래 동작 통과
+}
+function _rvMiniOpen(pEl){
+  _rvMiniClose();
+  _rvMiniTarget=pEl;
+  const menu=document.createElement('div');menu.className='rvm-pop rv-minibox';
+  RV_COL_TOOLS.forEach((tool,i)=>{
+    const it=document.createElement('div');it.className='rvm-item'+(i===0?' sel':'');
+    it.innerHTML='<span class="rvm-ic">'+tool.ic+'</span><span class="rvm-label">'+tool.label+'</span>';
+    it.addEventListener('click',()=>{
+      const target=_rvMiniTarget;
+      _rvMiniClose();
+      if(!target||!target.isConnected)return;
+      const nb=_rvColBlockEl(_rvColBlockData(tool.k),false);
+      target.replaceWith(nb);
+      if(tool.k==='delimiter'){ // 구분선은 캐럿을 둘 곳이 없으므로 뒤에 문단 보장
+        const p=_rvColBlockEl({type:'paragraph',data:{text:''}},false);
+        nb.after(p);_rvColFocusEnd(p);
+      }else{
+        _rvColFocusEnd(_rvColEditableOf(nb,false));
+      }
+      _reviewOnEdit();
+    });
+    menu.appendChild(it);
+    _rvMiniItems.push(it);
+  });
+  document.body.appendChild(menu);
+  _rvMiniEl=menu;_rvMiniSel=0;
+  const r=pEl.getBoundingClientRect();
+  menu.style.left=Math.max(8,Math.min(r.left,window.innerWidth-menu.offsetWidth-8))+'px';
+  let top=r.bottom+4;
+  if(top+menu.offsetHeight>window.innerHeight-8)top=Math.max(8,r.top-menu.offsetHeight-4);
+  menu.style.top=top+'px';
+  document.addEventListener('mousedown',_rvMiniOutside,true);
+  document.addEventListener('keydown',_rvMiniKeydown,true);
+}
+
 class ReviewColumnsTool{
   static get toolbox(){
     const ic2='<svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/></svg>';
@@ -4233,12 +4487,16 @@ class ReviewColumnsTool{
     ];
   }
   static get isReadOnlySupported(){return true;}
-  static get sanitize(){return{cols:false};}
+  // 저장 시 열 텍스트에 적용할 인라인 태그 화이트리스트. 이전의 cols:false는
+  // "규칙 없는 키는 부모 규칙 상속" 동작 때문에 열 텍스트의 모든 태그(<br>·굵게·링크·
+  // 색상 span)를 저장 시 제거하는 잠복 버그였음(2.31.6 번들 소스로 확인).
+  static get sanitize(){return{cols:{br:true,b:true,strong:true,i:true,em:true,u:true,s:true,a:{href:true,target:true,rel:true},mark:{class:true},code:{class:true},span:{style:true},font:{color:true,style:true}}};}
   constructor({data,readOnly}){
     const cols=(data&&Array.isArray(data.cols)&&data.cols.length)?data.cols:[[],[]];
-    // 각 열은 paragraph 블록 배열 — 다른 타입이 들어와도 text만 취해 문단으로 강등(유실 방지)
-    this.cols=cols.map(col=>(Array.isArray(col)&&col.length?col:[{type:'paragraph',data:{text:''}}])
-      .map(b=>({type:'paragraph',data:{text:(b&&b.data&&(b.data.text!==undefined?b.data.text:b.data.message||''))||''}})));
+    this.cols=cols.map(col=>{
+      const arr=(Array.isArray(col)?col:[]).map(_rvColNormalizeBlock);
+      return arr.length?arr:[{type:'paragraph',data:{text:''}}];
+    });
     this.readOnly=!!readOnly;
   }
   render(){
@@ -4246,95 +4504,160 @@ class ReviewColumnsTool{
     host.className='rv-cols rv-cols-'+this.cols.length;
     this.colEls=this.cols.map(col=>{
       const colEl=document.createElement('div');colEl.className='rv-col';
-      col.forEach(p=>colEl.appendChild(this._makeP(p.data.text)));
+      col.forEach(b=>colEl.appendChild(_rvColBlockEl(b,this.readOnly)));
       this._wireCol(colEl);
       host.appendChild(colEl);
       return colEl;
     });
     return host;
   }
-  _makeP(html){
-    const p=document.createElement('div');p.className='rv-col-p';
-    p.contentEditable=this.readOnly?'false':'true';
-    p.dataset.placeholder='내용 입력';
-    p.innerHTML=html||'';
-    return p;
-  }
-  _focusEnd(p){
-    p.focus();
-    const r=document.createRange();r.selectNodeContents(p);r.collapse(false);
-    const s=getSelection();s.removeAllRanges();s.addRange(r);
-  }
-  _caretAtStart(p){
-    const sel=getSelection();
-    if(!sel||!sel.rangeCount||!sel.isCollapsed)return false;
-    const r=sel.getRangeAt(0);
-    if(!p.contains(r.startContainer))return false;
-    const pre=r.cloneRange();pre.selectNodeContents(p);pre.setEnd(r.startContainer,r.startOffset);
-    return pre.toString()==='';
+  save(){
+    return{cols:(this.colEls||[]).map(colEl=>{
+      const out=Array.from(colEl.children).map(_rvColParseEl).filter(Boolean);
+      return out.length?out:[{type:'paragraph',data:{text:''}}];
+    })};
   }
   _wireCol(colEl){
     if(this.readOnly)return;
-    // 편집 키는 열 내부에서 완결하고 전파를 끊음 — Backspace/Delete/'/'가 바깥 Editor.js의
-    // "빈 블록 삭제·병합·툴박스" 경로에 닿으면 columns 블록 전체가 삭제/교체됨(실측 확인).
     colEl.addEventListener('keydown',e=>{
-      const p=e.target.closest('.rv-col-p');
-      if(!p)return;
-      const composing=e.isComposing||e.keyCode===229; // IME 조합 중에는 브라우저에 맡김(전파만 차단)
-      if(e.key==='Enter'&&!e.shiftKey){
-        e.stopPropagation(); // 바깥 에디터의 "새 블록" 동작 차단
-        if(composing)return; // 조합 확정 Enter — 줄바꿈 아님
-        e.preventDefault();
-        const np=this._makeP('');
-        p.after(np);np.focus();
-      }else if(e.key==='Backspace'){
-        e.stopPropagation();
-        if(composing)return;
-        if(!p.textContent){
-          e.preventDefault();
-          if(colEl.querySelectorAll('.rv-col-p').length>1){
-            const prev=p.previousElementSibling;
-            p.remove();
-            if(prev&&prev.classList.contains('rv-col-p'))this._focusEnd(prev);
-          }else{
-            p.innerHTML=''; // 마지막 문단은 지우지 않고 유지(<br> 잔재 제거 → 플레이스홀더 복귀)
-          }
-        }else if(this._caretAtStart(p)){
-          const prev=p.previousElementSibling;
-          if(prev&&prev.classList.contains('rv-col-p')){ // 문단 맨 앞 Backspace → 위 문단과 병합
-            e.preventDefault();
-            const at=prev.textContent.length;
-            prev.innerHTML=(prev.innerHTML==='<br>'?'':prev.innerHTML)+p.innerHTML;
-            p.remove();
-            prev.focus();prev.setSelectionRange(at); // 병합점에 캐럿(회고 에디터 전용 심)
-          }
-          // 열의 첫 문단 맨 앞이면 아무것도 안 함 — 브라우저 기본도 no-op, 열은 유지
-        }
-      }else if(e.key==='Delete'){
-        e.stopPropagation(); // 전방삭제의 "다음 블록과 병합"도 차단(문단 내 삭제는 브라우저 기본)
-      }else if(e.key==='Tab'){
-        e.preventDefault();e.stopPropagation(); // 열 안에서는 Tab 이동/중첩 미지원(최소 구현)
-      }else if(e.key==='/'&&!p.textContent){
-        e.stopPropagation(); // 빈 문단 '/'가 바깥 툴박스를 열어 columns 블록을 교체하는 것 차단
+      const ctx=_rvColCtx(e.target);
+      if(!ctx)return;
+      const k=e.key;
+      if(k==='Enter'||k==='Backspace'||k==='Delete'||k==='Tab'||k==='/')e.stopPropagation();
+      if(e.isComposing||e.keyCode===229)return; // IME 조합 중 — 브라우저에 위임(전파만 차단)
+      if(k==='Enter'&&!e.shiftKey){e.preventDefault();this._enter(ctx);}
+      else if(k==='Backspace')this._backspace(e,ctx);
+      else if(k==='Tab'){e.preventDefault();if(ctx.kind==='li')this._indent(ctx,!e.shiftKey);}
+      else if(k==='/'&&ctx.kind==='text'&&ctx.t.dataset.t==='paragraph'&&!ctx.t.textContent){
+        e.preventDefault();_rvMiniOpen(ctx.t); // 빈 문단 '/' → 열 전용 축소 툴박스
       }
+      // Delete: 전파만 차단(블록 내 전방삭제는 브라우저 기본, 블록 간 병합은 미지원)
     });
-    // 문단을 다 지운 자리의 <br> 잔재 제거 — :empty 플레이스홀더가 다시 보이게
     colEl.addEventListener('input',e=>{
-      const p=e.target.closest&&e.target.closest('.rv-col-p');
-      if(p&&p.innerHTML==='<br>')p.innerHTML='';
+      const t=e.target.closest&&e.target.closest('.rv-col-p,.rv-col-h,.rv-col-q,.rv-cli-t');
+      if(t&&t.innerHTML==='<br>')t.innerHTML=''; // 전부 삭제 시 <br> 잔재 제거 → 플레이스홀더 복귀
     });
-    // 열 여백(문단 아래 빈 공간) 클릭 → 마지막 문단으로 캐럿(입력 유실 방지)
     colEl.addEventListener('mousedown',e=>{
-      if(e.target!==colEl)return;
+      if(e.target!==colEl)return; // 열 여백 클릭 → 마지막 편집 영역으로 캐럿(입력 유실 방지)
       e.preventDefault();
-      const ps=colEl.querySelectorAll('.rv-col-p');
-      if(ps.length)this._focusEnd(ps[ps.length-1]);
+      _rvColFocusEnd(_rvColLastEditable(colEl));
     });
   }
-  save(){
-    return{cols:(this.colEls||[]).map(colEl=>
-      Array.from(colEl.querySelectorAll('.rv-col-p')).map(p=>({type:'paragraph',data:{text:p.innerHTML}}))
-    )};
+  _enter(ctx){
+    if(ctx.kind==='li'){
+      const t=ctx.t,row=ctx.row,list=ctx.list;
+      if(!t.textContent){ // 빈 항목 Enter → 목록 탈출(노션과 동일), 중간이면 목록을 둘로 분할
+        const after=[];let n=row.nextElementSibling;
+        while(n){after.push(n);n=n.nextElementSibling;}
+        const p=_rvColBlockEl({type:'paragraph',data:{text:''}},false);
+        list.after(p);
+        if(after.length){
+          const l2=document.createElement('div');l2.className='rv-col-list';l2.dataset.t='list';l2.dataset.style=list.dataset.style;
+          after.forEach(r=>l2.appendChild(r));
+          p.after(l2);
+          _rvColRenumber(l2);
+        }
+        row.remove();
+        if(!list.querySelector('.rv-cli'))list.remove();
+        else _rvColRenumber(list);
+        p.focus();
+      }else{ // 캐럿 뒤 내용을 같은 깊이 새 항목으로 분할
+        const nr=_rvCliEl('',+row.dataset.depth||0,list.dataset.style,false,false);
+        nr.querySelector('.rv-cli-t').appendChild(_rvColExtractAfterCaret(t));
+        row.after(nr);
+        _rvColRenumber(list);
+        _rvColFocusStart(nr.querySelector('.rv-cli-t'));
+      }
+    }else{ // 문단/제목/인용: 캐럿 뒤 내용을 새 문단으로 분할(노션과 동일하게 새 블록은 문단)
+      const np=_rvColBlockEl({type:'paragraph',data:{text:''}},false);
+      np.appendChild(_rvColExtractAfterCaret(ctx.t));
+      ctx.block.after(np);
+      _rvColFocusStart(np);
+    }
+    _reviewOnEdit();
+  }
+  _backspace(e,ctx){
+    const sel=getSelection();
+    if(sel&&sel.rangeCount&&!sel.isCollapsed)return; // 선택 영역 삭제는 브라우저 기본
+    const t=ctx.t;
+    if(ctx.kind==='li'){
+      const row=ctx.row,list=ctx.list;
+      if(!t.textContent){
+        e.preventDefault();
+        const depth=+row.dataset.depth||0;
+        if(depth>0){ // 빈 항목은 먼저 내어쓰기로
+          row.dataset.depth=depth-1;row.style.marginLeft=((depth-1)*18)+'px';
+          _rvColRenumber(list);t.focus();_reviewOnEdit();return;
+        }
+        const prevRow=row.previousElementSibling;
+        row.remove();
+        if(!list.querySelector('.rv-cli')){ // 목록이 비면 문단으로 대체(열은 유지)
+          const p=_rvColBlockEl({type:'paragraph',data:{text:''}},false);
+          list.replaceWith(p);p.focus();
+        }else{
+          _rvColRenumber(list);
+          if(prevRow)_rvColFocusEnd(prevRow.querySelector('.rv-cli-t'));
+        }
+        _reviewOnEdit();return;
+      }
+      if(_rvCaretAtStartEl(t)){
+        const prevRow=row.previousElementSibling;
+        if(prevRow){ // 항목 맨 앞 Backspace → 위 항목과 병합(병합점 캐럿)
+          e.preventDefault();
+          const pt=prevRow.querySelector('.rv-cli-t');
+          const at=pt.textContent.length;
+          pt.innerHTML=(pt.innerHTML==='<br>'?'':pt.innerHTML)+t.innerHTML;
+          row.remove();_rvColRenumber(list);
+          pt.focus();pt.setSelectionRange(at);
+          _reviewOnEdit();
+        }
+        // 첫 항목 맨 앞은 no-op(목록·열 유지)
+      }
+      return;
+    }
+    // 텍스트 블록(문단/제목/인용)
+    if(!t.textContent){
+      e.preventDefault();
+      if(ctx.colEl.children.length<=1){t.innerHTML='';return;} // 열의 마지막 블록은 유지
+      let pv=ctx.block.previousElementSibling;
+      ctx.block.remove();
+      while(pv&&!_rvColEditableOf(pv,true))pv=pv.previousElementSibling; // 구분선은 건너뜀
+      if(pv)_rvColFocusEnd(_rvColEditableOf(pv,true));
+      else{
+        const first=_rvColLastEditable(ctx.colEl)?ctx.colEl.querySelector('.rv-col-p,.rv-col-h,.rv-col-q,.rv-cli-t'):null;
+        if(first)_rvColFocusStart(first);
+        else{const p=_rvColBlockEl({type:'paragraph',data:{text:''}},false);ctx.colEl.appendChild(p);p.focus();}
+      }
+      _reviewOnEdit();return;
+    }
+    if(_rvCaretAtStartEl(t)){
+      const prev=ctx.block.previousElementSibling;
+      if(!prev)return; // 열의 첫 블록 맨 앞 — no-op(열 유지)
+      e.preventDefault();
+      if(prev.dataset.t==='delimiter'){prev.remove();_reviewOnEdit();return;} // 위 구분선 삭제
+      const pe=_rvColEditableOf(prev,true);
+      if(!pe)return;
+      const at=pe.textContent.length; // 이전 블록(목록이면 마지막 항목)과 병합
+      pe.innerHTML=(pe.innerHTML==='<br>'?'':pe.innerHTML)+t.innerHTML;
+      ctx.block.remove();
+      pe.focus();pe.setSelectionRange(at);
+      _reviewOnEdit();
+    }
+  }
+  _indent(ctx,deeper){
+    const row=ctx.row,depth=+row.dataset.depth||0;
+    if(deeper){
+      const prev=row.previousElementSibling;
+      if(!prev)return; // 첫 항목은 들여쓰기 불가
+      const maxD=Math.min((+prev.dataset.depth||0)+1,3); // 직전 항목보다 한 단계까지만
+      if(depth>=maxD)return;
+      row.dataset.depth=depth+1;row.style.marginLeft=((depth+1)*18)+'px';
+    }else{
+      if(depth<=0)return;
+      row.dataset.depth=depth-1;row.style.marginLeft=((depth-1)*18)+'px';
+    }
+    _rvColRenumber(ctx.list);
+    _reviewOnEdit();
   }
 }
 
@@ -4881,27 +5204,37 @@ function _wireReviewPasteHandler(){
     if(!cd)return;
     const types=Array.from(cd.types||[]);
     if(window._reviewPasteDebug)console.log('[회고 paste 진단] types=',types,'\nhtml=',cd.getData('text/html'),'\nplain=',cd.getData('text/plain'));
-    // 열(rv-col-p) 안 붙여넣기는 열 내부에서 완결 — 아래의 블록 삽입 경로나 Editor.js 내장
+    // 열 안 붙여넣기는 열 내부에서 완결 — 아래의 블록 삽입 경로나 Editor.js 내장
     // 붙여넣기에 닿으면 빈 columns 블록이 교체되거나 내용이 열 밖에 삽입됨(실측 확인).
-    const colP=e.target&&e.target.closest?e.target.closest('.rv-col-p'):null;
-    if(colP){
+    const colT=e.target&&e.target.closest?e.target.closest('.rv-col-p,.rv-col-h,.rv-col-q,.rv-cli-t'):null;
+    if(colT){
       e.preventDefault();e.stopPropagation();
       if(types.includes('Files')){showToast('열 안에는 이미지를 붙여넣을 수 없습니다. 열 밖에 붙여넣어주세요.');return;}
       const text=cd.getData('text/plain')||'';
       if(!text)return;
-      if(document.activeElement!==colP)colP.focus();
+      if(document.activeElement!==colT)colT.focus();
       const lines=text.replace(/\r/g,'').split('\n');
       document.execCommand('insertText',false,lines[0]); // 캐럿 위치/선택 영역을 존중 + undo 가능
-      let cur=colP;
-      for(let i=1;i<lines.length;i++){ // 여러 줄은 열 안 새 문단으로(Enter와 동일한 모델)
-        const np=document.createElement('div');np.className='rv-col-p';np.contentEditable='true';np.dataset.placeholder='내용 입력';
-        np.textContent=lines[i];
-        cur.after(np);cur=np;
-      }
-      if(cur!==colP){
-        cur.focus();
-        const r=document.createRange();r.selectNodeContents(cur);r.collapse(false);
-        const s=getSelection();s.removeAllRanges();s.addRange(r);
+      if(lines.length>1){
+        let focusTarget=null;
+        if(colT.classList.contains('rv-cli-t')){ // 목록 항목 안 — 나머지 줄은 같은 깊이 새 항목
+          const row=colT.closest('.rv-cli'),list=colT.closest('.rv-col-list');
+          let cur=row;
+          for(let i=1;i<lines.length;i++){
+            const nr=_rvCliEl(_escapeForHtml(lines[i]),+row.dataset.depth||0,list.dataset.style,false,false);
+            cur.after(nr);cur=nr;
+          }
+          _rvColRenumber(list);
+          focusTarget=cur.querySelector('.rv-cli-t');
+        }else{ // 텍스트 블록 — 나머지 줄은 새 문단
+          let cur=colT;
+          for(let i=1;i<lines.length;i++){
+            const np=_rvColBlockEl({type:'paragraph',data:{text:_escapeForHtml(lines[i])}},false);
+            cur.after(np);cur=np;
+          }
+          focusTarget=cur;
+        }
+        _rvColFocusEnd(focusTarget);
       }
       _reviewOnEdit();
       return;
@@ -5118,6 +5451,7 @@ function _destroyReviewEditor(){
   if(_reviewEditor){try{_reviewEditor.destroy();}catch(e){}}
   _reviewEditor=null;_reviewUndo=null;
   _closeReviewMenu();
+  _rvMiniClose(); // 열 전용 축소 툴박스도 함께 정리
   const host=document.getElementById('reviewEditor');
   if(host)host.innerHTML='';
 }
@@ -5153,6 +5487,10 @@ function _initReviewEditor(data){
       await self.blocks.render({blocks:target.state});
       try{self.caret.setToBlock(Math.max(0,Math.min(target.index||0,target.state.length-1)),'end');}catch(e){}
     };
+    // 개수가 같아 원래 경로로 넘겨도, 열(다단) 내부의 목록·제목 등 중첩 마크업은 플러그인의
+    // MutationObserver 인덱스 추정이 오판해 내부에서 TypeError를 던지는 경우가 실측됨(2026-08-13).
+    // origUndo/origRedo는 실패 지점 이전에 this.position을 이미 갱신해두므로, catch에서는 그
+    // 최신 position 기준 상태로 전체 재렌더해 안전하게 복원함(캐럿 정밀 복원만 포기).
     Undo.prototype.undo=async function(){
       if(!this.canUndo())return;
       const cur=this.stack[this.position],prev=this.stack[this.position-1];
@@ -5160,7 +5498,12 @@ function _initReviewEditor(data){
         this.position-=1;
         return fullRestore(this,prev);
       }
-      return origUndo.apply(this,arguments);
+      try{return await origUndo.apply(this,arguments);}
+      catch(e){
+        console.warn('[회고] 실행취소 처리 중 오류 — 전체 재렌더로 복원:',e);
+        const target=this.stack[this.position]||prev;
+        if(target)return fullRestore(this,target);
+      }
     };
     Undo.prototype.redo=async function(){
       if(!this.canRedo())return;
@@ -5169,7 +5512,12 @@ function _initReviewEditor(data){
         this.position+=1;
         return fullRestore(this,next);
       }
-      return origRedo.apply(this,arguments);
+      try{return await origRedo.apply(this,arguments);}
+      catch(e){
+        console.warn('[회고] 다시실행 처리 중 오류 — 전체 재렌더로 복원:',e);
+        const target=this.stack[this.position]||next;
+        if(target)return fullRestore(this,target);
+      }
     };
   }
   const host=document.getElementById('reviewEditor');
