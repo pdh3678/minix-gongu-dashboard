@@ -1190,7 +1190,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-block-menu-2026-08-12-01';
+const DASHBOARD_VERSION='review-block-menu-2026-08-13-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -4732,6 +4732,9 @@ function _reviewMenuListTab(blockEl,shift){
 
 // 기본 ⋮⋮(설정) 버튼 클릭을 캡처 단계에서 가로채 커스텀 메뉴를 띄움.
 // mousedown 시점에 선택 영역을 스냅샷(클릭이 selection을 지우기 전) — 색 적용에 사용.
+// ※ Editor.js 2.31은 설정 토글러를 click이 아닌 mousedown에 바인딩함 — click만 막으면
+//   기본 팝오버(mousedown)와 커스텀 메뉴(click)가 동시에 열리므로 mousedown 캡처에서 차단.
+//   리스너는 document가 아닌 홀더(#reviewEditor)에 걸어 에디터 밖 DOM에는 반응하지 않게 함.
 function _wireReviewBlockMenu(){
   if(_reviewMenuWired)return;
   _reviewMenuWired=true;
@@ -4740,17 +4743,18 @@ function _wireReviewBlockMenu(){
     const blk=e.target&&e.target.closest?e.target.closest('#reviewEditor .codex-editor__redactor > .ce-block'):null;
     if(blk)_reviewHoverBlockEl=blk;
   },{passive:true});
-  document.addEventListener('mousedown',e=>{
-    if(e.target&&e.target.closest&&e.target.closest('.ce-toolbar__settings-btn')&&e.target.closest('#reviewEditor')){
+  holder.addEventListener('mousedown',e=>{
+    if(e.target&&e.target.closest&&e.target.closest('.ce-toolbar__settings-btn')){
       // 캐럿(collapsed)도 저장 — 목록 들여쓰기의 대상 항목 판별에 필요. 색 적용은 collapsed 여부를 따로 봄.
       const sel=window.getSelection();
       _reviewMenuSavedRange=(sel&&sel.rangeCount)?sel.getRangeAt(0).cloneRange():null;
+      e.preventDefault();e.stopPropagation(); // Editor.js 기본 설정 팝오버(mousedown 바인딩) 차단
     }
   },true);
-  document.addEventListener('click',e=>{
+  holder.addEventListener('click',e=>{
     const btn=e.target&&e.target.closest?e.target.closest('.ce-toolbar__settings-btn'):null;
-    if(!btn||!btn.closest('#reviewEditor'))return;
-    e.preventDefault();e.stopPropagation(); // Editor.js 기본 설정 팝오버 차단
+    if(!btn)return;
+    e.preventDefault();e.stopPropagation(); // 잔여 click 경로도 차단 후 커스텀 메뉴만 표시
     let blockEl=_reviewHoverBlockEl;
     if(!blockEl||!blockEl.isConnected){
       const list=document.querySelectorAll('#reviewEditor .codex-editor__redactor > .ce-block');
