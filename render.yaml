@@ -2,7 +2,7 @@ services:
   - name: minix-gongu-dashboard
     type: web
     runtime: static
-    buildCommand: cd review-app && npm ci && npm run build
+    buildCommand: cd review-app && npm ci && npm run build && ls -la ../review-assets
     staticPublishPath: .
     headers:
       - path: /*
