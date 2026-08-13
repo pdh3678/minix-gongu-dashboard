@@ -221,7 +221,13 @@ function ReviewEditor({ bridge, docId, onBack }) {
       </div>
       <div className="rv2-editor" onPasteCapture={onPasteCapture}>
         {editor && (
-          <BlockNoteView editor={editor} theme={reviewTheme} slashMenu={false} onChange={onEdit}>
+          // portalElements default:null → 사이드 메뉴/슬래시 메뉴/색상 등 모든 팝오버를
+          // document.body 직속으로 강제 이동. 기본값(에디터 자신의 bn-container)로 두면
+          // #reviewRoot 서브트리 안에 그대로 남는데, 대시보드 사이드바(.sidebar, position:fixed
+          // z-index:60)가 이 서브트리 전체보다 위 스택 레이어에 있어(형제 관계, 서브트리 쪽엔
+          // 명시적 z-index/position이 없음) 메뉴 자신의 z-index(300)가 아무리 높아도 사이드바에
+          // 가려짐 — 스태킹 컨텍스트 경계를 못 넘는 문제라 z-index를 올려서는 해결 안 됨(실측 확인).
+          <BlockNoteView editor={editor} theme={reviewTheme} slashMenu={false} onChange={onEdit} portalElements={{ default: null }}>
             <SuggestionMenuController triggerCharacter="/" getItems={getSlashMenuItems} />
           </BlockNoteView>
         )}

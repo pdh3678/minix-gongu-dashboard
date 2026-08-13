@@ -30,3 +30,12 @@
 
 /* BlockNote 표면을 대시보드 배경에 맞춤 — 세부 색상은 theme.js가 CSS 변수로 주입 */
 .rv2-editor .bn-container{font-size:13px}
+
+/* 사이드 메뉴/슬래시 메뉴/서식 툴바 등 BlockNote의 모든 팝오버(GenericPopover 기반)는
+   --bn-ui-base-z-index(기본 0)에 각자 오프셋(20/40 등)을 더한 값을 씀. App.jsx의
+   portalElements={{default:null}}로 document.body 직속까지는 옮겼지만, 그 팝오버들이
+   BlockNote 내부적으로 한 번 더 감싸는 위치 지정용 래퍼(z-index:20 등)가 대시보드
+   사이드바(.sidebar, z-index:60)보다 낮아 여전히 가려짐(실측 확인) — 베이스 값을 사이드바/
+   모달 오버레이보다 확실히 높게 올려 전부 한 번에 해결. .bn-root는 이 리액트 앱에만 있는
+   클래스라 대시보드의 다른 요소와 충돌 없음. */
+.bn-root{--bn-ui-base-z-index:1000}
