@@ -25,6 +25,7 @@
 .rv2-link-btn{background:none;border:none;color:var(--minix);cursor:pointer;font-size:13px;text-decoration:underline;font-family:inherit}
 
 .rv2-btn-primary{padding:8px 22px;border-radius:7px;border:none;background:var(--minix);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.rv2-btn-primary:disabled{opacity:.6;cursor:default}
 .rv2-card-hd .rv2-btn-primary{padding:6px 14px;font-size:12px}
 .rv2-btn-cancel{padding:8px 18px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
 

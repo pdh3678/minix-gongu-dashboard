@@ -99,6 +99,7 @@ function ReviewEditor({ bridge, docId, onBack }) {
   const [loadState, setLoadState] = useState(docId ? 'loading' : 'ready');
   const [saveStatus, setSaveStatus] = useState('');
   const [saveErr, setSaveErr] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // 저장 버튼 비활성화/라벨 전환용(ref는 리렌더를 안 일으켜 별도 state 필요)
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
   const baseUpdatedAtRef = useRef('');
@@ -163,19 +164,23 @@ function ReviewEditor({ bridge, docId, onBack }) {
       }
     }
     savingRef.current = true;
+    setIsSaving(true);
     setSaveStatus('저장 중...'); setSaveErr(false);
     try {
+      // GAS 콜드스타트로 느릴 수 있어 여기 await가 응답(또는 _gasFetch 자체의 20초 타임아웃+3회
+      // 재시도가 전부 실패)까지 그대로 걸림 — 그동안 버튼은 isSaving으로 계속 비활성 상태 유지.
       const j = await saveReview(bridge, d, editor.document);
       setDoc((prev) => ({ ...prev, id: j.id, updatedAt: j.updatedAt, editedBy: j.editedBy }));
       baseUpdatedAtRef.current = j.updatedAt || '';
       dirtyRef.current = false;
       setSaveStatus((j.editedBy ? j.editedBy + ' ' : '') + '최종 편집 · ' + fmtTime(j.updatedAt));
-      if (manual) bridge.showToast('저장되었습니다.');
+      if (manual) bridge.showToast('저장되었습니다.', { type: 'success' });
     } catch (e) {
       setSaveStatus('저장 실패: ' + e.message); setSaveErr(true);
-      if (manual) bridge.showToast('저장 실패: ' + e.message);
+      if (manual) bridge.showToast('저장에 실패했습니다. 다시 시도해주세요.', { type: 'error' });
     } finally {
       savingRef.current = false;
+      setIsSaving(false);
     }
   }, [editor, bridge, loadState]);
 
@@ -213,7 +218,7 @@ function ReviewEditor({ bridge, docId, onBack }) {
         <input className="rv2-title-input" placeholder="제목 없음" value={doc.title} onChange={(e) => updateMeta({ title: e.target.value })} />
         <div className="rv2-top-r">
           <input className="rv2-ym-input" type="month" value={doc.ym} onChange={(e) => updateMeta({ ym: e.target.value })} />
-          <button className="rv2-btn-primary" onClick={() => doSave(true)}>저장</button>
+          <button className="rv2-btn-primary" onClick={() => doSave(true)} disabled={isSaving}>{isSaving ? '저장 중...' : '저장'}</button>
         </div>
       </div>
       <div className="rv2-meta-row">

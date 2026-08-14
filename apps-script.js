@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'review-image-domain-share-2026-08-11-03';
+var SCRIPT_VERSION = 'review-ym-plaintext-fix-2026-08-14-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1579,6 +1579,17 @@ function _reviewUpdatedAtStr(cell) {
   return cell instanceof Date ? cell.toISOString() : String(cell || '');
 }
 
+// ym("yyyy-MM") 셀이 시트에 의해 날짜로 잘못 저장된 과거 행을 방어적으로 복구 — 이후
+// _saveReview는 저장 시 서식을 텍스트로 고정해 재발을 막지만, 이미 날짜로 저장된 기존 값은
+// 그대로 남아있으므로 읽을 때 "yyyy-MM"으로 되돌려 <input type="month">가 인식하게 함.
+function _reviewYmStr(cell) {
+  if (cell instanceof Date) {
+    var m = cell.getMonth() + 1;
+    return cell.getFullYear() + '-' + (m < 10 ? '0' + m : '' + m);
+  }
+  return String(cell || '');
+}
+
 // 목록 화면용 — 시트가 아직 없으면(한 번도 저장 안 됨) 빈 배열 반환(캘린더이벤트와 동일 패턴).
 // 본문(블록 JSON)은 목록에 필요 없어 응답에서 제외 — 문서가 많아져도 목록 응답이 가벼움.
 function _listReviews(ss) {
@@ -1593,7 +1604,7 @@ function _listReviews(ss) {
     list.push({
       id: id,
       title: String(row[REVIEW_COL.title] || ''),
-      ym: String(row[REVIEW_COL.ym] || ''),
+      ym: _reviewYmStr(row[REVIEW_COL.ym]),
       owner: String(row[REVIEW_COL.owner] || ''),
       team: String(row[REVIEW_COL.team] || ''),
       part: String(row[REVIEW_COL.part] || ''),
@@ -1633,7 +1644,7 @@ function _getReviewDoc(ss, id) {
     return {
       id: String(row[REVIEW_COL.id] || ''),
       title: String(row[REVIEW_COL.title] || ''),
-      ym: String(row[REVIEW_COL.ym] || ''),
+      ym: _reviewYmStr(row[REVIEW_COL.ym]),
       owner: String(row[REVIEW_COL.owner] || ''),
       team: String(row[REVIEW_COL.team] || ''),
       part: String(row[REVIEW_COL.part] || ''),
@@ -1672,6 +1683,10 @@ function _saveReview(ss, data, idToken) {
   var row = _findReviewRow(sheet, id);
   if (row) sheet.getRange(row, 1, 1, rowData.length).setValues([rowData]);
   else { sheet.appendRow(rowData); row = _findReviewRow(sheet, id); }
+  // 월(ym) 셀은 "yyyy-MM" 형태라 시트가 날짜로 자동 인식해 값을 날짜 일련값으로 바꿔치기하는
+  // 경우가 있음(Apps Script setValues도 예외 아님 — 실측 확인). 서식을 일반 텍스트로 고정한 뒤
+  // 값을 한 번 더 써서, 위 setValues/appendRow가 날짜로 바꿔놨더라도 그 값을 되돌림.
+  sheet.getRange(row, REVIEW_COL.ym + 1).setNumberFormat('@').setValue(rowData[REVIEW_COL.ym]);
   // 오버플로우 조각 기록 + 이전 저장이 남긴 잔여 오버플로우 셀 청소(본문이 짧아진 경우 대비)
   var extra = chunks.length - 1;
   if (extra > 0) {

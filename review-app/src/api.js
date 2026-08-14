@@ -41,7 +41,10 @@ export async function saveReview(bridge, doc, document) {
     part: doc.part,
     content,
   });
+  // 성공 판정은 GAS 응답 기준 — .error가 없어도 success/updatedAt이 빠진 불완전한 응답이면
+  // "가짜 성공" 토스트가 뜨지 않도록 실패로 취급.
   if (j.error) throw new Error(j.error);
+  if (!j || !j.success || !j.updatedAt) throw new Error('서버 응답이 올바르지 않습니다.');
   return j; // {success, id, updatedAt, editedBy}
 }
 
