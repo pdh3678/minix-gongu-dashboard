@@ -66,3 +66,13 @@
 .rv2-editor .bn-block-group .bn-block-group > .bn-block-outer::before{
   border-left:none!important;
 }
+
+/* 회고 목록 기간 필터 — 대시보드 다른 페이지의 "기간 필터"(.ym-dd/.ym-dd-btn/.ym-dd-pop)와
+   같은 클래스를 재사용해 톤을 맞춤. 그쪽은 body 포탈+JS로 위치를 계산하는 fixed 팝오버라,
+   여기서는 훨씬 단순하게 .ym-dd(position:relative)를 기준으로 절대 위치시켜 같은 모양을 냄. */
+.rv2-period-filter{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.rv2-period-lbl{font-size:11px;font-weight:700;color:var(--text-2);margin-right:2px}
+.rv2-period-pop{position:absolute!important;top:calc(100% + 4px);left:0;z-index:20}
+.rv2-period-opt{padding:6px 10px;border-radius:6px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap}
+.rv2-period-opt:hover{background:var(--surface-2)}
+.rv2-period-opt.sel{color:var(--minix);font-weight:700}

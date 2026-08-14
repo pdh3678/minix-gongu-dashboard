@@ -11,6 +11,7 @@ import { makeUploadFile, reuploadExternalImagesInDocument } from './imageUpload.
 import { makeNotionPasteHandler } from './notionPaste.js';
 import { CustomSideMenu } from './turnInto.jsx';
 import { CustomFormattingToolbar } from './formattingToolbar.jsx';
+import { PeriodFilter, reviewMatchesPeriod } from './periodFilter.jsx';
 import { listReviews, getReview, getReviewMetaQuick, saveReview, deleteReview } from './api.js';
 
 const AUTOSAVE_DELAY_MS = 3000;
@@ -53,6 +54,8 @@ function fmtTime(iso) {
 function ReviewList({ bridge, onOpen, onNew }) {
   const [reviews, setReviews] = useState([]);
   const [state, setState] = useState('loading'); // loading | ready | error
+  const [filterYear, setFilterYear] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
 
   const load = useCallback(async () => {
     setState('loading');
@@ -67,19 +70,31 @@ function ReviewList({ bridge, onOpen, onNew }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // 정렬은 listReviews가 이미 최신순(updatedAt 내림차순)으로 내려준 순서를 그대로 유지 —
+  // 여기선 걸러내기만 하고 재정렬하지 않음.
+  const filtered = useMemo(
+    () => reviews.filter((r) => reviewMatchesPeriod(r.ym, filterYear, filterMonth)),
+    [reviews, filterYear, filterMonth]
+  );
   return (
     <div className="rv2-card">
       <div className="rv2-card-hd">
         회고
         <button className="rv2-btn-primary" onClick={onNew}>＋ 새 회고</button>
       </div>
+      {state === 'ready' && reviews.length > 0 && (
+        <PeriodFilter reviews={reviews} year={filterYear} month={filterMonth} onChange={(y, m) => { setFilterYear(y); setFilterMonth(m); }} />
+      )}
       <div className="rv2-list">
         {state === 'loading' && <div className="rv2-placeholder">불러오는 중...</div>}
         {state === 'error' && <div className="rv2-placeholder">불러오기 실패</div>}
         {state === 'ready' && reviews.length === 0 && (
           <div className="rv2-placeholder">아직 작성된 회고가 없습니다.<br />"+ 새 회고"로 시작해보세요.</div>
         )}
-        {state === 'ready' && reviews.map((r) => (
+        {state === 'ready' && reviews.length > 0 && filtered.length === 0 && (
+          <div className="rv2-placeholder">해당 기간에 회고가 없습니다.</div>
+        )}
+        {state === 'ready' && filtered.map((r) => (
           <div className="rv2-list-item" key={r.id} onClick={() => onOpen(r.id)}>
             <div className="rv2-list-title">{r.title || '제목 없음'}</div>
             <div className="rv2-list-meta">
