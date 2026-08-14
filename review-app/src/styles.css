@@ -43,3 +43,15 @@
 /* ⋮⋮ 핸들 메뉴의 "전환" 서브메뉴 항목 아이콘 */
 .rv2-turn-into-ic{display:inline-block;width:20px;text-align:center;flex-shrink:0;color:var(--text-3);font-size:11px;margin-right:2px}
 .rv2-turn-into-dropdown{min-width:150px}
+
+/* 인라인 코드(선택 영역에만 적용되는 code 스타일) — 노션처럼 고정폭 폰트 + 연한 배경 +
+   구분되는 글자색. 코드 블록의 <code class="bn-inline-content">(줄 전체)와는 반드시
+   구분해야 해서 그 클래스가 없는 code만 타깃(:not) — 코드 블록 안 텍스트는 절대 안 건드림. */
+.rv2-editor code:not(.bn-inline-content){
+  font-family:'SF Mono','Fira Code','Courier New',monospace;
+  font-size:.9em;
+  color:#C0356F;
+  background:rgba(192,53,111,.09);
+  padding:.15em .4em;
+  border-radius:4px;
+}
