@@ -55,3 +55,13 @@
   padding:.15em .4em;
   border-radius:4px;
 }
+
+/* 중첩 블록의 세로 들여쓰기 안내선 제거 — BlockNote 코어 CSS의
+   .bn-block-group .bn-block-group>.bn-block-outer:before가 border-left(테마의
+   sideMenu 색)로 그리는 선(개발자 도구로 실측 확인: border-left:1px solid
+   var(--bn-colors-side-menu)). 들여쓰기 자체는 부모 규칙의 margin-left:24px가
+   담당하므로 이 규칙은 안 건드리고 선만 제거. .rv2-editor 범위로 한정해 대시보드
+   다른 영역에는 영향 없음. */
+.rv2-editor .bn-block-group .bn-block-group > .bn-block-outer::before{
+  border-left:none!important;
+}
