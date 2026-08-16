@@ -1,4 +1,4 @@
-import { BlockNoteSchema, combineByGroup, createCodeBlockSpec } from '@blocknote/core';
+import { BlockNoteSchema, combineByGroup, createCodeBlockSpec, defaultStyleSpecs } from '@blocknote/core';
 import { filterSuggestionItems } from '@blocknote/core/extensions';
 import * as coreLocales from '@blocknote/core/locales';
 import { codeBlockOptions } from '@blocknote/code-block';
@@ -10,6 +10,18 @@ import {
   withMultiColumn,
 } from '@blocknote/xl-multi-column';
 
+// 인라인 코드(code 스타일)는 @tiptap/extension-code 기본 설정이 excludes:'_'라 다른 모든
+// 마크(볼드/이탤릭/밑줄/취소선)와 배타적 — 노션과 달리 코드에 볼드를 얹을 수 없었음. 이건
+// BlockNote가 만든 제약이 아니라 Tiptap 자체의 기본값을 그대로 물려받은 것(BlockNote의
+// code 스타일 구현이 addInputRules만 덮어쓰고 excludes는 안 건드림 — 소스로 확인). 백틱
+// 입력 규칙 등 BlockNote가 이미 확장해둔 부분은 그대로 이어받고 excludes만 빈 문자열로
+// 덮어써 다른 마크와 중첩 가능하게 함(Tiptap 커뮤니티에 알려진 방식 — 위험한 우회 아님).
+const codeMarkWithNesting = defaultStyleSpecs.code.implementation.mark.extend({ excludes: '' });
+const codeStyleSpec = {
+  config: defaultStyleSpecs.code.config,
+  implementation: { ...defaultStyleSpecs.code.implementation, mark: codeMarkWithNesting },
+};
+
 // 다단(2/3열) — 열 블록의 children은 일반 Block[]이라 제목/목록/할일 등 임의 블록이 그대로
 // 들어감(자체 구현 시절의 "문단 전용" 한계가 여기서 해소됨). column/columnList 타입 추가.
 // codeBlock은 기본 스키마에도 이미 있지만(슬래시 메뉴엔 "코드 블록"으로 노출) 구문 강조/언어
@@ -18,6 +30,7 @@ import {
 export const schema = withMultiColumn(
   BlockNoteSchema.create().extend({
     blockSpecs: { codeBlock: createCodeBlockSpec(codeBlockOptions) },
+    styleSpecs: { code: codeStyleSpec },
   })
 );
 
