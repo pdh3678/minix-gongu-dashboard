@@ -1,7 +1,7 @@
 import { SideMenuExtension } from '@blocknote/core/extensions';
 import {
-  useComponentsContext, useBlockNoteEditor, useExtensionState, useDictionary,
-  SideMenu, DragHandleMenu, RemoveBlockItem, BlockColorsItem, TableRowHeaderItem, TableColumnHeaderItem,
+  useComponentsContext, useBlockNoteEditor, useExtensionState,
+  SideMenu, DragHandleMenu, RemoveBlockItem, BlockColorsItem,
 } from '@blocknote/react';
 
 // 노션처럼 ⋮⋮ 핸들 메뉴에서 곧바로 블록 유형을 바꿀 수 있게 하는 "전환" 서브메뉴.
@@ -22,75 +22,152 @@ const TURN_INTO_OPTIONS = [
   { type: 'codeBlock', label: '코드', ic: '</>' },
 ];
 
-function TurnIntoItem({ children }) {
-  const Components = useComponentsContext();
+function useHoveredBlock() {
   const editor = useBlockNoteEditor();
   const block = useExtensionState(SideMenuExtension, {
     editor,
     selector: (state) => state?.block,
   });
+  return { editor, block };
+}
 
-  if (block === undefined) return null;
-
+function SubMenu({ trigger, children }) {
+  const Components = useComponentsContext();
   return (
     <Components.Generic.Menu.Root position="right" sub={true}>
       <Components.Generic.Menu.Trigger sub={true}>
         <Components.Generic.Menu.Item className="bn-menu-item" subTrigger={true}>
-          {children}
+          {trigger}
         </Components.Generic.Menu.Item>
       </Components.Generic.Menu.Trigger>
       <Components.Generic.Menu.Dropdown sub={true} className="bn-menu-dropdown rv2-turn-into-dropdown">
-        {TURN_INTO_OPTIONS.map((opt) => (
-          <Components.Generic.Menu.Item
-            key={opt.type + (opt.props ? opt.props.level : '')}
-            className="bn-menu-item"
-            onClick={() => editor.updateBlock(block, { type: opt.type, props: opt.props })}
-          >
-            <span className="rv2-turn-into-ic">{opt.ic}</span>
-            {opt.label}
-          </Components.Generic.Menu.Item>
-        ))}
+        {children}
       </Components.Generic.Menu.Dropdown>
     </Components.Generic.Menu.Root>
   );
 }
 
+function TurnIntoItem({ children }) {
+  const Components = useComponentsContext();
+  const { editor, block } = useHoveredBlock();
+  if (block === undefined) return null;
+
+  return (
+    <SubMenu trigger={children}>
+      {TURN_INTO_OPTIONS.map((opt) => (
+        <Components.Generic.Menu.Item
+          key={opt.type + (opt.props ? opt.props.level : '')}
+          className="bn-menu-item"
+          onClick={() => editor.updateBlock(block, { type: opt.type, props: opt.props })}
+        >
+          <span className="rv2-turn-into-ic">{opt.ic}</span>
+          {opt.label}
+        </Components.Generic.Menu.Item>
+      ))}
+    </SubMenu>
+  );
+}
+
+// "전환"에도 목록 세 종류가 다 있지만, 이미 목록인 블록을 다른 목록 종류로 바로 바꾸는
+// 전용 지름길 — 노션의 "목록 형식" 메뉴와 같은 위치. 목록류 블록(글머리/번호/할일)일
+// 때만 보이고, 그 외 블록에서는 항목 자체가 나타나지 않음(BlockColorsItem이 색 지원
+// 안 하는 블록에서 null 반환하는 것과 같은 패턴).
+const LIST_TYPE_OPTIONS = [
+  { type: 'bulletListItem', label: '글머리 목록', ic: '•' },
+  { type: 'numberedListItem', label: '번호 목록', ic: '1.' },
+  { type: 'checkListItem', label: '할 일', ic: '☑' },
+];
+
+function ListTypeItem({ children }) {
+  const Components = useComponentsContext();
+  const { editor, block } = useHoveredBlock();
+  if (block === undefined) return null;
+  if (!LIST_TYPE_OPTIONS.some((opt) => opt.type === block.type)) return null;
+
+  return (
+    <SubMenu trigger={children}>
+      {LIST_TYPE_OPTIONS.map((opt) => (
+        <Components.Generic.Menu.Item
+          key={opt.type}
+          className="bn-menu-item"
+          onClick={() => editor.updateBlock(block, { type: opt.type })}
+        >
+          <span className="rv2-turn-into-ic">{opt.ic}</span>
+          {opt.label}
+        </Components.Generic.Menu.Item>
+      ))}
+    </SubMenu>
+  );
+}
+
+// id를 전부 제거한 깊은 복사본을 만들어 insertBlocks에 넘김 — id가 남아있으면 기존 블록과
+// 충돌할 수 있어(BlockNote가 새 id를 만들도록) 재귀적으로 children까지 지움.
+function cloneBlockWithoutIds(block) {
+  const { id, children, ...rest } = block;
+  return { ...rest, children: children ? children.map(cloneBlockWithoutIds) : undefined };
+}
+
+function DuplicateItem({ children }) {
+  const Components = useComponentsContext();
+  const { editor, block } = useHoveredBlock();
+  if (block === undefined) return null;
+
+  return (
+    <Components.Generic.Menu.Item
+      className="bn-menu-item"
+      onClick={() => editor.insertBlocks([cloneBlockWithoutIds(block)], block, 'after')}
+    >
+      {children}
+    </Components.Generic.Menu.Item>
+  );
+}
+
+// moveBlocksUp/Down은 콜아웃 안 첫/마지막 자식에서 "형제가 없으면 부모 밖으로 꺼내
+// 앞/뒤에 놓는다"는 BlockNote 기본 동작이 있어(문서 주석 확인) — 콜아웃 안에서는 이게
+// 콜아웃 밖으로 블록이 빠져나가는 것이라 요구사항 위반. 부모가 콜아웃이고 그 방향에
+// 형제가 없을 때만 아무 것도 안 하게(no-op) 막아서 콜아웃 밖 이동만 예외 처리하고,
+// 그 외(최상위·다른 컨테이너)는 BlockNote 기본 동작 그대로 둠.
+function moveUp(editor, block) {
+  const parent = editor.getParentBlock(block);
+  if (parent?.type === 'callout' && !editor.getPrevBlock(block)) return;
+  editor.moveBlocksUp(block);
+}
+function moveDown(editor, block) {
+  const parent = editor.getParentBlock(block);
+  if (parent?.type === 'callout' && !editor.getNextBlock(block)) return;
+  editor.moveBlocksDown(block);
+}
+
+function MoveItem({ children }) {
+  const Components = useComponentsContext();
+  const { editor, block } = useHoveredBlock();
+  if (block === undefined) return null;
+
+  return (
+    <SubMenu trigger={children}>
+      <Components.Generic.Menu.Item className="bn-menu-item" onClick={() => moveUp(editor, block)}>
+        위로 이동
+      </Components.Generic.Menu.Item>
+      <Components.Generic.Menu.Item className="bn-menu-item" onClick={() => moveDown(editor, block)}>
+        아래로 이동
+      </Components.Generic.Menu.Item>
+    </SubMenu>
+  );
+}
+
 function CustomDragHandleMenu() {
-  const dict = useDictionary();
   return (
     <DragHandleMenu>
       <TurnIntoItem>전환</TurnIntoItem>
-      <RemoveBlockItem>{dict.drag_handle.delete_menuitem}</RemoveBlockItem>
-      <BlockColorsItem>{dict.drag_handle.colors_menuitem}</BlockColorsItem>
-      <TableRowHeaderItem>{dict.drag_handle.header_row_menuitem}</TableRowHeaderItem>
-      <TableColumnHeaderItem>{dict.drag_handle.header_column_menuitem}</TableColumnHeaderItem>
+      <BlockColorsItem>색</BlockColorsItem>
+      <ListTypeItem>목록 형식</ListTypeItem>
+      <DuplicateItem>복제</DuplicateItem>
+      <MoveItem>옮기기</MoveItem>
+      <RemoveBlockItem>삭제</RemoveBlockItem>
     </DragHandleMenu>
   );
 }
 
-// 콜아웃처럼 자식을 담는 컨테이너 블록 안에서는 ⋮⋮/+ 핸들 버튼 자신이 그 블록의 왼쪽
-// padding(어느 자식의 DOM 박스에도 속하지 않는 여백) 위에 뜨는데, BlockNote의 SideMenu는
-// 마우스가 움직일 때마다 그 좌표 아래 blockContainer를 다시 찾기 때문에, 핸들 버튼 위로
-// 마우스를 올리는 순간 그 좌표가 자식이 아니라 콜아웃 자신으로 재판정돼 버림(실측 확인 —
-// 패딩 크기를 아무리 조절해도 핸들이 자기 자식의 박스보다 항상 48px 왼쪽에 뜨는 구조라
-// CSS만으로는 못 고침). 핸들 영역에 마우스가 들어오는 순간 먼저 얼려서(freezeMenu) 그
-// 갱신 자체를 막으면 direct하게 막을 수 있음 — mouseenter가 그 좌표를 갱신하는
-// mousemove보다 먼저 발생하므로(같은 마우스 이동에 대해 진입 이벤트가 항상 먼저 옴)
-// 늦지 않게 막힘. 서브메뉴(전환/색상 등) 위로 마우스가 나가면 별도 포탈이라 mouseleave가
-// 뜨지만, 그 사이엔 드롭다운 자체가 열려있으므로 얼림을 풀지 않고 그대로 둠 — 열린 메뉴가
-// 없을 때만 풀어서 이후 다른 줄 호버가 다시 정상 추적되게 함.
 export function CustomSideMenu(props) {
-  const editor = useBlockNoteEditor();
-  return (
-    <div
-      onMouseEnter={() => editor.getExtension(SideMenuExtension)?.freezeMenu()}
-      onMouseLeave={() => {
-        if (!document.querySelector('.bn-menu-dropdown')) {
-          editor.getExtension(SideMenuExtension)?.unfreezeMenu();
-        }
-      }}
-    >
-      <SideMenu {...props} dragHandleMenu={CustomDragHandleMenu} />
-    </div>
-  );
+  return <SideMenu {...props} dragHandleMenu={CustomDragHandleMenu} />;
 }
