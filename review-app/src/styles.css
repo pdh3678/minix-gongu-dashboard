@@ -67,33 +67,21 @@
   border-left:none!important;
 }
 
-/* 콜아웃 — 아이콘+박스는 콜아웃 자신(content:'none')의 render() 결과(.rv2-callout)이고,
+/* 콜아웃 — 박스(배경/테두리)는 콜아웃 자신(content:'none')이 차지한 .bn-block에 입히고,
    실제 본문(문단/목록/할일 등)은 전부 BlockNote 표준 children(.bn-block-group)으로 들어감.
-   .rv2-callout과 .bn-block-group은 같은 .bn-block 밑의 형제라서(실측 확인) 박스 스타일을
-   .rv2-callout이 아니라 그 부모 .bn-block에 :has()로 입혀야 children까지 배경/테두리 안에
-   들어옴 — BlockNote 코어 자체도 배경색 하이라이트를 이 방식(.bn-block:has(...))으로 구현함. */
+   콜아웃 자신의 콘텐츠(.rv2-callout, 아이콘 제거로 빈 껍데기만 남음)와 .bn-block-group은
+   같은 .bn-block 밑의 형제라서(실측 확인) 박스 스타일은 .rv2-callout이 아니라 그 부모
+   .bn-block에 :has()로 입혀야 children까지 배경/테두리 안에 들어옴 — BlockNote 코어 자체도
+   배경색 하이라이트를 이 방식(.bn-block:has(...))으로 구현함. 콜아웃 자신의 콘텐츠는 이제
+   보여줄 게 없으므로 display:none — 아이콘이 있던 자리에 빈 여백이 남지 않음. */
 .rv2-editor .bn-block:has(> .bn-block-content[data-content-type="callout"]) {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
   background: var(--surface-2);
   border-radius: 8px;
   padding: 12px 14px;
   margin: 6px 0;
 }
 .rv2-editor .bn-block:has(> .bn-block-content[data-content-type="callout"]) > .bn-block-content {
-  flex-shrink: 0;
-  padding: 0;
-}
-.rv2-editor .bn-block:has(> .bn-block-content[data-content-type="callout"]) > .bn-block-group {
-  flex: 1;
-  min-width: 0;
-}
-.rv2-callout-icon {
-  font-size: 16px;
-  line-height: 1.6;
-  cursor: pointer;
-  user-select: none;
+  display: none;
 }
 
 /* 회고 목록 기간 필터 — 대시보드 다른 페이지의 "기간 필터"(.ym-dd/.ym-dd-btn/.ym-dd-pop)와

@@ -5,13 +5,11 @@ import { createBlockConfig, createBlockSpec } from '@blocknote/core';
 // 표준 children으로 둠 — 이러면 Enter/Tab/Backspace/슬래시메뉴/실행취소/IME는 BlockNote
 // 코어가 모든 블록에 이미 범용으로 제공하는 동작을 그대로 물려받아 별도 구현이 필요 없음
 // (다단 열(column/columnList)도 같은 content:'none'+children 패턴이라 이미 검증된 방식).
-const CALLOUT_ICONS = ['💡', '📌', '⚠️', '✅', '📝', '🔥', '⭐', '❗'];
-
 export const createCalloutBlockConfig = createBlockConfig(
   () =>
     ({
       type: 'callout',
-      propSchema: { icon: { default: '💡' } },
+      propSchema: {},
       content: 'none',
     })
 );
@@ -19,27 +17,14 @@ export const createCalloutBlockConfig = createBlockConfig(
 // createBlockSpec()은 스펙 객체가 아니라 그걸 만드는 팩토리 함수를 반환함(BlockNote
 // 기본 블록들도 전부 defaultBlocks.ts에서 createQuoteBlockSpec() 처럼 호출해서 씀) —
 // 그래서 여기서도 바로 호출까지 해서 blockSpecs에 등록 가능한 실제 스펙을 내보냄.
+// content:'none' 블록도 render()가 dom을 반환해야 하지만(아이콘 제거로 시각적 내용은
+// 없음), 이 dom은 styles.css에서 display:none 처리 — children(.bn-block-group)이
+// 유일한 보이는 flex 자식이 되어 아이콘이 있던 자리에 빈 여백이 남지 않음.
 export const calloutBlockSpec = createBlockSpec(createCalloutBlockConfig, {
   meta: { isolating: false },
-  render(block, editor) {
+  render() {
     const dom = document.createElement('div');
     dom.className = 'rv2-callout';
-
-    const iconEl = document.createElement('div');
-    iconEl.className = 'rv2-callout-icon';
-    iconEl.textContent = block.props.icon;
-    iconEl.title = '클릭하여 아이콘 변경';
-    iconEl.contentEditable = 'false';
-    iconEl.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const cur = CALLOUT_ICONS.indexOf(block.props.icon);
-      const next = CALLOUT_ICONS[(cur + 1) % CALLOUT_ICONS.length];
-      editor.updateBlock(block, { props: { icon: next } });
-    });
-
-    dom.appendChild(iconEl);
-
     return { dom };
   },
 })();
