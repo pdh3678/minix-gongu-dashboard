@@ -40,14 +40,18 @@ function Dropdown({ label, value, options, onSelect }) {
   const current = options.find((o) => o.value === value);
 
   return (
-    // 대시보드 다른 페이지의 "기간 필터"(.ym-dd/.ym-dd-btn/.ym-dd-pop)와 같은 클래스를 그대로
-    // 써서 톤을 맞춤 — 여긴 fixed 포지셔닝/포탈 없이 이 카드 안에서만 열리는 단순 버전.
-    <div className="ym-dd" ref={wrapRef}>
-      <button type="button" className="ym-dd-btn" onClick={() => setOpen((v) => !v)}>
+    // 대시보드 다른 페이지의 "기간 필터" 버튼과 시각적으로만 동일하게 CSS를 새로 만듦
+    // (review-app/src/styles.css의 .rv2-dd*) — .ym-dd/.ym-dd-pop 클래스를 그대로 쓰면
+    // index.html의 전역 document 클릭 리스너(document.addEventListener('click', ...
+    // _closeAllYmDd()))가 "패널 밖 클릭"으로 오인해 React가 방금 연 팝오버의 open 클래스를
+    // 같은 클릭의 버블링 단계에서 바로 지워버림 — React 상태는 열림인데 화면엔 아무것도 안
+    // 보이는 상태가 됨(실측 확인). 클래스를 완전히 분리해 그 전역 리스너의 영향권 밖에 둠.
+    <div className="rv2-dd" ref={wrapRef}>
+      <button type="button" className="rv2-dd-btn" onClick={() => setOpen((v) => !v)}>
         {label}: {current ? current.label : '전체'}
       </button>
       {open && (
-        <div className="ym-dd-pop rv2-period-pop open">
+        <div className="rv2-period-pop">
           {options.map((o) => (
             <div
               key={o.value || 'all'}
@@ -69,7 +73,7 @@ export function PeriodFilter({ reviews, year, month, onChange }) {
   const monthOptions = useMemo(() => [{ value: '', label: '전체' }, ...MONTHS.map((m) => ({ value: m, label: String(+m) + '월' }))], []);
 
   return (
-    <div className="dash-filter-row rv2-period-filter">
+    <div className="rv2-period-filter">
       <span className="rv2-period-lbl">기간 필터</span>
       <Dropdown label="연도" value={year} options={yearOptions} onSelect={(v) => onChange(v, month)} />
       <Dropdown label="월" value={month} options={monthOptions} onSelect={(v) => onChange(year, v)} />

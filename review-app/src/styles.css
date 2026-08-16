@@ -68,11 +68,18 @@
 }
 
 /* 회고 목록 기간 필터 — 대시보드 다른 페이지의 "기간 필터"(.ym-dd/.ym-dd-btn/.ym-dd-pop)와
-   같은 클래스를 재사용해 톤을 맞춤. 그쪽은 body 포탈+JS로 위치를 계산하는 fixed 팝오버라,
-   여기서는 훨씬 단순하게 .ym-dd(position:relative)를 기준으로 절대 위치시켜 같은 모양을 냄. */
-.rv2-period-filter{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+   시각적으로만 동일하게 별도 클래스로 새로 만듦(.rv2-dd*). 그 클래스를 그대로 재사용했다가
+   index.html의 전역 document 클릭 리스너(바깥 클릭 시 모든 .ym-dd-pop.open을 닫는 로직)가
+   React가 방금 연 팝오버까지 같은 클릭의 버블링 단계에서 즉시 닫혀버리는 문제가 있었음
+   (실측 확인 — 클릭해도 아무 반응 없어 보이는 원인이었음). 클래스를 완전히 분리해 그 전역
+   리스너의 대상에서 아예 빠지게 함. */
+.rv2-period-filter{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
 .rv2-period-lbl{font-size:11px;font-weight:700;color:var(--text-2);margin-right:2px}
-.rv2-period-pop{position:absolute!important;top:calc(100% + 4px);left:0;z-index:20}
+.rv2-dd{position:relative}
+.rv2-dd-btn{padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.rv2-dd-btn:hover{background:var(--border)}
+.rv2-dd-btn::after{content:'▾';font-size:8px}
+.rv2-period-pop{position:absolute;top:calc(100% + 4px);left:0;z-index:20;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,.18);padding:6px;min-width:130px;max-height:min(320px,70vh);overflow-y:auto}
 .rv2-period-opt{padding:6px 10px;border-radius:6px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap}
 .rv2-period-opt:hover{background:var(--surface-2)}
 .rv2-period-opt.sel{color:var(--minix);font-weight:700}
