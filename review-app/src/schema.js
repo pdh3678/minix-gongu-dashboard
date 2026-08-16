@@ -9,6 +9,7 @@ import {
   locales as multiColumnLocales,
   withMultiColumn,
 } from '@blocknote/xl-multi-column';
+import { calloutBlockSpec, insertCallout } from './callout.js';
 
 // 인라인 코드(code 스타일)는 @tiptap/extension-code 기본 설정이 excludes:'_'라 다른 모든
 // 마크(볼드/이탤릭/밑줄/취소선)와 배타적 — 노션과 달리 코드에 볼드를 얹을 수 없었음. 이건
@@ -29,7 +30,7 @@ const codeStyleSpec = {
 // 교체해 노션과 동등한 코드 블록으로 만듦.
 export const schema = withMultiColumn(
   BlockNoteSchema.create().extend({
-    blockSpecs: { codeBlock: createCodeBlockSpec(codeBlockOptions) },
+    blockSpecs: { codeBlock: createCodeBlockSpec(codeBlockOptions), callout: calloutBlockSpec },
     styleSpecs: { code: codeStyleSpec },
   })
 );
@@ -45,9 +46,17 @@ export const dictionary = {
 // 기본 슬래시 메뉴 + 컬럼(2열/3열) 항목을 합쳐서 반환 — BlockNoteView에는 slashMenu={false}로
 // 내장 메뉴를 끄고 이 함수를 SuggestionMenuController에 넘겨야 함(공식 예제 패턴).
 export function makeGetSlashMenuItems(editor) {
+  const calloutItem = {
+    title: '콜아웃',
+    subtext: '강조 박스 안에 여러 블록을 자유롭게 작성',
+    aliases: ['callout', '콜아웃', '박스', '강조'],
+    group: '기본 블록',
+    icon: '💡',
+    onItemClick: () => insertCallout(editor),
+  };
   return async (query) =>
     filterSuggestionItems(
-      combineByGroup(getDefaultReactSlashMenuItems(editor), getMultiColumnSlashMenuItems(editor)),
+      combineByGroup(getDefaultReactSlashMenuItems(editor), [calloutItem], getMultiColumnSlashMenuItems(editor)),
       query
     );
 }
