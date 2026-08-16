@@ -73,11 +73,17 @@
    같은 .bn-block 밑의 형제라서(실측 확인) 박스 스타일은 .rv2-callout이 아니라 그 부모
    .bn-block에 :has()로 입혀야 children까지 배경/테두리 안에 들어옴 — BlockNote 코어 자체도
    배경색 하이라이트를 이 방식(.bn-block:has(...))으로 구현함. 콜아웃 자신의 콘텐츠는 이제
-   보여줄 게 없으므로 display:none — 아이콘이 있던 자리에 빈 여백이 남지 않음. */
+   보여줄 게 없으므로 display:none — 아이콘이 있던 자리에 빈 여백이 남지 않음.
+   왼쪽 padding 56px — ⋮⋮/+ 핸들(폭 48px)이 자식 블록의 왼쪽 바로 옆에 뜨는데 그 자리가
+   박스 밖으로 삐져나가지 않도록 시각적 여유만 확보하는 용도. 핸들을 클릭했을 때 실제로
+   어느 블록이 대상이 되는지(정확도)는 이 padding 크기와 무관 — turnInto.jsx의
+   CustomSideMenu가 핸들 호버 시 freezeMenu()로 별도 처리함(자세한 이유는 그 주석 참고:
+   핸들 자신이 항상 자식 박스보다 48px 왼쪽에 뜨는 BlockNote 구조상 padding만으로는
+   hit-test 정확도를 못 고침). */
 .rv2-editor .bn-block:has(> .bn-block-content[data-content-type="callout"]) {
   background: var(--surface-2);
   border-radius: 8px;
-  padding: 12px 14px;
+  padding: 12px 14px 12px 56px;
   margin: 6px 0;
 }
 .rv2-editor .bn-block:has(> .bn-block-content[data-content-type="callout"]) > .bn-block-content {
