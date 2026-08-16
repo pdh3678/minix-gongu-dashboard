@@ -275,7 +275,6 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .m-delete-btn{margin-top:22px;padding:14px 0 0;border:none;border-top:1px solid var(--border);background:none;color:#DC2626;font-size:12px;font-weight:600;cursor:pointer;text-align:left;width:100%}
 .m-delete-btn:hover{color:#B91C1C;text-decoration:underline}
 .reel-mgr-hd{font-size:13px;font-weight:600;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
-.reel-mgr-disabled{opacity:.5;pointer-events:none}
 .reel-gallery-hint{font-size:10px;color:var(--text-3);margin-bottom:6px}
 .reel-gallery{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px}
 .reel-gallery-slot{aspect-ratio:1;border-radius:6px;overflow:hidden;display:block;background:var(--nbg);text-decoration:none}
@@ -579,7 +578,6 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div><div class="m-brand" id="mBrand"></div><div class="m-title" id="mTitle"></div><div class="m-sub" id="mSub"></div></div>
       <button class="m-cls" onclick="closeSchModal()">✕</button>
     </div>
-    <div class="sch-note" id="mMultiRowNotice" style="display:none"></div>
     <div class="sch-2col">
       <div class="sch-col-l">
         <div class="f-sec" style="margin-top:0">기본 정보</div>
@@ -1022,7 +1020,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='review-callout-margin-fix-2026-08-17-01';
+const DASHBOARD_VERSION='deal-modal-multirow-perf-edit-2026-08-17-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -2089,24 +2087,13 @@ function _openRegisteredModal(d){
   document.getElementById('schOv').classList.add('open');
 }
 
-// 상품코드별로 시트에 여러 행으로 나뉜 건(그룹)을 열었을 때 안내 배너를 띄우고,
-// 실적/조회 필드(판매수량·릴스 관리)는 읽기 전용으로 막음 — 수정은 시트에서 직접 하도록 유도.
-// 내용 기준으로만 합쳐진 그룹(_isComposite, 서로 다른 dealId를 가진 행들을 합친 경우)은
-// 저장/삭제가 어느 물리 행에 반영될지 안전하게 보장할 수 없어 저장·삭제 버튼도 함께 막음.
+// 상품코드가 여러 개라 시트에서 여러 행으로 나뉜 건(그룹)이어도, 판매수량·릴스/조회수 등
+// 실적 필드는 규칙상 대표 행(codeSeq 1번, _findGroupRows/parseMainSheet와 동일 기준)에만
+// 기입되므로 모달에서 그대로 편집 가능 — updateDeal/saveReels(apps-script.js)가 이미
+// groupRows[0](대표 행)에만 반영하도록 구현돼 있어 별도 잠금이 필요 없음.
+// 다만 내용 기준으로만 합쳐진 그룹(_isComposite, 서로 다른 dealId를 가진 행들을 합친 경우)은
+// 저장/삭제가 어느 물리 행(어느 dealId)에 반영될지 안전하게 보장할 수 없어 저장·삭제 버튼만 막음.
 function _applyMultiRowNotice(d){
-  const isMulti=(d._rowCount||1)>1;
-  const notice=document.getElementById('mMultiRowNotice');
-  notice.style.display=isMulti?'block':'none';
-  notice.textContent=isMulti
-    ?`📌 이 건은 시트에 ${d._rowCount}행으로 나뉘어 있습니다. 판매수량·릴스/조회수는 시트에서 직접 수정해주세요.`
-    :'';
-
-  document.getElementById('mQtyInput').disabled=isMulti;
-  // addReelBtn은 renderReelList()가 이미 "최대 10개" 기준으로 disabled를 세팅해뒀으므로,
-  // 다중 행일 때만 강제로 막고 아닐 때는 그 값을 건드리지 않음
-  if(isMulti)document.getElementById('addReelBtn').disabled=true;
-  document.getElementById('reelMgrCol').classList.toggle('reel-mgr-disabled',isMulti);
-
   const blockSave=!!d._isComposite;
   const saveBtn=document.getElementById('mSaveBtn'),delBtn=document.getElementById('mDeleteBtn');
   saveBtn.disabled=blockSave;
@@ -2517,21 +2504,21 @@ async function saveSchemeModal(){
       }
     })().then(()=>{
       // fetchLive()가 끝나기 전에 모달/테이블/캘린더가 빈 상태로 보이지 않도록, 방금 저장한 값을 로컬 DATA에도 바로 반영
-      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,status:_calcStatus(next.start,next.end)});
+      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option1:next.option1,option2:next.option2,firstCome:next.firstCome,extraQty:next.extraQty,status:_calcStatus(next.start,next.end)});
       if(codesChanged)d.codes=codes;
-      d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;
+      d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note;
       if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
       if(touchReels){d.reels=reels;d.views=totalViews;}
       _refreshModalHeader(d); // 헤더(제목/기간)를 즉시 갱신
       render();
       closeSchModal();
-      showToast('저장되었습니다');
+      showToast('저장되었습니다',{type:'success'});
       fetchLive();
-    }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+_friendlySaveError(e.message));setLoad(false);});
+    }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+_friendlySaveError(e.message),{type:'error'});setLoad(false);});
   } else {
-    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,status:_calcStatus(next.start,next.end)});
+    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option1:next.option1,option2:next.option2,firstCome:next.firstCome,extraQty:next.extraQty,status:_calcStatus(next.start,next.end)});
     if(codesChanged)d.codes=codes;
-    d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;
+    d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note;
     if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
     if(touchReels){d.reels=reels;d.views=totalViews;}
     _refreshModalHeader(d);
