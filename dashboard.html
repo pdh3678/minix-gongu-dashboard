@@ -1020,7 +1020,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='deal-modal-multirow-perf-edit-2026-08-17-01';
+const DASHBOARD_VERSION='sales-format-badge-colors-2026-08-17-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1216,6 +1216,15 @@ const PRODUCT_COLORS={
   '에어드라이': {bg:'#FFE4E6',fg:'#E11D48'},
   other:        {bg:'#F3F4F6',fg:'#6B7280'}
 };
+// 실적 표 "포맷" 열(유튜브/릴스/게시물 등) 배지 색 — 값이 늘어나면 여기에만 추가하면 됨.
+// 매핑에 없는 값(예상 못한 포맷)은 other로 폴백돼 깨지지 않고 중립색으로 표시됨.
+const FORMAT_COLORS={
+  '유튜브': {bg:'#FEE2E2',fg:'#B91C1C'}, // 빨강 계열
+  '릴스':   {bg:'#FCE7F3',fg:'#BE185D'}, // 핑크(인스타 연상)
+  '게시물': {bg:'#E5E7EB',fg:'#374151'}, // 중립 블루그레이
+  other:    {bg:'#EEF2FF',fg:'#4338CA'}
+};
+function formatColor(f){return FORMAT_COLORS[f]||FORMAT_COLORS.other;}
 // 제품명 → 색상 팔레트 키 (공백 제거 후 매칭)
 function productColorKey(p){
   if(isFlender(p))return'플렌더'+flenderModel(p);
@@ -1572,6 +1581,11 @@ function productBadge(p){
   }
   return`<span class="bp" style="background:${c.bg};color:${c.fg}">${label}</span>`;
 }
+function formatBadge(f){
+  if(!f)return'—';
+  const c=formatColor(f);
+  return`<span class="bp bp-fmt" style="background:${c.bg};color:${c.fg}">${f}</span>`;
+}
 
 const SALES_CELL={
   product:d=>productBadge(d.product),
@@ -1606,7 +1620,7 @@ const SALES_CELL={
     const popRows=codes.map(c=>`<div class="cd-pop-row"><span class="pcode-pop-code">${c}</span><button type="button" class="btn-cancel" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();cpTxt('${c}',this)">복사</button></div>`).join('');
     return`${first} <span class="cd-dd" onclick="event.stopPropagation();toggleCodeDd(this)"><span class="bp cd-badge">+${codes.length-1}</span><div class="cd-dd-pop">${popRows}</div></span>`;
   },
-  format:d=>d.format?`<span class="bp bp-fmt">${d.format}</span>`:'—',
+  format:d=>formatBadge(d.format),
   naverLink:d=>{
     const c=(d.codes||[])[0];
     return naverProductLink(c)?`<a href="${naverProductLink(c)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="pcode-link">🔗 열기</a>`:'<span style="color:var(--text-3)">—</span>';
