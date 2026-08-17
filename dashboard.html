@@ -1020,7 +1020,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='sales-format-badge-colors-2026-08-17-01';
+const DASHBOARD_VERSION='sales-reels-blue-color-2026-08-17-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1220,7 +1220,7 @@ const PRODUCT_COLORS={
 // 매핑에 없는 값(예상 못한 포맷)은 other로 폴백돼 깨지지 않고 중립색으로 표시됨.
 const FORMAT_COLORS={
   '유튜브': {bg:'#FEE2E2',fg:'#B91C1C'}, // 빨강 계열
-  '릴스':   {bg:'#FCE7F3',fg:'#BE185D'}, // 핑크(인스타 연상)
+  '릴스':   {bg:'#DBEAFE',fg:'#1D4ED8'}, // 파랑(유튜브의 빨강과 확실히 구분)
   '게시물': {bg:'#E5E7EB',fg:'#374151'}, // 중립 블루그레이
   other:    {bg:'#EEF2FF',fg:'#4338CA'}
 };
