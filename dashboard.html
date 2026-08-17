@@ -277,6 +277,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .trend-down{color:#DC2626;font-weight:700}
 .trend-flat{color:var(--text-3)}
 .dash-top-row{background:var(--minix-lt)}
+.dash-note-banner{background:var(--warn-bg);color:var(--warn);font-size:11.5px;padding:8px 12px;border-radius:6px;margin-bottom:12px;line-height:1.5}
+.dash-stat-line{font-size:12px;color:var(--text-2);margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap}
+.dash-stat-line b{color:var(--text)}
+.dash-season-highlight{outline:2px solid var(--minix);outline-offset:-2px}
 
 /* Modals shared */
 .ov{display:none;position:fixed;inset:0;background:rgba(17,24,39,.55);backdrop-filter:blur(3px);z-index:100;align-items:center;justify-content:center}
@@ -541,15 +545,6 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         </div>
       </div>
       <div class="card">
-        <div class="card-hd">
-          <span>해당 기간에 포함된 개별 공구 건 <span class="card-hd-r" id="dashSelCnt"></span></span>
-        </div>
-        <div class="tbl-wrap">
-          <table><thead><tr><th>제품</th><th>채널</th><th>기간</th><th>조회수</th><th>매출</th></tr></thead><tbody id="dashSelBody"></tbody></table>
-        </div>
-      </div>
-
-      <div class="card">
         <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료 건 기준</span></div>
         <div class="analytics-split">
           <div class="tbl-wrap">
@@ -589,6 +584,49 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <div style="height:280px"><canvas id="dashPlatformChart"></canvas></div>
         </div>
         <div class="chart-note" id="dashPlatformNote"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><span>달성률 분석</span><span class="card-hd-r" id="dashAchvHdNote">완료 건 기준</span></div>
+        <div id="dashAchvBanner" class="dash-note-banner" style="display:none"></div>
+        <div class="dash-stat-line" id="dashAchvStats"></div>
+        <div class="analytics-split">
+          <div class="tbl-wrap">
+            <table><thead><tr><th id="dashAchvDistColHd">달성률 구간</th><th class="num-col">건수</th><th class="num-col">비율</th></tr></thead><tbody id="dashAchvDistBody"></tbody></table>
+          </div>
+          <div style="height:240px"><canvas id="dashAchvChart"></canvas></div>
+        </div>
+        <div class="f-sec" id="dashAchvCrossTitle" style="margin-top:14px">달성률 상위 조건</div>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>구분</th><th>값</th><th class="num-col" id="dashAchvCrossValHd">평균 달성률</th><th class="num-col">건수</th></tr></thead><tbody id="dashAchvCrossBody"></tbody></table>
+        </div>
+        <div class="chart-note" id="dashAchvNote"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><span>시즌성 분석(월별)</span><span class="card-hd-r">완료 건 기준 · 연도만 필터 적용</span></div>
+        <div style="height:260px"><canvas id="dashSeasonChart"></canvas></div>
+        <div class="tbl-wrap" style="margin-top:14px">
+          <table><thead><tr>
+            <th>월</th><th class="num-col">건수</th><th class="num-col">평균 매출</th><th class="num-col">평균 조회수</th><th class="num-col">평균 판매수량</th>
+          </tr></thead><tbody id="dashSeasonMonthBody"></tbody></table>
+        </div>
+        <div class="f-sec" style="margin-top:14px">분기별 요약</div>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>분기</th><th class="num-col">건수</th><th class="num-col">평균 매출</th></tr></thead><tbody id="dashSeasonQuarterBody"></tbody></table>
+        </div>
+        <div class="chart-note" id="dashSeasonNote"></div>
+      </div>
+
+      <!-- 개별 공구건 목록 — 새 분석 섹션이 추가돼도 항상 페이지 맨 아래에 오도록 이 위치(마지막 카드)
+           고정. renderDashboard()도 renderDashList()를 항상 맨 마지막에 호출하도록 정리돼 있음. -->
+      <div class="card">
+        <div class="card-hd">
+          <span>해당 기간에 포함된 개별 공구 건 <span class="card-hd-r" id="dashSelCnt"></span></span>
+        </div>
+        <div class="tbl-wrap">
+          <table><thead><tr><th>제품</th><th>채널</th><th>기간</th><th>조회수</th><th>매출</th></tr></thead><tbody id="dashSelBody"></tbody></table>
+        </div>
       </div>
     </div>
 
@@ -1093,7 +1131,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-mobile-kpi-chart-fix-2026-08-17-01';
+const DASHBOARD_VERSION='dash-achv-season-list-bottom-2026-08-17-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1510,12 +1548,17 @@ function renderKPI(){
     <div class="kpi"><div class="kpi-lbl">조회→구매 전환율</div><div class="kpi-val cok">${conv}</div><div class="kpi-sub">릴스 조회수 기준</div></div>`;
 }
 
+// renderDashList()(개별 공구건 목록)는 항상 맨 마지막에 호출 — 새 분석 섹션을 추가할 땐
+// renderDashList() 호출 "이전"에 끼워 넣기만 하면 화면에서도 항상 그 위에 위치가 보장됨
+// (HTML에서도 #dashSelBody 카드가 #page-dashboard의 마지막 자식으로 고정돼 있음).
 function renderDashboard(){
   renderDashPeriodBar();
   renderKPI();
-  renderDashList();
   renderDashCharts();
   renderDashAnalytics();
+  renderDashAchievement();
+  renderDashSeasonality();
+  renderDashList();
 }
 /* 목록: 상단 기간 필터로 걸러진 공구건 전체를 조회 전용으로 표시 (선택/체크박스 없음) */
 function renderDashList(){
@@ -1804,6 +1847,173 @@ function renderDashPlatformAnalytics(){
     options:{
       responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>won(Math.round(ctx.raw))+'/회'}}},
+      scales:{y:{ticks:{callback:v=>won(v)}}}
+    }
+  });
+}
+
+/* 4) 달성률 분석 — 목표수량(targetQty)이 있는 건이 하나라도 있으면 실제 달성률(판매수량/목표수량)
+   분석을, 하나도 없으면(대상 기간에 목표치 미기입) 매출 기준 "평균 대비 상대 성과"로 자동 대체.
+   목표치가 일부만 있는 경우엔 있는 건만 집계하고 제외 건수를 안내(포맷 미기입 처리와 동일 패턴). */
+const DASH_ACHV_CROSS_DIMS=[
+  ['제품군',d=>PRODUCT_GROUP_LABELS[productColorKey(d.product)]||productColorKey(d.product)],
+  ['채널',d=>d.ch||d.influencer],
+  ['포맷',d=>d.format],
+];
+let _dashAchvChartInst=null;
+function _dashAchvRenderCommon(entries,buckets){
+  const distBody=document.getElementById('dashAchvDistBody');
+  const crossBody=document.getElementById('dashAchvCrossBody');
+  const chartEl=document.getElementById('dashAchvChart');
+
+  const bucketCounts=buckets.map(b=>entries.filter(e=>b.test(e.val)).length);
+  distBody.innerHTML=buckets.map((b,i)=>`
+    <tr>
+      <td>${b.label}</td>
+      <td class="num-col">${bucketCounts[i]}</td>
+      <td class="num-col">${_pct1(entries.length?bucketCounts[i]/entries.length*100:null)}</td>
+    </tr>`).join('');
+
+  function crossRows(dimLabel,keyFn){
+    const map=new Map();
+    entries.forEach(({d,val})=>{
+      const key=keyFn(d); if(key==null||key==='')return;
+      if(!map.has(key))map.set(key,{key,sum:0,count:0});
+      const g=map.get(key); g.sum+=val; g.count++;
+    });
+    // 표본 1건짜리는 "조건" 대표성이 약해 순위에서 제외(우연 1회성 성과가 최상위를 차지하는 것 방지)
+    return[...map.values()].filter(g=>g.count>=2).map(g=>({dim:dimLabel,value:g.key,avg:g.sum/g.count,count:g.count}));
+  }
+  const cross=DASH_ACHV_CROSS_DIMS.flatMap(([label,fn])=>crossRows(label,fn)).sort((a,b)=>b.avg-a.avg).slice(0,8);
+  crossBody.innerHTML=cross.length?cross.map(r=>`
+    <tr>
+      <td><span style="color:var(--text-3);font-size:11px">${r.dim}</span></td>
+      <td>${r.value}</td>
+      <td class="num-col">${r.avg.toFixed(0)}%</td>
+      <td class="num-col">${r.count}</td>
+    </tr>`).join(''):'<tr><td colspan="4" class="dash-analytics-empty">표본이 2건 이상인 조건이 없습니다</td></tr>';
+
+  if(typeof Chart==='undefined')return;
+  if(_dashAchvChartInst)_dashAchvChartInst.destroy();
+  _dashAchvChartInst=new Chart(chartEl.getContext('2d'),{
+    type:'bar',
+    data:{labels:buckets.map(b=>b.label),datasets:[{label:'건수',data:bucketCounts,backgroundColor:['#DC2626','#F59E0B','#3B56E5','#0A7C5E']}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{stepSize:1,precision:0}}}}
+  });
+}
+function renderDashAchievement(){
+  const scope=_dashDoneScope();
+  const banner=document.getElementById('dashAchvBanner');
+  const stats=document.getElementById('dashAchvStats');
+  const distBody=document.getElementById('dashAchvDistBody');
+  const crossBody=document.getElementById('dashAchvCrossBody');
+  const distColHd=document.getElementById('dashAchvDistColHd');
+  const crossValHd=document.getElementById('dashAchvCrossValHd');
+  const crossTitle=document.getElementById('dashAchvCrossTitle');
+
+  function empty(msg){
+    banner.style.display='none';stats.textContent='';
+    distBody.innerHTML=`<tr><td colspan="3" class="dash-analytics-empty">${msg}</td></tr>`;
+    crossBody.innerHTML='';
+    if(_dashAchvChartInst){_dashAchvChartInst.destroy();_dashAchvChartInst=null;}
+  }
+
+  if(!scope.length){empty('해당 기간에 완료된 공구건이 없습니다');return;}
+
+  const withTarget=scope.filter(d=>d.targetQty!=null&&d.targetQty>0&&d.qty!=null);
+
+  if(withTarget.length){
+    banner.style.display='none';
+    distColHd.textContent='달성률 구간';crossValHd.textContent='평균 달성률';crossTitle.textContent='달성률 상위 조건';
+    const entries=withTarget.map(d=>({d,val:d.qty/d.targetQty*100}));
+    const avg=entries.reduce((s,e)=>s+e.val,0)/entries.length;
+    const over=entries.filter(e=>e.val>=100).length,under=entries.length-over;
+    const excluded=scope.length-entries.length;
+    stats.innerHTML=`평균 달성률 <b>${avg.toFixed(0)}%</b> · 초과달성 <b>${over}건</b> · 미달 <b>${under}건</b> · 대상 <b>${entries.length}건</b>${excluded?` · 목표 미기입 ${excluded}건 제외`:''}`;
+    const buckets=[{label:'~80%',test:v=>v<80},{label:'80~100%',test:v=>v>=80&&v<100},{label:'100~150%',test:v=>v>=100&&v<150},{label:'150%+',test:v=>v>=150}];
+    _dashAchvRenderCommon(entries,buckets);
+  } else {
+    banner.style.display='block';
+    banner.textContent='⚠ 이 기간의 완료 건에는 목표수량 데이터가 없어, 매출 기준 상대 성과(전체 평균 대비 %)로 대체해 보여줍니다.';
+    distColHd.textContent='상대 성과 구간';crossValHd.textContent='평균 상대 성과';crossTitle.textContent='상대 성과 상위 조건';
+    const withRev=scope.filter(d=>d.rev!=null);
+    if(!withRev.length){empty('매출 데이터가 없어 상대 성과도 계산할 수 없습니다');return;}
+    const avgRev=withRev.reduce((s,d)=>s+d.rev,0)/withRev.length;
+    const entries=withRev.map(d=>({d,val:avgRev>0?d.rev/avgRev*100:0}));
+    const above=entries.filter(e=>e.val>=100).length,below=entries.length-above;
+    stats.innerHTML=`평균 매출 대비 상회 <b>${above}건</b> · 하회 <b>${below}건</b> · 대상 <b>${entries.length}건</b>`;
+    const buckets=[{label:'~50%',test:v=>v<50},{label:'50~100%',test:v=>v>=50&&v<100},{label:'100~200%',test:v=>v>=100&&v<200},{label:'200%+',test:v=>v>=200}];
+    _dashAchvRenderCommon(entries,buckets);
+  }
+}
+
+/* 5) 시즌성 분석(월별) — 요청대로 "월/주차" 필터와 무관하게 연도만 적용해서 12개월을 항상 보여줌
+   (월 필터로 특정 월만 남기면 성수기/비수기 비교 자체가 불가능해지므로). 현재 월 필터가 걸려있으면
+   해당 월만 표/차트에서 강조 표시. */
+let _dashSeasonChartInst=null;
+function renderDashSeasonality(){
+  const chartEl=document.getElementById('dashSeasonChart');
+  const monthBody=document.getElementById('dashSeasonMonthBody');
+  const quarterBody=document.getElementById('dashSeasonQuarterBody');
+  const note=document.getElementById('dashSeasonNote');
+
+  const scope=DATA.filter(d=>d.start&&_displayStatus(d)==='완료'&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start))));
+
+  if(!scope.length){
+    monthBody.innerHTML='<tr><td colspan="5" class="dash-analytics-empty">해당 연도에 완료된 공구건이 없습니다</td></tr>';
+    quarterBody.innerHTML='';
+    note.textContent='';
+    if(_dashSeasonChartInst){_dashSeasonChartInst.destroy();_dashSeasonChartInst=null;}
+    return;
+  }
+
+  const byMonth=Array.from({length:12},()=>({count:0,revSum:0,viewSum:0,viewN:0,qtySum:0,qtyN:0}));
+  scope.forEach(d=>{
+    const m=monthOf(d.start); if(!m)return;
+    const g=byMonth[m-1];
+    g.count++; g.revSum+=(d.rev||0);
+    if(d.views!=null){g.viewSum+=d.views;g.viewN++;}
+    if(d.qty!=null){g.qtySum+=d.qty;g.qtyN++;}
+  });
+
+  const highlightMonths=_dashActive(DASH.months)?DASH.months:null;
+  monthBody.innerHTML=byMonth.map((g,i)=>{
+    const m=i+1;
+    const avgRev=_safeDiv(g.revSum,g.count);
+    const avgViews=_safeDiv(g.viewSum,g.viewN);
+    const avgQty=_safeDiv(g.qtySum,g.qtyN);
+    const hl=highlightMonths&&highlightMonths.has(m);
+    return`<tr${hl?' class="dash-top-row"':''}>
+      <td>${m}월</td>
+      <td class="num-col">${g.count}</td>
+      <td class="num-col">${avgRev!=null?won(Math.round(avgRev)):'—'}</td>
+      <td class="num-col">${avgViews!=null?avgViews.toFixed(1)+'만':'—'}</td>
+      <td class="num-col">${avgQty!=null?num(Math.round(avgQty)):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const quarters=[[0,1,2],[3,4,5],[6,7,8],[9,10,11]];
+  quarterBody.innerHTML=quarters.map((idxs,qi)=>{
+    const g={count:0,revSum:0};
+    idxs.forEach(i=>{g.count+=byMonth[i].count;g.revSum+=byMonth[i].revSum;});
+    const avgRev=_safeDiv(g.revSum,g.count);
+    return`<tr><td>${qi+1}분기</td><td class="num-col">${g.count}</td><td class="num-col">${avgRev!=null?won(Math.round(avgRev)):'—'}</td></tr>`;
+  }).join('');
+
+  note.textContent=highlightMonths?`현재 선택된 월(${[...highlightMonths].sort((a,b)=>a-b).join('·')}월)을 표에서 강조 표시`:'';
+
+  if(typeof Chart==='undefined')return;
+  if(_dashSeasonChartInst)_dashSeasonChartInst.destroy();
+  _dashSeasonChartInst=new Chart(chartEl.getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:byMonth.map((_,i)=>`${i+1}월`),
+      datasets:[{label:'평균 매출',data:byMonth.map(g=>_safeDiv(g.revSum,g.count)||0),
+        backgroundColor:byMonth.map((_,i)=>highlightMonths&&highlightMonths.has(i+1)?'#3B56E5':'#B7C0F2')}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>won(Math.round(ctx.raw))}}},
       scales:{y:{ticks:{callback:v=>won(v)}}}
     }
   });
