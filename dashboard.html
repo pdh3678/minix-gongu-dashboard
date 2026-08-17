@@ -166,8 +166,13 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
   .app-shell.sb-mobile-open .sb-backdrop{opacity:1;pointer-events:auto}
 }
 
-.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
-#salesKpiRow{grid-template-columns:repeat(3,1fr)}
+/* grid-template-columns:1fr는 실제로 minmax(auto,1fr)라서, 칸 안의 내용(₩ 금액처럼 줄바꿈이
+   안 되는 텍스트, 고정 폭 300px인 <canvas> 등)의 최소 폭이 트랙을 그 이상으로 밀어붙여 좁은
+   화면에서 행 전체가 가로로 넘침(실측 확인 — 390px 화면에서 kpi-row가 560px까지 밀려남).
+   minmax(0,1fr)로 바꾸면 트랙이 실제 컨테이너 폭에 맞춰 정상적으로 줄어듦(Chart.js 캔버스가
+   부모 크기를 기준으로 반응형 리사이즈되는 표준 패턴이기도 함). */
+.kpi-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+#salesKpiRow{grid-template-columns:repeat(3,minmax(0,1fr))}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:15px 17px;box-shadow:var(--sh)}
 .kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-3);margin-bottom:5px}
 .kpi-val{font-size:24px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
@@ -245,11 +250,28 @@ th.num-col{text-align:right}
 thead th.sticky-col1,thead th.sticky-col2{background:var(--surface-2);z-index:3}
 tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--surface-2)}
 
-.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.chart-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
 
-/* 채널별·제품군별·플랫폼별 분석 섹션 — 표+차트 2단 배치. 좁은 화면(모바일)에서는 1열로 쌓임 */
-.analytics-split{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start}
-@media(max-width:900px){.analytics-split{grid-template-columns:1fr}}
+/* 채널별·제품군별·플랫폼별 분석 섹션 — 표+차트 2단 배치. 좁은 화면(모바일)에서는 1열로 쌓임.
+   minmax(0,...)는 900px 초과(2단 유지 구간)에서 캔버스 고정폭이 트랙을 밀어붙이는 것을
+   방지하는 동일한 안전장치(.chart-row/.kpi-row와 같은 이유 — 위 주석 참고). */
+.analytics-split{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:900px){.analytics-split{grid-template-columns:minmax(0,1fr)}}
+
+/* KPI 카드·상단 차트(산점도/추이) 반응형 — .kpi-row/#salesKpiRow/.chart-row의 기본(넓은
+   화면용) 정의는 이 파일 위쪽에 있어서, 여기서 나중에(소스 순서상 뒤에) 덮어써야 좁은
+   화면에서 실제로 적용됨(동일 우선순위 선택자는 나중 규칙이 이김 — 처음엔 이 오버라이드를
+   위쪽 사이드바 미디어쿼리 블록 안에 뒀다가 .kpi-row 기본 정의보다 앞에 있어서 무시되는
+   버그가 있었음, 실측으로 발견). minmax(0,1fr)만으로는 5칸/2칸이 너무 좁아져 내용이 읽기
+   힘들어지므로 칸 수 자체도 줄임. */
+@media(max-width:900px){
+  .chart-row{grid-template-columns:minmax(0,1fr)}
+  .kpi-row,#salesKpiRow{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:420px){
+  .kpi-row,#salesKpiRow{grid-template-columns:minmax(0,1fr)}
+}
+
 .dash-analytics-empty{padding:28px 10px;text-align:center;color:var(--text-3);font-size:12px}
 .trend-up{color:var(--ok);font-weight:700}
 .trend-down{color:#DC2626;font-weight:700}
@@ -1071,7 +1093,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-analytics-sections-2026-08-17-01';
+const DASHBOARD_VERSION='dash-mobile-kpi-chart-fix-2026-08-17-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
