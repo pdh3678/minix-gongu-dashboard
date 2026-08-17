@@ -247,6 +247,15 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 
+/* 채널별·제품군별·플랫폼별 분석 섹션 — 표+차트 2단 배치. 좁은 화면(모바일)에서는 1열로 쌓임 */
+.analytics-split{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start}
+@media(max-width:900px){.analytics-split{grid-template-columns:1fr}}
+.dash-analytics-empty{padding:28px 10px;text-align:center;color:var(--text-3);font-size:12px}
+.trend-up{color:var(--ok);font-weight:700}
+.trend-down{color:#DC2626;font-weight:700}
+.trend-flat{color:var(--text-3)}
+.dash-top-row{background:var(--minix-lt)}
+
 /* Modals shared */
 .ov{display:none;position:fixed;inset:0;background:rgba(17,24,39,.55);backdrop-filter:blur(3px);z-index:100;align-items:center;justify-content:center}
 .ov.open{display:flex}
@@ -516,6 +525,48 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="tbl-wrap">
           <table><thead><tr><th>제품</th><th>채널</th><th>기간</th><th>조회수</th><th>매출</th></tr></thead><tbody id="dashSelBody"></tbody></table>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료 건 기준</span></div>
+        <div class="analytics-split">
+          <div class="tbl-wrap">
+            <table><thead><tr>
+              <th>채널</th><th class="num-col">공구 횟수</th><th class="num-col">누적 매출</th>
+              <th class="num-col">평균 판매수량</th><th class="num-col">평균 조회수</th><th class="num-col">전환율</th><th>추세</th>
+            </tr></thead><tbody id="dashChannelBody"></tbody></table>
+          </div>
+          <div style="height:280px"><canvas id="dashChannelChart"></canvas></div>
+        </div>
+        <div class="chart-note" id="dashChannelNote"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><span>제품군별 비교</span><span class="card-hd-r">완료 건 기준</span></div>
+        <div class="analytics-split">
+          <div class="tbl-wrap">
+            <table><thead><tr>
+              <th>제품군</th><th class="num-col">총매출</th><th class="num-col">비중</th>
+              <th class="num-col">평균 판매수량</th><th class="num-col">평균 조회수</th><th class="num-col">조회당 매출</th>
+            </tr></thead><tbody id="dashProductBody"></tbody></table>
+          </div>
+          <div style="height:280px"><canvas id="dashProductChart"></canvas></div>
+        </div>
+        <div class="chart-note" id="dashProductNote"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><span>플랫폼(포맷)별 효율</span><span class="card-hd-r">완료 건 기준 · 조회당 매출 높은 순</span></div>
+        <div class="analytics-split">
+          <div class="tbl-wrap">
+            <table><thead><tr>
+              <th>포맷</th><th class="num-col">건수</th><th class="num-col">평균 조회수</th>
+              <th class="num-col">평균 매출</th><th class="num-col">조회당 매출</th><th class="num-col">평균 전환율</th>
+            </tr></thead><tbody id="dashPlatformBody"></tbody></table>
+          </div>
+          <div style="height:280px"><canvas id="dashPlatformChart"></canvas></div>
+        </div>
+        <div class="chart-note" id="dashPlatformNote"></div>
       </div>
     </div>
 
@@ -1020,7 +1071,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='sales-reels-blue-color-2026-08-17-01';
+const DASHBOARD_VERSION='dash-analytics-sections-2026-08-17-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1442,6 +1493,7 @@ function renderDashboard(){
   renderKPI();
   renderDashList();
   renderDashCharts();
+  renderDashAnalytics();
 }
 /* 목록: 상단 기간 필터로 걸러진 공구건 전체를 조회 전용으로 표시 (선택/체크박스 없음) */
 function renderDashList(){
@@ -1520,6 +1572,219 @@ function renderDashCharts(){
   }else{
     console.log('[검증] 매출 추이 합계 == KPI 총매출',trendRevSum);
   }
+}
+
+/* ── 대시보드: 채널별·제품군별·플랫폼별 분석 ──
+   셋 다 dashData()(상단 기간 필터 결과)를 그대로 재사용해 자동으로 기간 필터에 연동됨.
+   "완료" 상태 건만 집계 대상으로 삼음 — KPI 카드(총매출·평균 조회수 등)와 동일한 기준이라
+   숫자가 서로 다른 화면끼리 어긋나 보이지 않음(진행중/예정 건은 실적 값이 비어있는 경우가
+   많아 포함하면 왜곡됨). */
+function _dashDoneScope(){return dashData().filter(d=>_displayStatus(d)==='완료');}
+function _safeDiv(n,d){return(d&&d>0)?n/d:null;} // 분모가 0/없음이면 null → 호출부에서 '—'로 표시
+function _pct1(n){return n==null?'—':n.toFixed(1)+'%';}
+function _wonPerView(rev,viewsManwon){return _safeDiv(rev,viewsManwon*10000);} // views는 "만" 단위 저장값
+
+let _dashChannelChartInst=null,_dashProductChartInst=null,_dashPlatformChartInst=null;
+function renderDashAnalytics(){
+  renderDashChannelAnalytics();
+  renderDashProductAnalytics();
+  renderDashPlatformAnalytics();
+}
+
+/* 1) 채널(인플루언서)별 성과 — 매출 상위순 표 + 차트, 회차별 추세는 "회차" 전용 필드가 없어
+   같은 채널 내 시작일 순 정렬로 대체 계산(첫 공구 vs 최근 공구 매출 비교, 2건 이상일 때만) */
+function renderDashChannelAnalytics(){
+  const scope=_dashDoneScope();
+  const body=document.getElementById('dashChannelBody');
+  const note=document.getElementById('dashChannelNote');
+  const chartEl=document.getElementById('dashChannelChart');
+  if(!scope.length){
+    body.innerHTML='<tr><td colspan="7" class="dash-analytics-empty">해당 기간에 완료된 공구건이 없습니다</td></tr>';
+    note.textContent='';
+    if(_dashChannelChartInst){_dashChannelChartInst.destroy();_dashChannelChartInst=null;}
+    return;
+  }
+  const map=new Map();
+  scope.forEach(d=>{
+    const key=d.ch||d.influencer||'(미상)';
+    if(!map.has(key))map.set(key,{ch:key,items:[]});
+    map.get(key).items.push(d);
+  });
+  const rows=[...map.values()].map(g=>{
+    const items=g.items;
+    const revSum=items.reduce((s,d)=>s+(d.rev||0),0);
+    const qtyVals=items.filter(d=>d.qty!=null).map(d=>d.qty);
+    const viewVals=items.filter(d=>d.views!=null).map(d=>d.views);
+    const qtySum=qtyVals.reduce((s,v)=>s+v,0),viewSum=viewVals.reduce((s,v)=>s+v,0);
+    const avgQty=_safeDiv(qtySum,qtyVals.length);
+    const avgViews=_safeDiv(viewSum,viewVals.length);
+    const conv=_safeDiv(qtySum,viewSum*10000);
+    const sorted=[...items].sort((a,b)=>new Date(a.start)-new Date(b.start));
+    let trend=null;
+    if(sorted.length>=2){
+      const first=sorted[0].rev,last=sorted[sorted.length-1].rev;
+      if(first!=null&&last!=null&&first>0){
+        if(last>first)trend={dir:'up',pct:(last-first)/first*100};
+        else if(last<first)trend={dir:'down',pct:(first-last)/first*100};
+        else trend={dir:'flat',pct:0};
+      }
+    }
+    return{ch:g.ch,count:items.length,revSum,avgQty,avgViews,conv,trend};
+  }).sort((a,b)=>b.revSum-a.revSum);
+
+  const trendIcon={up:'▲',down:'▼',flat:'–'};
+  body.innerHTML=rows.map(r=>`
+    <tr>
+      <td>${r.ch}</td>
+      <td class="num-col">${r.count}</td>
+      <td class="num-col"><strong>${won(r.revSum)}</strong></td>
+      <td class="num-col">${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
+      <td class="num-col">${r.avgViews!=null?r.avgViews.toFixed(1)+'만':'—'}</td>
+      <td class="num-col">${_pct1(r.conv!=null?r.conv*100:null)}</td>
+      <td>${r.trend?`<span class="trend-${r.trend.dir}">${trendIcon[r.trend.dir]} ${r.trend.pct.toFixed(0)}%</span>`:'<span style="color:var(--text-3)">—</span>'}</td>
+    </tr>`).join('');
+
+  const top=rows.slice(0,10);
+  note.textContent=rows.length>10?`매출 상위 10개 채널만 차트에 표시(전체 ${rows.length}개 채널)`:'';
+
+  if(typeof Chart==='undefined')return;
+  if(_dashChannelChartInst)_dashChannelChartInst.destroy();
+  _dashChannelChartInst=new Chart(chartEl.getContext('2d'),{
+    type:'bar',
+    data:{labels:top.map(r=>r.ch),datasets:[{label:'누적 매출',data:top.map(r=>r.revSum),backgroundColor:'#3B56E5'}]},
+    options:{
+      indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>won(ctx.raw)}}},
+      scales:{x:{ticks:{callback:v=>won(v)}}}
+    }
+  });
+}
+
+/* 2) 제품군별 비교 — productColorKey/PRODUCT_COLORS(실적 표 배지와 동일 팔레트)를 그대로 재사용해
+   차트·표·실적 표 배지 색이 전부 일관되게 보이도록 함 */
+const PRODUCT_GROUP_LABELS={
+  '플렌더PRO':'더 플렌더 PRO','플렌더MAX':'더 플렌더 MAX','플렌더mini':'더 플렌더 mini','플렌더NEXT':'더 플렌더 NEXT',
+  '시프트':'더 시프트','슬림':'더 슬림','에어드라이':'더 에어드라이',other:'기타'
+};
+function renderDashProductAnalytics(){
+  const scope=_dashDoneScope();
+  const body=document.getElementById('dashProductBody');
+  const note=document.getElementById('dashProductNote');
+  const chartEl=document.getElementById('dashProductChart');
+  if(!scope.length){
+    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간에 완료된 공구건이 없습니다</td></tr>';
+    note.textContent='';
+    if(_dashProductChartInst){_dashProductChartInst.destroy();_dashProductChartInst=null;}
+    return;
+  }
+  const map=new Map();
+  scope.forEach(d=>{
+    const key=productColorKey(d.product);
+    if(!map.has(key))map.set(key,{key,items:[]});
+    map.get(key).items.push(d);
+  });
+  const grandTotal=scope.reduce((s,d)=>s+(d.rev||0),0);
+  const rows=[...map.values()].map(g=>{
+    const items=g.items;
+    const revSum=items.reduce((s,d)=>s+(d.rev||0),0);
+    const qtyVals=items.filter(d=>d.qty!=null).map(d=>d.qty);
+    const viewVals=items.filter(d=>d.views!=null).map(d=>d.views);
+    const qtySum=qtyVals.reduce((s,v)=>s+v,0),viewSum=viewVals.reduce((s,v)=>s+v,0);
+    const avgQty=_safeDiv(qtySum,qtyVals.length);
+    const avgViews=_safeDiv(viewSum,viewVals.length);
+    const revPerView=_wonPerView(revSum,viewSum);
+    const share=_safeDiv(revSum,grandTotal);
+    return{key:g.key,label:PRODUCT_GROUP_LABELS[g.key]||g.key,color:PRODUCT_COLORS[g.key]||PRODUCT_COLORS.other,revSum,share,avgQty,avgViews,revPerView};
+  }).sort((a,b)=>b.revSum-a.revSum);
+
+  body.innerHTML=rows.map(r=>`
+    <tr>
+      <td><span class="bp" style="background:${r.color.bg};color:${r.color.fg}">${r.label}</span></td>
+      <td class="num-col"><strong>${won(r.revSum)}</strong></td>
+      <td class="num-col">${_pct1(r.share!=null?r.share*100:null)}</td>
+      <td class="num-col">${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
+      <td class="num-col">${r.avgViews!=null?r.avgViews.toFixed(1)+'만':'—'}</td>
+      <td class="num-col">${r.revPerView!=null?won(Math.round(r.revPerView)):'—'}</td>
+    </tr>`).join('');
+  note.textContent='';
+
+  if(typeof Chart==='undefined')return;
+  if(_dashProductChartInst)_dashProductChartInst.destroy();
+  _dashProductChartInst=new Chart(chartEl.getContext('2d'),{
+    type:'doughnut',
+    data:{labels:rows.map(r=>r.label),datasets:[{data:rows.map(r=>r.revSum),backgroundColor:rows.map(r=>r.color.fg)}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${won(ctx.raw)}`}}}
+    }
+  });
+}
+
+/* 3) 플랫폼(포맷)별 효율 — 조회당 매출(revenue per view) 높은 순으로 정렬해 "어느 포맷이
+   효율적인가"가 표 맨 위에 바로 드러나게 함(최상위 행 강조 + 🏆). 색은 실적 표의
+   FORMAT_COLORS(유튜브 빨강/릴스 파랑/게시물 중립)와 동일하게 맞춤. */
+function renderDashPlatformAnalytics(){
+  const scope=_dashDoneScope();
+  const body=document.getElementById('dashPlatformBody');
+  const note=document.getElementById('dashPlatformNote');
+  const chartEl=document.getElementById('dashPlatformChart');
+  if(!scope.length){
+    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간에 완료된 공구건이 없습니다</td></tr>';
+    note.textContent='';
+    if(_dashPlatformChartInst){_dashPlatformChartInst.destroy();_dashPlatformChartInst=null;}
+    return;
+  }
+  const map=new Map();
+  scope.forEach(d=>{
+    const key=d.format||'';
+    if(!key)return; // 포맷 미기입 건은 집계 왜곡 방지를 위해 제외(비고에 건수 표시)
+    if(!map.has(key))map.set(key,{key,items:[]});
+    map.get(key).items.push(d);
+  });
+  const assignedCount=[...map.values()].reduce((s,g)=>s+g.items.length,0);
+  const unassigned=scope.length-assignedCount;
+  if(!map.size){
+    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간 완료 건에 포맷(플랫폼) 정보가 없습니다</td></tr>';
+    note.textContent='';
+    if(_dashPlatformChartInst){_dashPlatformChartInst.destroy();_dashPlatformChartInst=null;}
+    return;
+  }
+  const rows=[...map.values()].map(g=>{
+    const items=g.items;
+    const revSum=items.reduce((s,d)=>s+(d.rev||0),0);
+    const qtyVals=items.filter(d=>d.qty!=null).map(d=>d.qty);
+    const viewVals=items.filter(d=>d.views!=null).map(d=>d.views);
+    const qtySum=qtyVals.reduce((s,v)=>s+v,0),viewSum=viewVals.reduce((s,v)=>s+v,0);
+    const avgViews=_safeDiv(viewSum,viewVals.length);
+    const avgRev=_safeDiv(revSum,items.length);
+    const revPerView=_wonPerView(revSum,viewSum);
+    const conv=_safeDiv(qtySum,viewSum*10000);
+    return{key:g.key,color:formatColor(g.key),count:items.length,avgViews,avgRev,revPerView,conv};
+  }).sort((a,b)=>(b.revPerView??-1)-(a.revPerView??-1));
+
+  const bestKey=rows[0].revPerView!=null?rows[0].key:null;
+  body.innerHTML=rows.map(r=>`
+    <tr${r.key===bestKey?' class="dash-top-row"':''}>
+      <td><span class="bp bp-fmt" style="background:${r.color.bg};color:${r.color.fg}">${r.key}</span>${r.key===bestKey?' 🏆':''}</td>
+      <td class="num-col">${r.count}</td>
+      <td class="num-col">${r.avgViews!=null?r.avgViews.toFixed(1)+'만':'—'}</td>
+      <td class="num-col">${r.avgRev!=null?won(Math.round(r.avgRev)):'—'}</td>
+      <td class="num-col">${r.revPerView!=null?won(Math.round(r.revPerView)):'—'}</td>
+      <td class="num-col">${_pct1(r.conv!=null?r.conv*100:null)}</td>
+    </tr>`).join('');
+  note.textContent=unassigned>0?`포맷 미기입 ${unassigned}건 제외`:'';
+
+  if(typeof Chart==='undefined')return;
+  if(_dashPlatformChartInst)_dashPlatformChartInst.destroy();
+  _dashPlatformChartInst=new Chart(chartEl.getContext('2d'),{
+    type:'bar',
+    data:{labels:rows.map(r=>r.key),datasets:[{label:'조회당 매출',data:rows.map(r=>r.revPerView||0),backgroundColor:rows.map(r=>r.color.fg)}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>won(Math.round(ctx.raw))+'/회'}}},
+      scales:{y:{ticks:{callback:v=>won(v)}}}
+    }
+  });
 }
 
 /* 브랜드별 실적 표: 뱃지·정렬·토스트·열 표시 설정 */
