@@ -58,7 +58,9 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .cal-grid-hd,.cal-row{display:grid;align-items:stretch}
 .cal-lbl2{background:var(--surface-2);border-right:1px solid var(--border);border-bottom:1px solid var(--border);position:sticky;z-index:6}
 .cal-lbl2:nth-child(1){left:0}
-.cal-lbl2:nth-child(2){left:90px}
+/* 2026-08-18: 라벨 열 폭 축소(90/150→60/110, renderCalMonth의 colsTpl과 반드시 같이 맞출 것) —
+   왼쪽 MINIX 뱃지+제품명 열이 과하게 넓어 오른쪽 날짜 영역을 잠식하던 문제 수정. */
+.cal-lbl2:nth-child(2){left:60px}
 .cal-wk{text-align:center;font-size:10px;font-weight:700;color:var(--text-2);background:var(--surface-2);border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:4px 0}
 .cal-dow2{text-align:center;font-size:9px;font-weight:700;color:var(--text-3);background:var(--surface-2);border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:3px 0}
 .cal-dow2.sat{color:#1D4ED8}.cal-dow2.sun{color:#B91C1C}
@@ -67,9 +69,9 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .cal-date2.today{background:var(--minix);color:#fff;font-weight:800;border-radius:3px}
 .cal-row{border-bottom:1px solid var(--border);min-height:30px}
 .cal-row:last-child{border-bottom:none}
-.cal-rowlbl{display:flex;align-items:center;gap:5px;padding:4px 10px;font-size:11px;font-weight:600;background:var(--surface-2);border-right:1px solid var(--border);position:sticky;z-index:5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-rowlbl{display:flex;align-items:center;gap:5px;padding:4px 8px;font-size:11px;font-weight:600;background:var(--surface-2);border-right:1px solid var(--border);position:sticky;z-index:5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-rowlbl:nth-child(1){left:0}
-.cal-rowlbl:nth-child(2){left:90px}
+.cal-rowlbl:nth-child(2){left:60px}
 .cal-lane-sep{border-top:1px dashed var(--border)}
 .cal-bar{border-radius:4px;padding:3px 8px;font-size:10px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;align-self:center;margin:3px 2px;transition:filter .1s}
 .cal-bar:hover{filter:brightness(.95)}
@@ -1188,7 +1190,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-main-width-expand-2026-08-18-01';
+const DASHBOARD_VERSION='dash-cal-label-col-shrink-2026-08-18-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -2529,7 +2531,8 @@ function renderCalMonth(y,m){
   const weeks=monthWeeks(y,m);
   const gridDays=weeks.flat();
   const totalCols=gridDays.length;
-  const colsTpl=`90px 150px repeat(${totalCols},minmax(30px,1fr))`;
+  // 60px(MINIX 뱃지/★)+110px(제품명/프로모션) — .cal-lbl2/.cal-rowlbl의 nth-child(2) left 값과 반드시 같이 맞출 것
+  const colsTpl=`60px 110px repeat(${totalCols},minmax(30px,1fr))`;
   const today=new Date();today.setHours(0,0,0,0);
 
   let hdA=`<div class="cal-lbl2"></div><div class="cal-lbl2"></div>`;
