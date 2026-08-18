@@ -1181,7 +1181,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-achv-cross-dim-toggle-2026-08-18-01';
+const DASHBOARD_VERSION='dash-firstcome-timedeal-2026-08-18-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -3745,11 +3745,14 @@ document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.get
 const GIFT_ITEMS=['하드필터','하드락필터','하드락필터(mini)','저온촉매 탈취필터','락앤락 김치통 2.6L 2P','푸드컨테이너(단종)','실링 컨테이너 2L','실링 컨테이너 3L','탈취제','수동 빙수기'];
 const QTY_STANDARD_OPTIONS=(()=>{const o=[];for(let q=50;q<=500;q+=50)o.push(q);for(let q=600;q<=3000;q+=100)o.push(q);return o;})();
 const QTY_UNSPECIFIED_LABEL='전원증정';
+const QTY_TIMEDEAL_LABEL='타임딜'; // 선착순 수량 전용 특수 옵션(2026-08-18) — 사은품 수량에는 추가하지 않음
 const OPEN_TIME_OPTIONS=(()=>{const o=[];for(let h=10;h<=24;h++)o.push(String(h).padStart(2,'0')+':00');return o;})();
 const POINTS_OPTIONS=['NPAY 1만원','NPAY 2만원','NPAY 3만원','NPAY 4만원','NPAY 5만원'];
 
 function _giftItemOptionsHtml(){return'<option value="">없음</option>'+GIFT_ITEMS.map(it=>`<option value="${it}">${it}</option>`).join('');}
 function _giftQtyOptionsHtml(){return'<option value="">없음</option><option value="'+QTY_UNSPECIFIED_LABEL+'">'+QTY_UNSPECIFIED_LABEL+'</option>'+QTY_STANDARD_OPTIONS.map(q=>`<option value="${q}">${q}</option>`).join('');}
+// 선착순 수량 전용 — 사은품 수량과 같은 옵션에 "타임딜"만 추가(전원증정 바로 옆에 배치)
+function _firstComeQtyOptionsHtml(){return'<option value="">없음</option><option value="'+QTY_UNSPECIFIED_LABEL+'">'+QTY_UNSPECIFIED_LABEL+'</option><option value="'+QTY_TIMEDEAL_LABEL+'">'+QTY_TIMEDEAL_LABEL+'</option>'+QTY_STANDARD_OPTIONS.map(q=>`<option value="${q}">${q}</option>`).join('');}
 function _openTimeOptionsHtml(){return'<option value="">없음</option>'+OPEN_TIME_OPTIONS.map(t=>`<option value="${t}">${t}</option>`).join('');}
 function _pointsOptionsHtml(){return'<option value="">없음</option>'+POINTS_OPTIONS.map(p=>`<option value="${p}">${p}</option>`).join('');}
 
@@ -3796,7 +3799,7 @@ function _rebuildModelOptions(selectEl,line){
 // 페이지 로드 시 한 번만 옵션을 채움
 ['mOpenTime','fOpenTime'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_openTimeOptionsHtml();});
 ['mFirstComeItem','fFirstComeItem'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_giftItemOptionsHtml();});
-['mFirstComeQty','fFirstComeQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_giftQtyOptionsHtml();});
+['mFirstComeQty','fFirstComeQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_firstComeQtyOptionsHtml();});
 ['mPoints','fPoints'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_pointsOptionsHtml();});
 
 let _formCodes=['']; // 새 공구건 등록 폼의 상품코드 목록(모달의 _modalCodes와 별개 인스턴스)
