@@ -387,6 +387,21 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .f-inp:focus{outline:2px solid var(--minix);outline-offset:1px;border-color:transparent}
 .f-inp[readonly]{background:var(--nbg);color:var(--text-3);cursor:default}
 .f-sel{appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239399A6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+/* 대시보드 분석 섹션의 단일 드롭다운(예: 채널별 성과의 제품 필터) — 기간 필터(.ym-dd-btn)와
+   같은 톤의 컴팩트한 칩 스타일로 맞춤. .f-sel의 화살표 아이콘은 padding-right:28px를 전제로
+   위치가 고정돼 있어서, 이 규칙 없이 padding을 통째로(shorthand) 다시 지정하면 화살표가 뒤로
+   밀려날 자리가 사라져 옵션 글자와 겹쳐 보이는 문제가 있었음(실측 확인 — 예: "PRO"의 O 위에
+   화살표가 겹쳐 "PRØ"처럼 보임). 그래서 여기서는 padding-right는 절대 건드리지 않고
+   top/bottom/left만 별도 지정. */
+.dash-filter-select{
+  width:auto;
+  padding-top:5px;padding-bottom:5px;padding-left:10px;
+  border-radius:6px;
+  font-size:11px;font-weight:600;
+  color:var(--text-2);
+  cursor:pointer;
+}
+.dash-filter-select:hover{background-color:var(--border)}
 .form-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
 .btn-cancel{padding:8px 18px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .btn-cancel:hover{background:var(--border)}
@@ -547,9 +562,9 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div class="card">
         <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료 건 기준</span></div>
         <div class="dash-stat-line" style="margin-bottom:14px">
-          <label style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:12px;color:var(--text-2)">제품</span>
-            <select class="f-inp f-sel" id="dashChannelProductFilter" style="width:auto;padding:5px 8px;font-size:12px" onchange="_onDashChannelProductFilterChange()"></select>
+          <label style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;font-weight:700;color:var(--text-2)">제품</span>
+            <select class="f-inp f-sel dash-filter-select" id="dashChannelProductFilter" onchange="_onDashChannelProductFilterChange()"></select>
           </label>
         </div>
         <div class="analytics-split">
@@ -1137,7 +1152,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-channel-deal-count-fix-product-filter-2026-08-18-01';
+const DASHBOARD_VERSION='dash-channel-filter-overlap-fix-2026-08-18-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
