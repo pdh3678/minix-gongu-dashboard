@@ -618,8 +618,21 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <div style="height:240px"><canvas id="dashAchvChart"></canvas></div>
         </div>
         <div class="f-sec" id="dashAchvCrossTitle" style="margin-top:14px">달성률 상위 조건</div>
+        <div class="dash-stat-line" style="margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;font-weight:700;color:var(--text-2)">기준</span>
+            <select class="f-inp f-sel dash-filter-select" id="dashAchvCrossDim" onchange="_onDashAchvCrossDimChange()">
+              <option value="채널">채널별</option>
+              <option value="제품군">제품군별</option>
+            </select>
+          </label>
+        </div>
         <div class="tbl-wrap">
-          <table><thead><tr><th>구분</th><th>값</th><th class="num-col" id="dashAchvCrossValHd">평균 달성률</th><th class="num-col">건수</th></tr></thead><tbody id="dashAchvCrossBody"></tbody></table>
+          <table><thead><tr>
+            <th id="dashAchvCrossDimHd">채널</th>
+            <th class="num-col sortable" id="dashAchvCrossValHd" onclick="_sortDashAchvCross('avg')">평균 달성률<span class="sort-ic">⇕</span></th>
+            <th class="num-col sortable" id="dashAchvCrossCountHd" onclick="_sortDashAchvCross('count')">건수<span class="sort-ic">⇕</span></th>
+          </tr></thead><tbody id="dashAchvCrossBody"></tbody></table>
         </div>
         <div class="chart-note" id="dashAchvNote"></div>
       </div>
@@ -1168,7 +1181,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-gift-fields-modal-2026-08-18-01';
+const DASHBOARD_VERSION='dash-achv-cross-dim-toggle-2026-08-18-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1920,16 +1933,36 @@ function renderDashPlatformAnalytics(){
 /* 4) 달성률 분석 — 목표수량(targetQty)이 있는 건이 하나라도 있으면 실제 달성률(판매수량/목표수량)
    분석을, 하나도 없으면(대상 기간에 목표치 미기입) 매출 기준 "평균 대비 상대 성과"로 자동 대체.
    목표치가 일부만 있는 경우엔 있는 건만 집계하고 제외 건수를 안내(포맷 미기입 처리와 동일 패턴). */
-const DASH_ACHV_CROSS_DIMS=[
-  ['제품군',d=>PRODUCT_GROUP_LABELS[productColorKey(d.product)]||productColorKey(d.product)],
-  ['채널',d=>d.ch||d.influencer],
-  ['포맷',d=>d.format],
-];
+// "달성률 상위 조건" 표 — 예전엔 제품군/채널/포맷 3개 차원을 한 표에 섞어 상위 8개만 보여줬으나,
+// 채널과 제품군이 뒤섞여 비교가 어렵다는 피드백으로 드롭다운 하나로 기준을 골라 그 기준 전체를
+// 보여주는 단일 표로 개편함(2026-08-18). 표를 나누지 않고 같은 표/헤더를 기준에 맞게 재집계.
+const DASH_ACHV_CROSS_DIMS={
+  '채널':d=>d.ch||d.influencer,
+  '제품군':d=>PRODUCT_GROUP_LABELS[productColorKey(d.product)]||productColorKey(d.product)
+};
+let _dashAchvCrossDim='채널'; // 기본값: 채널별
+// 헤더 클릭 전까지는 "신뢰도 우선" 기본 정렬(건수 2건 이상을 먼저, 그 안에서 평균 내림차순)을 씀 —
+// 표본 1건짜리가 우연히 평균이 높아 최상단을 차지해 오해를 부르는 것을 막기 위함. 사용자가 평균
+// 달성률/건수 헤더를 직접 클릭하면 그 순간부터는 그 열 기준 단순 정렬로 전환됨(건수가 표에 그대로
+// 보이므로 신뢰도 판단은 사용자 몫).
+let _dashAchvCrossSort={key:null,dir:-1};
+function _onDashAchvCrossDimChange(){
+  _dashAchvCrossDim=document.getElementById('dashAchvCrossDim').value;
+  renderDashAchievement();
+}
+function _sortDashAchvCross(key){
+  if(_dashAchvCrossSort.key===key)_dashAchvCrossSort.dir*=-1;else{_dashAchvCrossSort.key=key;_dashAchvCrossSort.dir=-1;}
+  renderDashAchievement();
+}
 let _dashAchvChartInst=null;
-function _dashAchvRenderCommon(entries,buckets){
+function _dashAchvRenderCommon(entries,buckets,crossValLabel){
   const distBody=document.getElementById('dashAchvDistBody');
   const crossBody=document.getElementById('dashAchvCrossBody');
   const chartEl=document.getElementById('dashAchvChart');
+  const dimSel=document.getElementById('dashAchvCrossDim');
+  const dimHd=document.getElementById('dashAchvCrossDimHd');
+  const valHd=document.getElementById('dashAchvCrossValHd');
+  const cntHd=document.getElementById('dashAchvCrossCountHd');
 
   const bucketCounts=buckets.map(b=>entries.filter(e=>b.test(e.val)).length);
   distBody.innerHTML=buckets.map((b,i)=>`
@@ -1939,24 +1972,38 @@ function _dashAchvRenderCommon(entries,buckets){
       <td class="num-col">${_pct1(entries.length?bucketCounts[i]/entries.length*100:null)}</td>
     </tr>`).join('');
 
-  function crossRows(dimLabel,keyFn){
-    const map=new Map();
-    entries.forEach(({d,val})=>{
-      const key=keyFn(d); if(key==null||key==='')return;
-      if(!map.has(key))map.set(key,{key,sum:0,count:0});
-      const g=map.get(key); g.sum+=val; g.count++;
+  dimSel.value=_dashAchvCrossDim;
+  dimHd.textContent=_dashAchvCrossDim;
+  const keyFn=DASH_ACHV_CROSS_DIMS[_dashAchvCrossDim];
+  const map=new Map();
+  entries.forEach(({d,val})=>{
+    const key=keyFn(d); if(key==null||key==='')return;
+    if(!map.has(key))map.set(key,{value:key,sum:0,count:0});
+    const g=map.get(key); g.sum+=val; g.count++;
+  });
+  let cross=[...map.values()].map(g=>({value:g.value,avg:g.sum/g.count,count:g.count}));
+  if(_dashAchvCrossSort.key){
+    cross.sort((a,b)=>(a[_dashAchvCrossSort.key]-b[_dashAchvCrossSort.key])*_dashAchvCrossSort.dir);
+  } else {
+    cross.sort((a,b)=>{
+      const relA=a.count>=2?0:1,relB=b.count>=2?0:1;
+      if(relA!==relB)return relA-relB;
+      return b.avg-a.avg;
     });
-    // 표본 1건짜리는 "조건" 대표성이 약해 순위에서 제외(우연 1회성 성과가 최상위를 차지하는 것 방지)
-    return[...map.values()].filter(g=>g.count>=2).map(g=>({dim:dimLabel,value:g.key,avg:g.sum/g.count,count:g.count}));
   }
-  const cross=DASH_ACHV_CROSS_DIMS.flatMap(([label,fn])=>crossRows(label,fn)).sort((a,b)=>b.avg-a.avg).slice(0,8);
+
+  function arrow(key){return _dashAchvCrossSort.key===key?(_dashAchvCrossSort.dir>0?'▲':'▼'):'⇕';}
+  valHd.innerHTML=`${crossValLabel}<span class="sort-ic">${arrow('avg')}</span>`;
+  valHd.classList.toggle('sorted',_dashAchvCrossSort.key==='avg');
+  cntHd.innerHTML=`건수<span class="sort-ic">${arrow('count')}</span>`;
+  cntHd.classList.toggle('sorted',_dashAchvCrossSort.key==='count');
+
   crossBody.innerHTML=cross.length?cross.map(r=>`
     <tr>
-      <td><span style="color:var(--text-3);font-size:11px">${r.dim}</span></td>
       <td>${r.value}</td>
       <td class="num-col">${r.avg.toFixed(0)}%</td>
-      <td class="num-col">${r.count}</td>
-    </tr>`).join(''):'<tr><td colspan="4" class="dash-analytics-empty">표본이 2건 이상인 조건이 없습니다</td></tr>';
+      <td class="num-col${r.count===1?' cw':''}"${r.count===1?' title="표본 1건 — 참고용"':''}>${r.count}</td>
+    </tr>`).join(''):'<tr><td colspan="3" class="dash-analytics-empty">표시할 데이터가 없습니다</td></tr>';
 
   if(typeof Chart==='undefined')return;
   if(_dashAchvChartInst)_dashAchvChartInst.destroy();
@@ -1973,7 +2020,6 @@ function renderDashAchievement(){
   const distBody=document.getElementById('dashAchvDistBody');
   const crossBody=document.getElementById('dashAchvCrossBody');
   const distColHd=document.getElementById('dashAchvDistColHd');
-  const crossValHd=document.getElementById('dashAchvCrossValHd');
   const crossTitle=document.getElementById('dashAchvCrossTitle');
 
   function empty(msg){
@@ -1989,18 +2035,18 @@ function renderDashAchievement(){
 
   if(withTarget.length){
     banner.style.display='none';
-    distColHd.textContent='달성률 구간';crossValHd.textContent='평균 달성률';crossTitle.textContent='달성률 상위 조건';
+    distColHd.textContent='달성률 구간';crossTitle.textContent='달성률 상위 조건';
     const entries=withTarget.map(d=>({d,val:d.qty/d.targetQty*100}));
     const avg=entries.reduce((s,e)=>s+e.val,0)/entries.length;
     const over=entries.filter(e=>e.val>=100).length,under=entries.length-over;
     const excluded=scope.length-entries.length;
     stats.innerHTML=`평균 달성률 <b>${avg.toFixed(0)}%</b> · 초과달성 <b>${over}건</b> · 미달 <b>${under}건</b> · 대상 <b>${entries.length}건</b>${excluded?` · 목표 미기입 ${excluded}건 제외`:''}`;
     const buckets=[{label:'~80%',test:v=>v<80},{label:'80~100%',test:v=>v>=80&&v<100},{label:'100~150%',test:v=>v>=100&&v<150},{label:'150%+',test:v=>v>=150}];
-    _dashAchvRenderCommon(entries,buckets);
+    _dashAchvRenderCommon(entries,buckets,'평균 달성률');
   } else {
     banner.style.display='block';
     banner.textContent='⚠ 이 기간의 완료 건에는 목표수량 데이터가 없어, 매출 기준 상대 성과(전체 평균 대비 %)로 대체해 보여줍니다.';
-    distColHd.textContent='상대 성과 구간';crossValHd.textContent='평균 상대 성과';crossTitle.textContent='상대 성과 상위 조건';
+    distColHd.textContent='상대 성과 구간';crossTitle.textContent='상대 성과 상위 조건';
     const withRev=scope.filter(d=>d.rev!=null);
     if(!withRev.length){empty('매출 데이터가 없어 상대 성과도 계산할 수 없습니다');return;}
     const avgRev=withRev.reduce((s,d)=>s+d.rev,0)/withRev.length;
@@ -2008,7 +2054,7 @@ function renderDashAchievement(){
     const above=entries.filter(e=>e.val>=100).length,below=entries.length-above;
     stats.innerHTML=`평균 매출 대비 상회 <b>${above}건</b> · 하회 <b>${below}건</b> · 대상 <b>${entries.length}건</b>`;
     const buckets=[{label:'~50%',test:v=>v<50},{label:'50~100%',test:v=>v>=50&&v<100},{label:'100~200%',test:v=>v>=100&&v<200},{label:'200%+',test:v=>v>=200}];
-    _dashAchvRenderCommon(entries,buckets);
+    _dashAchvRenderCommon(entries,buckets,'평균 상대 성과');
   }
 }
 
