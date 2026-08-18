@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'review-ym-plaintext-fix-2026-08-14-01';
+var SCRIPT_VERSION = 'gift-fields-migration-2026-08-18-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -50,12 +50,16 @@ var COL = {
   status:       15,  // P: 진행상태
   format:       16,  // Q: 포맷
   composition:  17,  // R: 구성 (같은 헤더가 AM에도 있지만 그건 레거시 — 여기가 실제 사용 열)
-  option1:      18,  // S: 추가옵션1 (신규)
-  option2:      19,  // T: 추가옵션2 (신규)
-  firstCome:    20,  // U: 선착순 (신규)
+  // ⚠ 2026-08-18 사은품/오픈시간/선착순/적립금 드롭다운 개편(공구건 모달 개편 0~1단계)로 의미 변경:
+  // option1(S)은 더 이상 쓰지 않음(사은품이 아래 AS~AX 전용 열로 이동, 과거 자유텍스트만 legacy로 남음).
+  // option2(T)=오픈시간, firstCome(U)=선착순 품목명, note(X)=적립금으로 용도 변경. 필드명(JS 프로퍼티)은
+  // 기존 프론트(2단계 개편 전) 호환을 위해 그대로 유지 — 실제 저장되는 "값의 의미"만 바뀜.
+  option1:      18,  // S: (레거시, 더 이상 안 씀) 구 추가옵션1 — 과거 자유텍스트 그대로 남겨둠(비파괴)
+  option2:      19,  // T: 오픈시간 (구 추가옵션2 자리 재사용, 예: "14:00")
+  firstCome:    20,  // U: 선착순 품목명 (구 선착순 자리 재사용, 품목명만)
   targetQty:    21,  // V: 목표수량 (AL열 "목표수량"은 레거시 중복이라 무시)
   extraQty:     22,  // W: 추가물량 (신규)
-  note:         23,  // X: 비고 (신규)
+  note:         23,  // X: 적립금 (구 비고 자리 재사용, 예: "NPAY 2만원")
   // Y~AI(11칸)이 "조회수" 병합 헤더: Y=합계, Z~AI=릴스별 슬롯(REEL_COL_START/REEL_SLOT_COUNT 참고)
   views:        24,  // Y: 조회수 합계 (이미 "만" 단위로 저장됨, 예: 3.4 = 3.4만회)
   // AJ~AK: "성과 (대표 게시물 기준)" — 용도 불명, 대시보드가 읽지도 쓰지도 않음(그대로 둠)
@@ -65,6 +69,15 @@ var COL = {
   source:       41,  // AP: 출처(레거시, 브랜드 시트 없어져서 이제 무의미 — 절대 안 읽음)
   dealId:       42,  // AQ: 공구건 유일 식별자(UUID) — 조회/저장/삭제는 전부 이 값 기준
   codeSeq:      43,  // AR: 코드순번(1~10) — 같은 dealId를 공유하는 행들 중 순서/대표행 구분용. 1이 대표 행.
+  // 2026-08-18 신규 추가 — 사은품(품목+수량 최대 3쌍)/선착순 수량/신규 자유입력 비고.
+  giftItem1:    44,  // AS: 사은품 품목1
+  giftQty1:     45,  // AT: 사은품 수량1
+  giftItem2:    46,  // AU: 사은품 품목2
+  giftQty2:     47,  // AV: 사은품 수량2
+  giftItem3:    48,  // AW: 사은품 품목3
+  giftQty3:     49,  // AX: 사은품 수량3
+  firstComeQty: 50,  // AY: 선착순 수량
+  note2:        51,  // AZ: 비고 (신규 자유입력 — 구 비고 내용은 마이그레이션 시 전부 여기로 이관됨)
 };
 
 // 릴스별 조회수/링크를 담는 열 범위: Z~AI (10칸). 셀 값=조회수(만 단위), 링크=해당 셀의 하이퍼링크.
@@ -74,6 +87,109 @@ var REEL_SLOT_COUNT = 10;
 
 // 상품코드 최대 개수(그룹당 최대 행 수) — H열 하나만 사용, 옛 AJ열은 참조하지 않음
 var MAX_CODES = 10;
+
+// ── 사은품/선착순/오픈시간/적립금 드롭다운 공용 상수 (2026-08-18 모달 개편) ──
+// 프론트(index.html)의 동일 목록과 반드시 값이 일치해야 함 — 여긴 마이그레이션 매칭용, 프론트는 UI 렌더용.
+var GIFT_ITEMS = [
+  '하드필터', '하드락필터', '하드락필터(mini)', '저온촉매 탈취필터',
+  '락앤락 김치통 2.6L 2P', '푸드컨테이너(단종)', '실링 컨테이너 2L', '실링 컨테이너 3L',
+  '탈취제', '수동 빙수기'
+];
+// 현장에서 정식 품목명 대신 흔히 줄여 쓰는 표현(마이그레이션 매칭용) — 정식명 자체도 항상 포함해둠.
+var GIFT_ITEM_ALIASES = {
+  '하드필터': ['하드필터'],
+  '하드락필터': ['하드락필터'],
+  '하드락필터(mini)': ['하드락필터(mini)', '하드락필터미니', '하드락필터 mini'],
+  '저온촉매 탈취필터': ['저온촉매 탈취필터', '저온촉매필터', '촉매탈취필터', '촉매필터'],
+  '락앤락 김치통 2.6L 2P': ['락앤락 김치통 2.6L 2P', '락앤락김치통', '김치통'],
+  '푸드컨테이너(단종)': ['푸드컨테이너(단종)', '푸드컨테이너'],
+  '실링 컨테이너 2L': ['실링 컨테이너 2L', '실링컨테이너2L', '실링용기2L'],
+  '실링 컨테이너 3L': ['실링 컨테이너 3L', '실링컨테이너3L', '실링용기3L'],
+  '탈취제': ['탈취제'],
+  '수동 빙수기': ['수동 빙수기', '수동빙수기', '빙수기']
+};
+function _buildQtyOptions() {
+  var opts = [];
+  for (var q = 50; q <= 500; q += 50) opts.push(q);
+  for (var q2 = 600; q2 <= 3000; q2 += 100) opts.push(q2);
+  return opts;
+}
+var QTY_STANDARD_OPTIONS = _buildQtyOptions(); // [50,100,150,...,500,600,700,...,3000]
+var OPEN_TIME_OPTIONS = (function () {
+  var opts = [];
+  for (var h = 10; h <= 24; h++) opts.push(_pad(h) + ':00');
+  return opts;
+})(); // ['10:00',...,'24:00']
+var POINTS_OPTIONS = ['NPAY 1만원', 'NPAY 2만원', 'NPAY 3만원', 'NPAY 4만원', 'NPAY 5만원'];
+var QTY_UNSPECIFIED_LABEL = '전원증정'; // 기존 자유텍스트에 수량 명시가 없을 때 마이그레이션 기본값
+
+function _stripSpaces(s) { return String(s || '').replace(/\s+/g, ''); }
+
+// 텍스트 안에서 GIFT_ITEMS(정식명 또는 GIFT_ITEM_ALIASES에 등록된 흔한 줄임 표현) 중 하나가
+// 부분 일치하면 그 canonical 품목명을 반환(없으면 null). 공백 유무 차이는 무시하고 비교함.
+// "하드락필터"와 "하드락필터(mini)"처럼 한쪽이 다른 쪽을 포함하는 경우가 있어, 일치하는 표현 중
+// 가장 긴(가장 구체적인) 것을 고름 — 짧은 쪽으로 잘못 매칭되는 것 방지.
+function _matchGiftItem(text) {
+  var t = _stripSpaces(text);
+  if (!t) return null;
+  var bestCanonical = null, bestLen = 0;
+  for (var i = 0; i < GIFT_ITEMS.length; i++) {
+    var canonical = GIFT_ITEMS[i];
+    var aliases = GIFT_ITEM_ALIASES[canonical] || [canonical];
+    for (var j = 0; j < aliases.length; j++) {
+      var alias = _stripSpaces(aliases[j]);
+      if (alias && t.indexOf(alias) !== -1 && alias.length > bestLen) {
+        bestCanonical = canonical;
+        bestLen = alias.length;
+      }
+    }
+  }
+  return bestCanonical;
+}
+
+// "24시간 타임딜"의 24, 날짜 등 수량과 무관한 숫자까지 수량으로 착각하지 않도록, 개수 단위가
+// 붙은 숫자만 "수량을 명시한 것"으로 인정함(예: "300개", "50명"). 단위 없는 숫자는 무시.
+var QTY_UNIT_PATTERN = /(\d+)\s*(개|명|세트|박스|건)/;
+function _extractQtyWithUnit(text) {
+  var m = String(text || '').match(QTY_UNIT_PATTERN);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// 텍스트에서 "개수 단위가 붙은" 숫자를 찾아 QTY_STANDARD_OPTIONS(50, 100~3000 100단위)에 정확히
+// 일치할 때만 반환(단위 없는 숫자는 애초에 후보로 안 봄 — 없으면 null)
+function _matchQtyNumber(text) {
+  var n = _extractQtyWithUnit(text);
+  if (n == null) return null;
+  return QTY_STANDARD_OPTIONS.indexOf(n) !== -1 ? n : null;
+}
+
+// 텍스트에서 "10:00"/"10시"/"오후 2시" 등의 시간 표현을 찾아 10:00~22:00(1시간 단위)에 맞으면
+// "HH:00" 형태로 반환(없거나 범위 밖이면 null) — 오전/오후·AM/PM 표기를 24시간제로 환산함.
+// 분이 "00"이 아닌 값(예: "10:30", "10시 30분")은 드롭다운이 1시간 단위라 억지로 반올림하지 않고
+// 확신 매칭 실패로 처리함 — 그래야 호출부가 원문을 신규 비고에 그대로 보존해 정밀도 유실을 막음.
+function _matchOpenTime(text) {
+  var t = String(text || '');
+  var hour = null, minute = 0;
+  var mColon = t.match(/(\d{1,2}):(\d{2})/);
+  var mHour = !mColon ? t.match(/(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?/) : null;
+  if (mColon) { hour = parseInt(mColon[1], 10); minute = parseInt(mColon[2], 10); }
+  else if (mHour) { hour = parseInt(mHour[1], 10); minute = mHour[2] ? parseInt(mHour[2], 10) : 0; }
+  if (hour == null) return null;
+  if (minute !== 0) return null;
+  var isPM = /오후|PM/i.test(t);
+  var isAM = /오전|AM/i.test(t);
+  if (isPM && hour < 12) hour += 12;
+  if (isAM && hour === 12) hour = 0;
+  if (hour === 0) hour = 24; // 자정(00:00)은 "다음날 0시"가 아니라 영업 마감 24:00으로 취급(2026-08-18 범위 확장 반영)
+  if (hour < 10 || hour > 24) return null;
+  return _pad(hour) + ':00';
+}
+
+// 텍스트에서 "NPAY 2만원" 류 표현을 찾아 POINTS_OPTIONS 중 하나로 정규화(없으면 null)
+function _matchPoints(text) {
+  var m = String(text || '').match(/NPAY\s*([1-5])\s*만\s*원/i);
+  return m ? ('NPAY ' + m[1] + '만원') : null;
+}
 
 // 접근 제어
 var REQUIRE_AUTH   = true;
@@ -681,6 +797,15 @@ function parseMainSheet(sheet) {
     var firstCome  = String(pRow[COL.firstCome] || '').trim();
     var extraQty   = _numOrNull(pRow[COL.extraQty]);
     var note       = String(pRow[COL.note]      || '').trim();
+    // 2026-08-18 신규 — 사은품(최대 3쌍)/선착순 수량/신규 자유입력 비고
+    var giftItem1  = String(pRow[COL.giftItem1] || '').trim();
+    var giftQty1   = String(pRow[COL.giftQty1]  || '').trim();
+    var giftItem2  = String(pRow[COL.giftItem2] || '').trim();
+    var giftQty2   = String(pRow[COL.giftQty2]  || '').trim();
+    var giftItem3  = String(pRow[COL.giftItem3] || '').trim();
+    var giftQty3   = String(pRow[COL.giftQty3]  || '').trim();
+    var firstComeQty = String(pRow[COL.firstComeQty] || '').trim();
+    var note2      = String(pRow[COL.note2]     || '').trim();
 
     // 인플루언서 링크: 별도 링크 열(COL.link)에 값이 있으면 그걸 우선하고, 없으면 채널명 셀에
     // 걸린 하이퍼링크로 채움(둘 다 없으면 빈 값). 채널명 셀에 링크가 없는 행도 있을 수 있음.
@@ -771,6 +896,11 @@ function parseMainSheet(sheet) {
       sale:        salePrice,
       commission:  commission,
       note:        note,
+      giftItem1: giftItem1, giftQty1: giftQty1,
+      giftItem2: giftItem2, giftQty2: giftQty2,
+      giftItem3: giftItem3, giftQty3: giftQty3,
+      firstComeQty: firstComeQty,
+      note2: note2,
       rowCount:    members.length // 이 그룹(dealId)이 시트에서 실제로 몇 개 물리 행을 차지하는지 — 프론트가 "N행" 안내에 사용
     });
   }
@@ -781,13 +911,21 @@ function parseMainSheet(sheet) {
 
 // 대시보드에서 쓰는 dealId/codeSeq 열에 헤더가 없으면 채워줌(원본 시트 열이 부족하면 확장도 함)
 function _ensureExtraHeaders(sheet) {
-  var maxColNeeded = COL.codeSeq + 1;
+  var maxColNeeded = COL.note2 + 1;
   if (sheet.getMaxColumns() < maxColNeeded) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), maxColNeeded - sheet.getMaxColumns());
   }
   var headers = [
     [COL.dealId, 'dealId(내부용, 수동 수정 금지)'],
-    [COL.codeSeq, '코드순번(내부용, 수동 수정 금지)']
+    [COL.codeSeq, '코드순번(내부용, 수동 수정 금지)'],
+    [COL.giftItem1, '사은품 품목1'],
+    [COL.giftQty1, '사은품 수량1'],
+    [COL.giftItem2, '사은품 품목2'],
+    [COL.giftQty2, '사은품 수량2'],
+    [COL.giftItem3, '사은품 품목3'],
+    [COL.giftQty3, '사은품 수량3'],
+    [COL.firstComeQty, '선착순 수량'],
+    [COL.note2, '비고']
   ];
   for (var i = 0; i < headers.length; i++) {
     var cell = sheet.getRange(2, headers[i][0] + 1);
@@ -811,6 +949,233 @@ function _autoFillMissingDealIds(sheet, deals) {
     filled++;
   }
   if (filled > 0) Logger.log('[dealId 자동 백필] ' + filled + '건에 새 dealId 발급함');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 1회성 마이그레이션: 사은품/오픈시간/선착순/적립금 구조화 (2026-08-18) ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Apps Script 편집기 상단 함수 선택 드롭다운에서 migrateGiftFieldsOnce를 골라 "▶ 실행"으로
+// 수동 실행할 것(URL 호출 아님, doGet/doPost와 무관). 실행 순서:
+//  1) _backupMainSheetOnce가 실적통합 시트 전체를 그대로 복제해 숨긴 백업 시트로 보존(최초 1회만).
+//  2) 각 행의 구 추가옵션1(S)/추가옵션2(T)/선착순(U)/비고(X)를 읽어 새 구조로 변환.
+//  3) 새 품목/시간/적립금 목록과 확실히 매칭되는 값만 새 드롭다운 값으로 정규화하고, 매칭 안 되는
+//     원문은 전부(구 비고 포함) 신규 비고(AZ)로 그대로 옮겨 절대 유실되지 않게 함.
+//  4) 구 추가옵션1(S) 원본 텍스트 자체는 지우지 않고 그대로 둠(레거시 열, 더 이상 안 읽지만 안전망).
+// 이미 새 열(AS/AY/AZ 중 하나라도)이 채워진 행은 이미 처리된 것으로 보고 건너뜀 — 재실행해도 안전.
+//
+// 구 추가옵션1/2·선착순·비고 원문 4개를 새 구조로 변환하는 핵심 로직 — migrateGiftFieldsOnce와
+// (마이그레이션 보정용) remigrateFromBackup이 이 함수 하나를 공유해서 로직이 두 곳에서 어긋나지 않게 함.
+// 품목은 매칭되는데 수량 텍스트에 숫자가 있긴 하지만 표준 수량(50, 100~3000 100단위)과 안 맞으면
+// "전원증정"으로 추측하지 않고(그 표현은 "수량 지정이 아예 없었다"는 뜻이라 다른 의미가 됨) 원문을
+// 그대로 신규 비고에 보존하고 수량 칸은 비워둠 — 숫자 자체가 아예 없을 때만 "전원증정"으로 채움.
+function _deriveGiftFields(oldOption1, oldOption2, oldFirstCome, oldNote) {
+  var archived = [];
+  var stat = {
+    giftMatched: 0, giftUnmatched: 0,
+    openTimeMatched: 0, openTimeUnmatched: 0,
+    firstComeMatched: 0, firstComeUnmatched: 0,
+    pointsMatched: 0
+  };
+
+  oldNote = String(oldNote || '').trim();
+  if (oldNote) archived.push(oldNote);
+  var points = _matchPoints(oldNote);
+  if (points) stat.pointsMatched++;
+
+  oldOption2 = String(oldOption2 || '').trim();
+  var openTime = _matchOpenTime(oldOption2);
+  if (openTime) stat.openTimeMatched++;
+  else if (oldOption2) { stat.openTimeUnmatched++; archived.push('[구 추가옵션2] ' + oldOption2); }
+
+  oldFirstCome = String(oldFirstCome || '').trim();
+  var firstComeItem = '', firstComeQty = '';
+  var fcItem = _matchGiftItem(oldFirstCome);
+  if (fcItem) {
+    stat.firstComeMatched++;
+    firstComeItem = fcItem;
+    var fcQty = _matchQtyNumber(oldFirstCome);
+    if (fcQty != null) firstComeQty = fcQty;
+    else if (_extractQtyWithUnit(oldFirstCome) == null) firstComeQty = QTY_UNSPECIFIED_LABEL;
+    else archived.push('[구 선착순 수량확인필요] ' + oldFirstCome);
+  } else if (oldFirstCome) {
+    stat.firstComeUnmatched++;
+    archived.push('[구 선착순] ' + oldFirstCome);
+  }
+
+  oldOption1 = String(oldOption1 || '').trim();
+  var giftItem1 = '', giftQty1 = '';
+  var giftItem = _matchGiftItem(oldOption1);
+  if (giftItem) {
+    stat.giftMatched++;
+    giftItem1 = giftItem;
+    var giftQty = _matchQtyNumber(oldOption1);
+    if (giftQty != null) giftQty1 = giftQty;
+    else if (_extractQtyWithUnit(oldOption1) == null) giftQty1 = QTY_UNSPECIFIED_LABEL;
+    else archived.push('[구 추가옵션1 수량확인필요] ' + oldOption1);
+  } else if (oldOption1) {
+    stat.giftUnmatched++;
+    archived.push('[구 추가옵션1] ' + oldOption1);
+  }
+
+  return {
+    points: points || '', openTime: openTime || '',
+    firstComeItem: firstComeItem, firstComeQty: firstComeQty,
+    giftItem1: giftItem1, giftQty1: giftQty1,
+    note2: archived.join(' / '),
+    stat: stat
+  };
+}
+
+function migrateGiftFieldsOnce() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) { Logger.log('[마이그레이션] 실적통합 시트를 찾을 수 없어 중단'); return; }
+
+  _backupMainSheetOnce(ss, sheet);
+  _ensureExtraHeaders(sheet);
+
+  var lastDataRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastDataRow <= DATA_START_ROW) { Logger.log('[마이그레이션] 데이터 행이 없어 중단'); return; }
+
+  var numCols = sheet.getMaxColumns();
+  var range = sheet.getRange(DATA_START_ROW + 1, 1, lastDataRow - DATA_START_ROW, numCols);
+  var data = range.getValues();
+
+  var stats = {
+    total: 0, skippedAlready: 0,
+    giftMatched: 0, giftUnmatched: 0,
+    openTimeMatched: 0, openTimeUnmatched: 0,
+    firstComeMatched: 0, firstComeUnmatched: 0,
+    pointsMatched: 0
+  };
+
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var hasAnyOld = String(row[COL.option1] || '').trim() || String(row[COL.option2] || '').trim() ||
+      String(row[COL.firstCome] || '').trim() || String(row[COL.note] || '').trim();
+    if (!hasAnyOld) continue; // 옮길 것 자체가 없는 빈 행은 건너뜀
+
+    var alreadyDone = String(row[COL.giftItem1] || '').trim() || String(row[COL.firstComeQty] || '').trim() ||
+      String(row[COL.note2] || '').trim();
+    if (alreadyDone) { stats.skippedAlready++; continue; }
+
+    stats.total++;
+
+    // S(구 추가옵션1) 자체는 legacy로 그대로 둠(비파괴, 건드리지 않음) — 파생 결과만 새 열에 기록
+    var derived = _deriveGiftFields(row[COL.option1], row[COL.option2], row[COL.firstCome], row[COL.note]);
+    row[COL.note]         = derived.points;
+    row[COL.option2]      = derived.openTime;
+    row[COL.firstCome]    = derived.firstComeItem;
+    row[COL.firstComeQty] = derived.firstComeQty;
+    row[COL.giftItem1]    = derived.giftItem1;
+    row[COL.giftQty1]     = derived.giftQty1;
+    row[COL.note2]        = derived.note2;
+
+    stats.giftMatched += derived.stat.giftMatched; stats.giftUnmatched += derived.stat.giftUnmatched;
+    stats.openTimeMatched += derived.stat.openTimeMatched; stats.openTimeUnmatched += derived.stat.openTimeUnmatched;
+    stats.firstComeMatched += derived.stat.firstComeMatched; stats.firstComeUnmatched += derived.stat.firstComeUnmatched;
+    stats.pointsMatched += derived.stat.pointsMatched;
+  }
+
+  range.setValues(data);
+  SpreadsheetApp.flush();
+  _invalidateDashboardCache();
+
+  Logger.log('[마이그레이션 완료] ' + JSON.stringify(stats));
+  return stats;
+}
+
+// 마이그레이션 실행 전 원본을 같은 스프레드시트 안에 복제해 숨긴 시트로 백업. 이미 백업이 있으면
+// 다시 만들지 않음 — 마이그레이션을 여러 번 재실행해도 "진짜 원본"인 최초 백업은 절대 덮이지 않음.
+var MAIN_SHEET_BACKUP_NAME = '실적통합_백업_마이그레이션전';
+function _backupMainSheetOnce(ss, sheet) {
+  var existing = ss.getSheetByName(MAIN_SHEET_BACKUP_NAME);
+  if (existing) { Logger.log('[백업] 이미 존재함 — 다시 만들지 않음: ' + MAIN_SHEET_BACKUP_NAME); return existing; }
+  var copy = sheet.copyTo(ss);
+  copy.setName(MAIN_SHEET_BACKUP_NAME);
+  try { copy.hideSheet(); } catch (e) { Logger.log('백업 시트 숨기기 실패 (무시): ' + e); }
+  Logger.log('[백업] 완료 — 시트명: ' + MAIN_SHEET_BACKUP_NAME);
+  return copy;
+}
+
+// ⚠ 2026-08-18 보정용 — migrateGiftFieldsOnce의 최초 버전에 있던 두 가지 정밀도 손실 버그
+// (①분 단위 오픈시간이 정시로 반올림됨, ②품목은 매칭됐지만 수량이 표준 목록과 안 맞을 때 원문 대신
+// "전원증정"으로 덮어씀)를 고친 뒤, 이미 마이그레이션이 끝난 라이브 시트를 백업 시트의 원본 텍스트
+// 기준으로 처음부터 다시 계산해서 덮어씀. _deriveGiftFields를 그대로 재사용하므로 로직은 항상 최신
+// 수정 버전과 일치함 — 백업이 원본 그대로이므로 몇 번을 다시 실행해도 항상 같은(올바른) 결과가 나옴.
+// Apps Script 편집기에서 이 함수를 직접 선택해 실행할 것.
+function remigrateFromBackup() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var backup = ss.getSheetByName(MAIN_SHEET_BACKUP_NAME);
+  if (!sheet || !backup) { Logger.log('[보정] 실적통합 또는 백업 시트를 찾을 수 없어 중단'); return; }
+
+  var lastDataRow = _getLastDataRow(sheet, COL.channel + 1);
+  var backupLastDataRow = _getLastDataRow(backup, COL.channel + 1);
+  if (lastDataRow !== backupLastDataRow) {
+    Logger.log('[보정] 실적통합(' + lastDataRow + '행)과 백업(' + backupLastDataRow + '행)의 데이터 행 수가 달라 ' +
+      '안전하게 중단합니다 — 백업 이후 실적통합에 행이 추가/삭제된 것으로 보입니다. 수동 확인 필요.');
+    return;
+  }
+  if (lastDataRow <= DATA_START_ROW) { Logger.log('[보정] 데이터 행이 없어 중단'); return; }
+
+  var numRows = lastDataRow - DATA_START_ROW;
+  var backupOldCols = backup.getRange(DATA_START_ROW + 1, 1, numRows, backup.getLastColumn()).getValues();
+
+  var noteRange = sheet.getRange(DATA_START_ROW + 1, COL.note + 1, numRows, 1);
+  var option2Range = sheet.getRange(DATA_START_ROW + 1, COL.option2 + 1, numRows, 1);
+  var firstComeRange = sheet.getRange(DATA_START_ROW + 1, COL.firstCome + 1, numRows, 1);
+  var firstComeQtyRange = sheet.getRange(DATA_START_ROW + 1, COL.firstComeQty + 1, numRows, 1);
+  var giftItem1Range = sheet.getRange(DATA_START_ROW + 1, COL.giftItem1 + 1, numRows, 1);
+  var giftQty1Range = sheet.getRange(DATA_START_ROW + 1, COL.giftQty1 + 1, numRows, 1);
+  var note2Range = sheet.getRange(DATA_START_ROW + 1, COL.note2 + 1, numRows, 1);
+
+  var noteOut = [], option2Out = [], firstComeOut = [], firstComeQtyOut = [], giftItem1Out = [], giftQty1Out = [], note2Out = [];
+  var stats = {
+    total: 0,
+    giftMatched: 0, giftUnmatched: 0,
+    openTimeMatched: 0, openTimeUnmatched: 0,
+    firstComeMatched: 0, firstComeUnmatched: 0,
+    pointsMatched: 0
+  };
+
+  for (var i = 0; i < numRows; i++) {
+    var bRow = backupOldCols[i];
+    var hasAnyOld = String(bRow[COL.option1] || '').trim() || String(bRow[COL.option2] || '').trim() ||
+      String(bRow[COL.firstCome] || '').trim() || String(bRow[COL.note] || '').trim();
+    if (!hasAnyOld) {
+      noteOut.push(['']); option2Out.push(['']); firstComeOut.push(['']); firstComeQtyOut.push(['']);
+      giftItem1Out.push(['']); giftQty1Out.push(['']); note2Out.push(['']);
+      continue;
+    }
+    stats.total++;
+    var derived = _deriveGiftFields(bRow[COL.option1], bRow[COL.option2], bRow[COL.firstCome], bRow[COL.note]);
+    noteOut.push([derived.points]);
+    option2Out.push([derived.openTime]);
+    firstComeOut.push([derived.firstComeItem]);
+    firstComeQtyOut.push([derived.firstComeQty]);
+    giftItem1Out.push([derived.giftItem1]);
+    giftQty1Out.push([derived.giftQty1]);
+    note2Out.push([derived.note2]);
+
+    stats.giftMatched += derived.stat.giftMatched; stats.giftUnmatched += derived.stat.giftUnmatched;
+    stats.openTimeMatched += derived.stat.openTimeMatched; stats.openTimeUnmatched += derived.stat.openTimeUnmatched;
+    stats.firstComeMatched += derived.stat.firstComeMatched; stats.firstComeUnmatched += derived.stat.firstComeUnmatched;
+    stats.pointsMatched += derived.stat.pointsMatched;
+  }
+
+  noteRange.setValues(noteOut);
+  option2Range.setValues(option2Out);
+  firstComeRange.setValues(firstComeOut);
+  firstComeQtyRange.setValues(firstComeQtyOut);
+  giftItem1Range.setValues(giftItem1Out);
+  giftQty1Range.setValues(giftQty1Out);
+  note2Range.setValues(note2Out);
+  SpreadsheetApp.flush();
+  _invalidateDashboardCache();
+
+  Logger.log('[보정 완료] 백업 원본 기준으로 전체 재계산함 — ' + JSON.stringify(stats));
+  return stats;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -841,7 +1206,11 @@ var PRIMARY_ONLY_COLS = {
   platform: COL.platform, link: COL.link, format: COL.format, composition: COL.composition,
   targetQty: COL.targetQty, marketingLink: COL.marketingLink,
   option1: COL.option1, option2: COL.option2, firstCome: COL.firstCome,
-  extraQty: COL.extraQty, note: COL.note
+  extraQty: COL.extraQty, note: COL.note,
+  giftItem1: COL.giftItem1, giftQty1: COL.giftQty1,
+  giftItem2: COL.giftItem2, giftQty2: COL.giftQty2,
+  giftItem3: COL.giftItem3, giftQty3: COL.giftQty3,
+  firstComeQty: COL.firstComeQty, note2: COL.note2
 };
 
 // 채널명(E열) 셀의 텍스트는 그대로 두고 하이퍼링크만 걸거나 제거함 — 별도 링크 열(COL.link)과
@@ -1131,6 +1500,14 @@ function _addDeal(ss, data) {
   common[COL.extraQty]      = data.extraQty != null ? data.extraQty : '';
   common[COL.note]          = data.note || '';
   common[COL.link]          = data.link || '';
+  common[COL.giftItem1]     = data.giftItem1 || '';
+  common[COL.giftQty1]      = data.giftQty1 || '';
+  common[COL.giftItem2]     = data.giftItem2 || '';
+  common[COL.giftQty2]      = data.giftQty2 || '';
+  common[COL.giftItem3]     = data.giftItem3 || '';
+  common[COL.giftQty3]      = data.giftQty3 || '';
+  common[COL.firstComeQty]  = data.firstComeQty || '';
+  common[COL.note2]         = data.note2 || '';
 
   var rows = [];
   for (var i = 0; i < codes.length; i++) {

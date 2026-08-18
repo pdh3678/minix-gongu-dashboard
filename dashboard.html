@@ -833,24 +833,32 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         </div>
         <div class="fg fg-2" style="margin-top:10px">
           <div class="f-grp full">
-            <label class="f-lbl">구성</label>
-            <input class="f-inp" type="text" id="mComposition" placeholder="예: 본품 1개 + 증정품">
+            <label class="f-lbl">구성 <span class="f-badge">자동</span></label>
+            <input class="f-inp" type="text" id="mComposition" readonly>
           </div>
         </div>
 
+        <div class="f-sec">사은품 <span class="f-badge">최대 3개</span></div>
+        <div id="mGiftList"></div>
+        <button type="button" class="btn-cancel" id="mGiftAddBtn" style="font-size:12px;margin-top:6px" onclick="addGiftRow()">+ 사은품 추가</button>
+
         <div class="f-sec">운영 정보</div>
-        <div class="fg fg-3">
+        <div class="fg fg-4">
           <div class="f-grp">
-            <label class="f-lbl">추가옵션1</label>
-            <input class="f-inp" type="text" id="mOption1" placeholder="예: 오픈시간 : 10:00 AM">
+            <label class="f-lbl">오픈시간</label>
+            <select class="f-inp f-sel" id="mOpenTime" onchange="mRecalcComposition()"></select>
           </div>
           <div class="f-grp">
-            <label class="f-lbl">추가옵션2</label>
-            <input class="f-inp" type="text" id="mOption2" placeholder="예: 오픈시간 : 10:00 AM">
+            <label class="f-lbl">선착순 품목</label>
+            <select class="f-inp f-sel" id="mFirstComeItem" onchange="mRecalcComposition()"></select>
           </div>
           <div class="f-grp">
-            <label class="f-lbl">선착순</label>
-            <input class="f-inp" type="text" id="mFirstCome" placeholder="예: 하드락필터 300명">
+            <label class="f-lbl">선착순 수량</label>
+            <select class="f-inp f-sel" id="mFirstComeQty" onchange="mRecalcComposition()"></select>
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">적립금</label>
+            <select class="f-inp f-sel" id="mPoints" onchange="mRecalcComposition()"></select>
           </div>
         </div>
         <div class="fg fg-2" style="margin-top:10px">
@@ -860,7 +868,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           </div>
           <div class="f-grp">
             <label class="f-lbl">비고</label>
-            <input class="f-inp" type="text" id="mNoteInput" placeholder="예: NPAY 2만원 전원 증정">
+            <input class="f-inp" type="text" id="mNoteInput" placeholder="자유 입력" oninput="mRecalcComposition()">
           </div>
         </div>
 
@@ -1061,8 +1069,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     </div>
     <div class="fg fg-2" style="margin-top:10px">
       <div class="f-grp full">
-        <label class="f-lbl">구성</label>
-        <input class="f-inp" type="text" id="fComposition" placeholder="예: 본품 1개 + 증정품">
+        <label class="f-lbl">구성 <span class="f-badge">자동</span></label>
+        <input class="f-inp" type="text" id="fComposition" readonly>
       </div>
       <div class="f-grp">
         <label class="f-lbl">목표수량 (개)</label>
@@ -1070,19 +1078,27 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
     </div>
 
+    <div class="f-sec">사은품 <span class="f-badge">최대 3개</span></div>
+    <div id="fGiftList"></div>
+    <button type="button" class="btn-cancel" id="fGiftAddBtn" style="font-size:12px;margin-top:6px" onclick="addFormGiftRow()">+ 사은품 추가</button>
+
     <div class="f-sec">운영 정보</div>
-    <div class="fg fg-3">
+    <div class="fg fg-4">
       <div class="f-grp">
-        <label class="f-lbl">추가옵션1</label>
-        <input class="f-inp" type="text" id="fOption1" placeholder="예: 오픈시간 : 10:00 AM">
+        <label class="f-lbl">오픈시간</label>
+        <select class="f-inp f-sel" id="fOpenTime" onchange="fRecalcComposition()"></select>
       </div>
       <div class="f-grp">
-        <label class="f-lbl">추가옵션2</label>
-        <input class="f-inp" type="text" id="fOption2" placeholder="예: 오픈시간 : 10:00 AM">
+        <label class="f-lbl">선착순 품목</label>
+        <select class="f-inp f-sel" id="fFirstComeItem" onchange="fRecalcComposition()"></select>
       </div>
       <div class="f-grp">
-        <label class="f-lbl">선착순</label>
-        <input class="f-inp" type="text" id="fFirstCome" placeholder="예: 하드락필터 300명">
+        <label class="f-lbl">선착순 수량</label>
+        <select class="f-inp f-sel" id="fFirstComeQty" onchange="fRecalcComposition()"></select>
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl">적립금</label>
+        <select class="f-inp f-sel" id="fPoints" onchange="fRecalcComposition()"></select>
       </div>
     </div>
     <div class="fg fg-2" style="margin-top:10px">
@@ -1092,7 +1108,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
       <div class="f-grp">
         <label class="f-lbl">비고</label>
-        <input class="f-inp" type="text" id="fNote" placeholder="예: NPAY 2만원 전원 증정">
+        <input class="f-inp" type="text" id="fNote" placeholder="자유 입력" oninput="fRecalcComposition()">
       </div>
     </div>
 
@@ -1152,7 +1168,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-channel-filter-overlap-fix-2026-08-18-01';
+const DASHBOARD_VERSION='dash-gift-fields-modal-2026-08-18-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1161,7 +1177,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='review-ym-plaintext-fix-2026-08-14-01';
+const REQUIRED_SCRIPT_VERSION='gift-fields-migration-2026-08-18-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2629,15 +2645,26 @@ function _openRegisteredModal(d){
   document.getElementById('mSaleInput').value=s.sale!=null?s.sale:'';
   document.getElementById('mCommInput').value=s.comm!=null?s.comm:'';
   document.getElementById('mFormat').value=d.format||'';
-  document.getElementById('mComposition').value=d.composition||'';
   document.getElementById('mTargetQty').value=d.targetQty!=null?d.targetQty:'';
 
-  // 운영 정보
-  document.getElementById('mOption1').value=d.option1||'';
-  document.getElementById('mOption2').value=d.option2||'';
-  document.getElementById('mFirstCome').value=d.firstCome||'';
+  // 사은품(최대 3개) — 뒤쪽 빈 슬롯은 잘라내되 최소 1행은 남김
+  let gifts=[
+    {item:d.giftItem1||'',qty:d.giftQty1!=null?String(d.giftQty1):''},
+    {item:d.giftItem2||'',qty:d.giftQty2!=null?String(d.giftQty2):''},
+    {item:d.giftItem3||'',qty:d.giftQty3!=null?String(d.giftQty3):''}
+  ];
+  while(gifts.length>1&&!gifts[gifts.length-1].item)gifts.pop();
+  _modalGifts=gifts;
+  renderGiftList();
+
+  // 운영 정보 — option2=오픈시간, firstCome=선착순 품목, note(적립금)로 재사용됨(2026-08-18 개편)
+  document.getElementById('mOpenTime').value=d.option2||'';
+  document.getElementById('mFirstComeItem').value=d.firstCome||'';
+  document.getElementById('mFirstComeQty').value=d.firstComeQty!=null?String(d.firstComeQty):'';
+  document.getElementById('mPoints').value=d.note||'';
   document.getElementById('mExtraQty').value=d.extraQty!=null?d.extraQty:'';
-  document.getElementById('mNoteInput').value=s.note||'';
+  document.getElementById('mNoteInput').value=s.note||''; // 신규 비고(서버 note2)
+  mRecalcComposition();
 
   // 실적
   document.getElementById('mQtyInput').value=d.qty!=null?d.qty:'';
@@ -2977,11 +3004,18 @@ function _collectModalChanges(d){
   const composition=document.getElementById('mComposition').value.trim();
   const targetQtyVal=document.getElementById('mTargetQty').value;
   const qtyVal=document.getElementById('mQtyInput').value;
-  const option1=document.getElementById('mOption1').value.trim();
-  const option2=document.getElementById('mOption2').value.trim();
-  const firstCome=document.getElementById('mFirstCome').value.trim();
+  // option2=오픈시간, firstCome=선착순 품목, note=적립금으로 재사용됨(2026-08-18 개편) — wire 필드명은
+  // apps-script.js COL/PRIMARY_ONLY_COLS와 그대로 맞춰야 하므로 이름은 바꾸지 않고 의미만 바뀜.
+  const option2=document.getElementById('mOpenTime').value;
+  const firstCome=document.getElementById('mFirstComeItem').value;
+  const firstComeQty=document.getElementById('mFirstComeQty').value;
+  const note=document.getElementById('mPoints').value; // 적립금
+  const noteText=document.getElementById('mNoteInput').value.trim(); // 신규 비고(서버 note2 / 클라 s.note)
+  const gifts=_modalGifts.filter(g=>g.item);
+  const giftItem1=gifts[0]?gifts[0].item:'',giftQty1=gifts[0]?gifts[0].qty:'';
+  const giftItem2=gifts[1]?gifts[1].item:'',giftQty2=gifts[1]?gifts[1].qty:'';
+  const giftItem3=gifts[2]?gifts[2].item:'',giftQty3=gifts[2]?gifts[2].qty:'';
   const extraQtyVal=document.getElementById('mExtraQty').value;
-  const note=document.getElementById('mNoteInput').value.trim();
 
   const sale=saleVal!==''?Number(saleVal):null;
   const comm=commVal!==''?Number(commVal):null;
@@ -2995,12 +3029,18 @@ function _collectModalChanges(d){
     marketingLink:d.marketingLink||'',
     start:d.start||'',end:d.end||'',sale:s.sale!=null?s.sale:null,comm:s.comm!=null?s.comm:null,
     format:d.format||'',composition:d.composition||'',targetQty:d.targetQty!=null?d.targetQty:null,qty:d.qty!=null?d.qty:null,
-    option1:d.option1||'',option2:d.option2||'',firstCome:d.firstCome||'',
-    extraQty:d.extraQty!=null?d.extraQty:null,note:s.note!=null?s.note:''
+    option2:d.option2||'',firstCome:d.firstCome||'',firstComeQty:d.firstComeQty!=null?String(d.firstComeQty):'',
+    note:d.note||'',
+    giftItem1:d.giftItem1||'',giftQty1:d.giftQty1!=null?String(d.giftQty1):'',
+    giftItem2:d.giftItem2||'',giftQty2:d.giftQty2!=null?String(d.giftQty2):'',
+    giftItem3:d.giftItem3||'',giftQty3:d.giftQty3!=null?String(d.giftQty3):'',
+    extraQty:d.extraQty!=null?d.extraQty:null,note2:s.note!=null?s.note:''
   };
   const next={
     product,channel:influencer,platform,vendor,link,marketingLink,start,end,sale,comm,format,composition,targetQty,qty,
-    option1,option2,firstCome,extraQty,note
+    option2,firstCome,firstComeQty,note,
+    giftItem1,giftQty1,giftItem2,giftQty2,giftItem3,giftQty3,
+    extraQty,note2:noteText
   };
 
   const changes={};
@@ -3064,9 +3104,9 @@ async function saveSchemeModal(){
       }
     })().then(()=>{
       // fetchLive()가 끝나기 전에 모달/테이블/캘린더가 빈 상태로 보이지 않도록, 방금 저장한 값을 로컬 DATA에도 바로 반영
-      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option1:next.option1,option2:next.option2,firstCome:next.firstCome,extraQty:next.extraQty,status:_calcStatus(next.start,next.end)});
+      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,status:_calcStatus(next.start,next.end)});
       if(codesChanged)d.codes=codes;
-      d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note;
+      d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
       if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
       if(touchReels){d.reels=reels;d.views=totalViews;}
       _refreshModalHeader(d); // 헤더(제목/기간)를 즉시 갱신
@@ -3076,9 +3116,9 @@ async function saveSchemeModal(){
       fetchLive();
     }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+_friendlySaveError(e.message),{type:'error'});setLoad(false);});
   } else {
-    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option1:next.option1,option2:next.option2,firstCome:next.firstCome,extraQty:next.extraQty,status:_calcStatus(next.start,next.end)});
+    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,status:_calcStatus(next.start,next.end)});
     if(codesChanged)d.codes=codes;
-    d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note;
+    d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
     if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
     if(touchReels){d.reels=reels;d.views=totalViews;}
     _refreshModalHeader(d);
@@ -3147,6 +3187,51 @@ function removeCodeRow(i){
   if(!_modalCodes.length)_modalCodes=[''];
   renderCodeList();
 }
+
+// 수정 모달의 사은품 품목+수량 세로 리스트(최대 3개) — renderCodeList 패턴을 그대로 본뜸
+let _modalGifts=[{item:'',qty:''}];
+function renderGiftList(){
+  const host=document.getElementById('mGiftList');
+  host.innerHTML=_modalGifts.map((g,i)=>`
+    <div class="code-row">
+      <select class="f-inp f-sel" style="flex:2" onchange="updateGiftItem(${i},this.value)">${_giftItemOptionsHtml()}</select>
+      <select class="f-inp f-sel" style="flex:1" onchange="updateGiftQty(${i},this.value)">${_giftQtyOptionsHtml()}</select>
+      ${_modalGifts.length>1?`<button type="button" class="btn-cancel" onclick="removeGiftRow(${i})">삭제</button>`:''}
+    </div>`).join('');
+  const rows=host.querySelectorAll('.code-row');
+  rows.forEach((row,i)=>{
+    const sels=row.querySelectorAll('select');
+    sels[0].value=_modalGifts[i].item||'';
+    sels[1].value=_modalGifts[i].qty||'';
+  });
+  const addBtn=document.getElementById('mGiftAddBtn');
+  if(addBtn)addBtn.disabled=_modalGifts.length>=3;
+}
+function updateGiftItem(i,val){_modalGifts[i].item=val;mRecalcComposition();}
+function updateGiftQty(i,val){_modalGifts[i].qty=val;mRecalcComposition();}
+function addGiftRow(){
+  if(_modalGifts.length>=3)return;
+  _modalGifts.push({item:'',qty:''});
+  renderGiftList();
+}
+function removeGiftRow(i){
+  _modalGifts.splice(i,1);
+  if(!_modalGifts.length)_modalGifts=[{item:'',qty:''}];
+  renderGiftList();
+  mRecalcComposition();
+}
+// 사은품/오픈시간/선착순/적립금/비고 선택값 기반으로 "구성"을 자동 조합해 읽기전용 칸에 채움 —
+// 관련 필드가 바뀔 때마다(각 select의 onchange, 비고의 oninput) 호출됨
+function mRecalcComposition(){
+  document.getElementById('mComposition').value=_buildCompositionString({
+    gifts:_modalGifts,
+    firstComeItem:document.getElementById('mFirstComeItem').value,
+    firstComeQty:document.getElementById('mFirstComeQty').value,
+    points:document.getElementById('mPoints').value,
+    note:document.getElementById('mNoteInput').value
+  });
+}
+
 function cpTxt(t,el){const prev=el.textContent;const done=()=>{el.textContent='✓';showToast('상품코드가 복사되었습니다: '+t);setTimeout(()=>{el.textContent=prev;},1400);};navigator.clipboard?navigator.clipboard.writeText(t).then(done):fbCopy(t,done);}
 function fbCopy(t,cb){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');cb();}catch(e){}document.body.removeChild(ta);}
 
@@ -3377,13 +3462,19 @@ function adaptGAS(j){
     start:normDate(p.start),end:normDate(p.end),
     composition:p.composition||'',
     targetQty:p.targetQty!=null?Number(p.targetQty):null,
-    option1:p.option1||'',option2:p.option2||'',firstCome:p.firstCome||'',
+    // option2=오픈시간, firstCome=선착순 품목, note=적립금으로 재사용됨(공구건 모달 드롭다운 개편,
+    // 2026-08-18) — 필드명은 apps-script.js와 그대로 맞춘 것. 구 추가옵션1(option1)은 더 이상 안 씀.
+    option2:p.option2||'',firstCome:p.firstCome||'',firstComeQty:p.firstComeQty!=null?String(p.firstComeQty):'',
+    note:p.note||'',
+    giftItem1:p.giftItem1||'',giftQty1:p.giftQty1!=null?String(p.giftQty1):'',
+    giftItem2:p.giftItem2||'',giftQty2:p.giftQty2!=null?String(p.giftQty2):'',
+    giftItem3:p.giftItem3||'',giftQty3:p.giftQty3!=null?String(p.giftQty3):'',
     extraQty:p.extraQty!=null?Number(p.extraQty):null,
     status:p.status||'예정',
     views:p.views!=null?Number(p.views):null,qty:p.qty!=null?Number(p.qty):null,rev:p.revenue!=null?Number(p.revenue):null,
     codes:Array.isArray(p.codes)?p.codes:[],reels:Array.isArray(p.reels)?p.reels:[],
     rowCount:p.rowCount!=null?Number(p.rowCount):1,
-    s:{retail:p.retail!=null?Number(p.retail):null,sale:p.sale!=null?Number(p.sale):null,comm:p.commission!=null?Number(p.commission):null,note:p.note||''}
+    s:{retail:p.retail!=null?Number(p.retail):null,sale:p.sale!=null?Number(p.sale):null,comm:p.commission!=null?Number(p.commission):null,note:p.note2||''}
   }));
 }
 
@@ -3435,12 +3526,13 @@ function _mergeDuplicateCodeRows(deals){
     }));
     const reels=[...reelMap.values()];
 
-    // 그 외 필드: 첫 행 기준, 행마다 값이 다르면 경고만 남김(첫 행 값 사용)
-    const scalarFields=['vendor','platform','format','composition','marketingLink','note','option1','option2','firstCome','targetQty','extraQty','link','status'];
+    // 그 외 필드: 첫 행 기준, 행마다 값이 다르면 경고만 남김(첫 행 값 사용).
+    // 'noteText'는 실제 필드가 아니라 s.note(신규 자유입력 비고)를 비교하기 위한 가상 키.
+    const scalarFields=['vendor','platform','format','composition','marketingLink','note','noteText','option2','firstCome','firstComeQty','targetQty','extraQty','link','status','giftItem1','giftQty1','giftItem2','giftQty2','giftItem3','giftQty3'];
     scalarFields.forEach(f=>{
       members.slice(1).forEach(m=>{
-        const a=f==='note'?(first.s&&first.s.note):first[f];
-        const b=f==='note'?(m.s&&m.s.note):m[f];
+        const a=f==='noteText'?(first.s&&first.s.note):first[f];
+        const b=f==='noteText'?(m.s&&m.s.note):m[f];
         if(a!=null&&b!=null&&String(a)!==String(b)){
           console.warn('[그룹핑] "'+key+'" — "'+f+'" 값이 행마다 다릅니다(첫 행 값 사용): 첫 행='+a+' / 다른 행='+b);
         }
@@ -3601,6 +3693,39 @@ function navSales(el,prod){
 function render(){renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();}
 document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.getMonth()+1)+'월 '+_NOW.getDate()+'일';
 
+/* ── 사은품/오픈시간/선착순/적립금 공용 상수 + 구성 자동생성 (공구건 모달 드롭다운 개편, 2026-08-18) ──
+   apps-script.js의 GIFT_ITEMS/QTY_STANDARD_OPTIONS/OPEN_TIME_OPTIONS/POINTS_OPTIONS와 값이 같아야 함
+   (그쪽은 마이그레이션 매칭용, 여긴 드롭다운 렌더용). */
+const GIFT_ITEMS=['하드필터','하드락필터','하드락필터(mini)','저온촉매 탈취필터','락앤락 김치통 2.6L 2P','푸드컨테이너(단종)','실링 컨테이너 2L','실링 컨테이너 3L','탈취제','수동 빙수기'];
+const QTY_STANDARD_OPTIONS=(()=>{const o=[];for(let q=50;q<=500;q+=50)o.push(q);for(let q=600;q<=3000;q+=100)o.push(q);return o;})();
+const QTY_UNSPECIFIED_LABEL='전원증정';
+const OPEN_TIME_OPTIONS=(()=>{const o=[];for(let h=10;h<=24;h++)o.push(String(h).padStart(2,'0')+':00');return o;})();
+const POINTS_OPTIONS=['NPAY 1만원','NPAY 2만원','NPAY 3만원','NPAY 4만원','NPAY 5만원'];
+
+function _giftItemOptionsHtml(){return'<option value="">없음</option>'+GIFT_ITEMS.map(it=>`<option value="${it}">${it}</option>`).join('');}
+function _giftQtyOptionsHtml(){return'<option value="">없음</option><option value="'+QTY_UNSPECIFIED_LABEL+'">'+QTY_UNSPECIFIED_LABEL+'</option>'+QTY_STANDARD_OPTIONS.map(q=>`<option value="${q}">${q}</option>`).join('');}
+function _openTimeOptionsHtml(){return'<option value="">없음</option>'+OPEN_TIME_OPTIONS.map(t=>`<option value="${t}">${t}</option>`).join('');}
+function _pointsOptionsHtml(){return'<option value="">없음</option>'+POINTS_OPTIONS.map(p=>`<option value="${p}">${p}</option>`).join('');}
+
+// 사은품/선착순 한 줄을 "품목 수량개" 문구로 — 수량이 숫자면 "개"를 붙이고 "전원증정"이면 그대로
+// 붙임(개를 붙이면 어색함). 품목이 없으면 null(구성 조합에서 통째로 제외).
+function _giftPartLabel(item,qty){
+  if(!item)return null;
+  if(!qty)return item;
+  return item+' '+qty+(/^\d+$/.test(String(qty))?'개':'');
+}
+// 사은품(최대 3개)+선착순+적립금+비고를 "본품 + ..." 형태로 조합 — 등록/수정 모달이 공유해서 씀.
+// 없음/미선택 항목은 자동으로 조합에서 빠짐.
+function _buildCompositionString({gifts,firstComeItem,firstComeQty,points,note}){
+  const parts=['본품'];
+  (gifts||[]).forEach(g=>{const label=_giftPartLabel(g.item,g.qty);if(label)parts.push(label);});
+  const fcLabel=_giftPartLabel(firstComeItem,firstComeQty);
+  if(fcLabel)parts.push('[선착순] '+fcLabel);
+  if(points)parts.push(points);
+  if(note&&note.trim())parts.push('('+note.trim()+')');
+  return parts.join(' + ');
+}
+
 /* ── 새 공구건 폼 ── */
 // 품목군별 제품 드롭다운 여부 — 신규 등록 모달(fLine/fModel)과 수정 모달(mLine/mModel) 둘 다
 // 이 상수 하나만 참조함(예전엔 두 모달이 각각 다른 상수를 써서 한쪽만 고치면 어긋나기 쉬웠음 —
@@ -3620,6 +3745,13 @@ function _rebuildModelOptions(selectEl,line){
   const opts=LINE_MODEL_OPTIONS[line]||[];
   selectEl.innerHTML='<option value="">선택</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
 }
+
+// 오픈시간/선착순 품목·수량/적립금 드롭다운(모달당 1개씩 고정, 사은품처럼 재렌더되지 않음) —
+// 페이지 로드 시 한 번만 옵션을 채움
+['mOpenTime','fOpenTime'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_openTimeOptionsHtml();});
+['mFirstComeItem','fFirstComeItem'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_giftItemOptionsHtml();});
+['mFirstComeQty','fFirstComeQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_giftQtyOptionsHtml();});
+['mPoints','fPoints'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_pointsOptionsHtml();});
 
 let _formCodes=['']; // 새 공구건 등록 폼의 상품코드 목록(모달의 _modalCodes와 별개 인스턴스)
 function renderFormCodeList(){
@@ -3644,6 +3776,48 @@ function removeFormCodeRow(i){
   renderFormCodeList();
 }
 
+// 새 공구건 등록 폼의 사은품 품목+수량 세로 리스트(최대 3개) — 모달의 _modalGifts와 별개 인스턴스
+let _formGifts=[{item:'',qty:''}];
+function renderFormGiftList(){
+  const host=document.getElementById('fGiftList');
+  host.innerHTML=_formGifts.map((g,i)=>`
+    <div class="code-row">
+      <select class="f-inp f-sel" style="flex:2" onchange="updateFormGiftItem(${i},this.value)">${_giftItemOptionsHtml()}</select>
+      <select class="f-inp f-sel" style="flex:1" onchange="updateFormGiftQty(${i},this.value)">${_giftQtyOptionsHtml()}</select>
+      ${_formGifts.length>1?`<button type="button" class="btn-cancel" onclick="removeFormGiftRow(${i})">삭제</button>`:''}
+    </div>`).join('');
+  const rows=host.querySelectorAll('.code-row');
+  rows.forEach((row,i)=>{
+    const sels=row.querySelectorAll('select');
+    sels[0].value=_formGifts[i].item||'';
+    sels[1].value=_formGifts[i].qty||'';
+  });
+  const addBtn=document.getElementById('fGiftAddBtn');
+  if(addBtn)addBtn.disabled=_formGifts.length>=3;
+}
+function updateFormGiftItem(i,val){_formGifts[i].item=val;fRecalcComposition();}
+function updateFormGiftQty(i,val){_formGifts[i].qty=val;fRecalcComposition();}
+function addFormGiftRow(){
+  if(_formGifts.length>=3)return;
+  _formGifts.push({item:'',qty:''});
+  renderFormGiftList();
+}
+function removeFormGiftRow(i){
+  _formGifts.splice(i,1);
+  if(!_formGifts.length)_formGifts=[{item:'',qty:''}];
+  renderFormGiftList();
+  fRecalcComposition();
+}
+function fRecalcComposition(){
+  document.getElementById('fComposition').value=_buildCompositionString({
+    gifts:_formGifts,
+    firstComeItem:document.getElementById('fFirstComeItem').value,
+    firstComeQty:document.getElementById('fFirstComeQty').value,
+    points:document.getElementById('fPoints').value,
+    note:document.getElementById('fNote').value
+  });
+}
+
 function openDealForm(){
   // 오늘 날짜를 기본값으로
   const today=new Date().toISOString().split('T')[0];
@@ -3652,6 +3826,13 @@ function openDealForm(){
   onDateChange();
   _formCodes=[''];
   renderFormCodeList();
+  _formGifts=[{item:'',qty:''}];
+  renderFormGiftList();
+  document.getElementById('fOpenTime').value='';
+  document.getElementById('fFirstComeItem').value='';
+  document.getElementById('fFirstComeQty').value='';
+  document.getElementById('fPoints').value='';
+  fRecalcComposition();
   document.getElementById('fCopyNotice').style.display='none';
   document.getElementById('dealOv').classList.add('open');
   _setHash('new-deal');
@@ -3670,6 +3851,9 @@ function closeDealForm(){
   document.getElementById('fCopyNotice').style.display='none';
   _formCodes=[''];
   renderFormCodeList();
+  _formGifts=[{item:'',qty:''}];
+  renderFormGiftList();
+  fRecalcComposition();
   _setHash(_currentPageHash); // 모달 밑에 깔려있던 실제 탭 해시로 복귀
 }
 
@@ -3712,13 +3896,24 @@ function copyDealToNew(){
   document.getElementById('fSalePrice').value=s.sale!=null?s.sale:'';
   document.getElementById('fCommission').value=s.comm!=null?s.comm:'';
   document.getElementById('fFormat').value=d.format||'';
-  document.getElementById('fComposition').value=d.composition||'';
   document.getElementById('fTargetQty').value=d.targetQty!=null?d.targetQty:'';
-  document.getElementById('fOption1').value=d.option1||'';
-  document.getElementById('fOption2').value=d.option2||'';
-  document.getElementById('fFirstCome').value=d.firstCome||'';
+
+  let gifts=[
+    {item:d.giftItem1||'',qty:d.giftQty1!=null?String(d.giftQty1):''},
+    {item:d.giftItem2||'',qty:d.giftQty2!=null?String(d.giftQty2):''},
+    {item:d.giftItem3||'',qty:d.giftQty3!=null?String(d.giftQty3):''}
+  ];
+  while(gifts.length>1&&!gifts[gifts.length-1].item)gifts.pop();
+  _formGifts=gifts;
+  renderFormGiftList();
+
+  document.getElementById('fOpenTime').value=d.option2||'';
+  document.getElementById('fFirstComeItem').value=d.firstCome||'';
+  document.getElementById('fFirstComeQty').value=d.firstComeQty!=null?String(d.firstComeQty):'';
+  document.getElementById('fPoints').value=d.note||'';
   document.getElementById('fExtraQty').value=d.extraQty!=null?d.extraQty:'';
   document.getElementById('fNote').value=s.note||'';
+  fRecalcComposition();
 
   const notice=document.getElementById('fCopyNotice');
   notice.textContent=`📋 "${d.ch||d.influencer||'?'}" 건에서 복사됨 — 시작일/마감일을 새로 지정해주세요.`;
@@ -3798,6 +3993,8 @@ function saveDeal(){
   if(!start||!end){alert('시작일과 마감일을 입력하세요.');return;}
   if(new Date(start)>new Date(end)){alert('마감일이 시작일보다 빠릅니다.');return;}
 
+  const formGifts=_formGifts.filter(g=>g.item);
+  const noteText=document.getElementById('fNote').value.trim(); // 신규 비고(서버 note2 / 클라 s.note)
   const newDeal={
     brand,product,ch:influencer,
     influencer,platform,chId:channelId,
@@ -3808,14 +4005,19 @@ function saveDeal(){
     format:document.getElementById('fFormat').value,
     composition:document.getElementById('fComposition').value.trim(),
     targetQty:document.getElementById('fTargetQty').value?Number(document.getElementById('fTargetQty').value):null,
-    option1:document.getElementById('fOption1').value.trim(),
-    option2:document.getElementById('fOption2').value.trim(),
-    firstCome:document.getElementById('fFirstCome').value.trim(),
+    // option2=오픈시간, firstCome=선착순 품목, note=적립금(재사용된 wire 필드명 — apps-script.js 참고)
+    option2:document.getElementById('fOpenTime').value,
+    firstCome:document.getElementById('fFirstComeItem').value,
+    firstComeQty:document.getElementById('fFirstComeQty').value,
+    note:document.getElementById('fPoints').value,
+    giftItem1:formGifts[0]?formGifts[0].item:'',giftQty1:formGifts[0]?formGifts[0].qty:'',
+    giftItem2:formGifts[1]?formGifts[1].item:'',giftQty2:formGifts[1]?formGifts[1].qty:'',
+    giftItem3:formGifts[2]?formGifts[2].item:'',giftQty3:formGifts[2]?formGifts[2].qty:'',
     extraQty:document.getElementById('fExtraQty').value?Number(document.getElementById('fExtraQty').value):null,
-    note:document.getElementById('fNote').value.trim(),
+    note2:noteText,
     status:_calcStatus(start,end),views:null,qty:null,rev:null,
     codes:_formCodes.map(c=>c.trim()).filter(c=>c),
-    s:{retail:null,sale:Number(document.getElementById('fSalePrice').value)||null,comm:Number(document.getElementById('fCommission').value)||null,note:''}
+    s:{retail:null,sale:Number(document.getElementById('fSalePrice').value)||null,comm:Number(document.getElementById('fCommission').value)||null,note:noteText}
   };
   if(!newDeal.codes.length)newDeal.codes=[''];
 
