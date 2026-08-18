@@ -36,8 +36,15 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .stab:hover{background:var(--border)}
 .stab.sam{background:var(--minix);border-color:var(--minix);color:#fff}
 
-.main{padding:20px 24px;display:flex;flex-direction:column;gap:16px;max-width:1440px}
-#page-sales{max-width:none}
+/* 2026-08-18: 예전 1440px 상한이 넓은 모니터에서 오른쪽에 큰 빈 여백을 남겨(사이드바 오른쪽 전체가
+   .app-main인데, 그 안의 .main만 1440px로 좁게 잡혀있었음) 화면을 못 채우던 문제 수정. 상한을
+   충분히 넉넉하게 올리고 margin:auto를 줘서, 화면이 상한보다 좁을 땐 가용 폭을 꽉 채우고(기존
+   동작과 동일) 상한보다 넓은 초대형 모니터에서만 좌우로 여백이 대칭으로 분산되게 함 — 그래야
+   "완전 무제한도 아니고 한쪽으로 쏠린 여백도 아닌" 요청대로 동작함. 전 메뉴가 이 클래스 하나를
+   공유하므로(#page-sales 같은 페이지별 예외 없이) 여기 한 곳만 고치면 전체에 반영됨.
+   #page-sales가 예전엔 실적 표가 넓어야 한다고 이 상한을 아예 무제한으로 풀어뒀었는데, 그러면
+   그 페이지만 다른 메뉴와 다르게 진짜 무제한으로 늘어나 버려 지금 상한 값과 통일시키고 제거함. */
+.main{padding:20px 24px;display:flex;flex-direction:column;gap:16px;max-width:1800px;margin:0 auto}
 .page{display:none}
 .page.active{display:flex}
 .page-placeholder{padding:70px 20px;text-align:center;color:var(--text-3);font-size:13px;line-height:1.7}
@@ -1181,7 +1188,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-firstcome-timedeal-2026-08-18-01';
+const DASHBOARD_VERSION='dash-main-width-expand-2026-08-18-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
