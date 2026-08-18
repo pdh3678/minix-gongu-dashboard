@@ -546,6 +546,12 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
       <div class="card">
         <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료 건 기준</span></div>
+        <div class="dash-stat-line" style="margin-bottom:14px">
+          <label style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:12px;color:var(--text-2)">제품</span>
+            <select class="f-inp f-sel" id="dashChannelProductFilter" style="width:auto;padding:5px 8px;font-size:12px" onchange="_onDashChannelProductFilterChange()"></select>
+          </label>
+        </div>
         <div class="analytics-split">
           <div class="tbl-wrap">
             <table><thead><tr>
@@ -1131,7 +1137,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-achv-season-list-bottom-2026-08-17-01';
+const DASHBOARD_VERSION='dash-channel-deal-count-fix-product-filter-2026-08-18-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1657,21 +1663,49 @@ function renderDashAnalytics(){
 }
 
 /* 1) 채널(인플루언서)별 성과 — 매출 상위순 표 + 차트, 회차별 추세는 "회차" 전용 필드가 없어
-   같은 채널 내 시작일 순 정렬로 대체 계산(첫 공구 vs 최근 공구 매출 비교, 2건 이상일 때만) */
+   같은 채널 내 시작일 순 정렬로 대체 계산(첫 공구 vs 최근 공구 매출 비교, 2건 이상일 때만).
+   집계 단위는 "공구건"(DATA의 원소 하나 = 서버가 dealId로 이미 합친 공구건 하나) — 상품코드가
+   여러 개라 시트에서 여러 행으로 나뉜 건도 adaptGAS+_mergeDuplicateCodeRows를 거치며 이미 1개
+   원소로 합쳐져 있으므로 items.length가 그대로 공구 횟수가 됨(행 수로 부풀려지지 않음).
+   채널 키에 .trim()을 추가한 이유(버그 수정) — 이전에는 trim 없이 원본 채널명 문자열을
+   그대로 Map 키로 썼는데, 같은 채널이라도 앞뒤 공백이 섞인 변형("22기 옥순" vs "22기 옥순 ")이
+   시트에 있으면 서로 다른 키로 쪼개져 한 채널의 공구가 여러 행으로 흩어져 보이는 문제가 있었음
+   (제품코드 병합 로직 _mergeDuplicateCodeRows는 이미 채널 키에 trim을 적용하고 있었어서, 여기도
+   동일하게 맞춤). */
+let _dashChannelProductFilter='all'; // 'all' 또는 productColorKey() 값 — 채널별 성과 섹션 전용 제품 필터
+function _dashChannelProductOptions(scope){
+  const present=new Set(scope.map(d=>productColorKey(d.product)));
+  // Object.keys(PRODUCT_GROUP_LABELS) 순서(플렌더PRO→MAX→mini→NEXT→시프트→슬림→에어드라이→기타)로
+  // 고정 정렬 — Set 순회 순서(데이터 등장 순)에 맡기면 매 렌더마다 옵션 순서가 흔들릴 수 있음.
+  return Object.keys(PRODUCT_GROUP_LABELS).filter(k=>present.has(k));
+}
+function _onDashChannelProductFilterChange(){
+  _dashChannelProductFilter=document.getElementById('dashChannelProductFilter').value;
+  renderDashChannelAnalytics();
+}
 function renderDashChannelAnalytics(){
-  const scope=_dashDoneScope();
+  const fullScope=_dashDoneScope();
+
+  const selectEl=document.getElementById('dashChannelProductFilter');
+  const availableKeys=_dashChannelProductOptions(fullScope);
+  if(_dashChannelProductFilter!=='all'&&!availableKeys.includes(_dashChannelProductFilter))_dashChannelProductFilter='all';
+  selectEl.innerHTML='<option value="all">전체</option>'+availableKeys.map(k=>`<option value="${k}">${PRODUCT_GROUP_LABELS[k]||k}</option>`).join('');
+  selectEl.value=_dashChannelProductFilter;
+
+  const scope=_dashChannelProductFilter==='all'?fullScope:fullScope.filter(d=>productColorKey(d.product)===_dashChannelProductFilter);
+
   const body=document.getElementById('dashChannelBody');
   const note=document.getElementById('dashChannelNote');
   const chartEl=document.getElementById('dashChannelChart');
   if(!scope.length){
-    body.innerHTML='<tr><td colspan="7" class="dash-analytics-empty">해당 기간에 완료된 공구건이 없습니다</td></tr>';
+    body.innerHTML=`<tr><td colspan="7" class="dash-analytics-empty">${_dashChannelProductFilter==='all'?'해당 기간에 완료된 공구건이 없습니다':'해당 기간·제품 조건에 완료된 공구건이 없습니다'}</td></tr>`;
     note.textContent='';
     if(_dashChannelChartInst){_dashChannelChartInst.destroy();_dashChannelChartInst=null;}
     return;
   }
   const map=new Map();
   scope.forEach(d=>{
-    const key=d.ch||d.influencer||'(미상)';
+    const key=(d.ch||d.influencer||'').trim()||'(미상)';
     if(!map.has(key))map.set(key,{ch:key,items:[]});
     map.get(key).items.push(d);
   });
