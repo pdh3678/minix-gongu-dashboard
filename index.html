@@ -582,8 +582,13 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="analytics-split">
           <div class="tbl-wrap">
             <table><thead><tr>
-              <th>채널</th><th class="num-col">공구 횟수</th><th class="num-col">누적 매출</th>
-              <th class="num-col">평균 판매수량</th><th class="num-col">평균 조회수</th><th class="num-col">전환율</th><th>추세</th>
+              <th class="sortable" id="dashChHdCh" onclick="_sortDashChannelTable('ch')">채널<span class="sort-ic">⇕</span></th>
+              <th class="num-col sortable" id="dashChHdCount" onclick="_sortDashChannelTable('count')">공구 횟수<span class="sort-ic">⇕</span></th>
+              <th class="num-col sortable" id="dashChHdRev" onclick="_sortDashChannelTable('revSum')">누적 매출<span class="sort-ic">⇕</span></th>
+              <th class="num-col sortable" id="dashChHdQty" onclick="_sortDashChannelTable('avgQty')">평균 판매수량<span class="sort-ic">⇕</span></th>
+              <th class="num-col sortable" id="dashChHdViews" onclick="_sortDashChannelTable('avgViews')">평균 조회수<span class="sort-ic">⇕</span></th>
+              <th class="num-col sortable" id="dashChHdConv" onclick="_sortDashChannelTable('conv')">전환율<span class="sort-ic">⇕</span></th>
+              <th class="sortable" id="dashChHdTrend" onclick="_sortDashChannelTable('trend')">추세<span class="sort-ic">⇕</span></th>
             </tr></thead><tbody id="dashChannelBody"></tbody></table>
           </div>
           <div style="height:280px"><canvas id="dashChannelChart"></canvas></div>
@@ -1193,7 +1198,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-cal-header-row-labels-2026-08-18-01';
+const DASHBOARD_VERSION='dash-channel-table-sort-2026-08-20-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1739,6 +1744,41 @@ function _onDashChannelProductFilterChange(){
   _dashChannelProductFilter=document.getElementById('dashChannelProductFilter').value;
   renderDashChannelAnalytics();
 }
+
+// 채널별 성과 표 컬럼 정렬(2026-08-18) — sortSales(실적 상세 표)와 같은 헤더 클릭·화살표 패턴을
+// 재사용. 기본값은 기존 동작 그대로 누적 매출 내림차순. 제품 필터를 바꿔도 이 값은 그대로 유지되고
+// renderDashChannelAnalytics가 재호출될 때마다 이 기준으로 다시 정렬됨(별도 유지 로직 불필요).
+let _dashChannelSort={key:'revSum',dir:-1};
+function _sortDashChannelTable(key){
+  // sortSales(실적 상세 표)와 동일하게 새 컬럼을 처음 클릭하면 오름차순(dir:1)부터 시작
+  if(_dashChannelSort.key===key)_dashChannelSort.dir*=-1;else{_dashChannelSort={key,dir:1};}
+  renderDashChannelAnalytics();
+}
+// 값이 없는 행(평균 조회수 미기입 등)과 추세가 없는 행(1회성 등)은 정렬 방향과 무관하게 항상
+// 맨 아래로 — 그래야 "값이 큰 게 위로 온다"는 정렬의 기본 기대를 안 깨면서 빈 값이 섞여도 헷갈리지 않음.
+// 추세는 "▲30%"와 "▼30%"가 같은 크기(30)로 저장돼 있어(dir로만 방향 구분), 증가는 +, 감소는 -로
+// 바꿔 하나의 숫자로 취급 — 그래야 "성장 중인 채널이 위/아래로 몰린다"는 정렬이 자연스럽게 동작함.
+function _dashChannelSortVal(r,key){
+  if(key==='trend')return r.trend?(r.trend.dir==='down'?-r.trend.pct:r.trend.pct):null;
+  return r[key];
+}
+function _dashChannelCompare(a,b,key,dir){
+  if(key==='ch')return a.ch.localeCompare(b.ch)*dir;
+  const av=_dashChannelSortVal(a,key),bv=_dashChannelSortVal(b,key);
+  if(av==null&&bv==null)return 0;
+  if(av==null)return 1;
+  if(bv==null)return -1;
+  return (av-bv)*dir;
+}
+const DASH_CHANNEL_HD_IDS={ch:'dashChHdCh',count:'dashChHdCount',revSum:'dashChHdRev',avgQty:'dashChHdQty',avgViews:'dashChHdViews',conv:'dashChHdConv',trend:'dashChHdTrend'};
+function _renderDashChannelSortIcons(){
+  Object.keys(DASH_CHANNEL_HD_IDS).forEach(k=>{
+    const el=document.getElementById(DASH_CHANNEL_HD_IDS[k]);
+    const sorted=_dashChannelSort.key===k;
+    el.classList.toggle('sorted',sorted);
+    el.querySelector('.sort-ic').textContent=sorted?(_dashChannelSort.dir>0?'▲':'▼'):'⇕';
+  });
+}
 function renderDashChannelAnalytics(){
   const fullScope=_dashDoneScope();
 
@@ -1785,7 +1825,15 @@ function renderDashChannelAnalytics(){
       }
     }
     return{ch:g.ch,count:items.length,revSum,avgQty,avgViews,conv,trend};
-  }).sort((a,b)=>b.revSum-a.revSum);
+  });
+
+  // 차트는 표 정렬 기준과 무관하게 항상 "매출 상위 10개"를 보여줌(차트 자체가 "누적 매출" 기준으로
+  // 라벨돼 있어, 표를 다른 기준으로 정렬해도 차트까지 같이 흔들리면 오히려 더 헷갈림) — rows를
+  // 정렬하기 전에 매출 기준 정렬본을 따로 떼어둠.
+  const top=[...rows].sort((a,b)=>b.revSum-a.revSum).slice(0,10);
+  note.textContent=rows.length>10?`매출 상위 10개 채널만 차트에 표시(전체 ${rows.length}개 채널)`:'';
+
+  rows.sort((a,b)=>_dashChannelCompare(a,b,_dashChannelSort.key,_dashChannelSort.dir));
 
   const trendIcon={up:'▲',down:'▼',flat:'–'};
   body.innerHTML=rows.map(r=>`
@@ -1798,9 +1846,7 @@ function renderDashChannelAnalytics(){
       <td class="num-col">${_pct1(r.conv!=null?r.conv*100:null)}</td>
       <td>${r.trend?`<span class="trend-${r.trend.dir}">${trendIcon[r.trend.dir]} ${r.trend.pct.toFixed(0)}%</span>`:'<span style="color:var(--text-3)">—</span>'}</td>
     </tr>`).join('');
-
-  const top=rows.slice(0,10);
-  note.textContent=rows.length>10?`매출 상위 10개 채널만 차트에 표시(전체 ${rows.length}개 채널)`:'';
+  _renderDashChannelSortIcons();
 
   if(typeof Chart==='undefined')return;
   if(_dashChannelChartInst)_dashChannelChartInst.destroy();
