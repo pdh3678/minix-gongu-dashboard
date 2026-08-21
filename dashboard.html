@@ -1204,7 +1204,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-product-taxonomy-season-filter-2026-08-21-01';
+const DASHBOARD_VERSION='dash-modal-product-display-fix-2026-08-21-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -2859,11 +2859,12 @@ function mOnLineChange(){
     mModel.value='';mProd.value='';
   } else {
     modelRow.style.display='none';
-    mProd.value=line;
+    mProd.value=PRODUCT_SHEET_NAME[line]||line; // "제품명 참고" 필드도 시트 정식 표기로 표시
   }
 }
 function mOnModelChange(){
-  document.getElementById('mProduct').value=document.getElementById('mModel').value||'';
+  const model=document.getElementById('mModel').value;
+  document.getElementById('mProduct').value=model?(PRODUCT_SHEET_NAME[model]||model):'';
 }
 function mOnPlatformChange(){
   const p=document.getElementById('mPlatform').value;
@@ -3899,9 +3900,12 @@ const LINE_MODEL_OPTIONS={
 };
 // 품목군별 제품 드롭다운(fModel/mModel) 옵션을 LINE_MODEL_OPTIONS 기준으로 다시 그림 — 신규
 // 등록/수정 두 모달이 이 함수 하나만 거치므로 옵션 목록이 절대 어긋나지 않음.
+// 2026-08-21: 옵션의 value는 그대로 내부 표기(공백 없음, toSheetProductName/저장 로직이 그대로
+// 참조)로 두고, 화면에 보이는 텍스트만 시트 정식 표기(PRODUCT_SHEET_NAME)로 바꿈 — fLine 셀렉트가
+// 이미 쓰던 "값=내부표기, 표시=정식표기" 패턴을 모델 셀렉트에도 그대로 맞춘 것.
 function _rebuildModelOptions(selectEl,line){
   const opts=LINE_MODEL_OPTIONS[line]||[];
-  selectEl.innerHTML='<option value="">선택</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  selectEl.innerHTML='<option value="">선택</option>'+opts.map(o=>`<option value="${o}">${PRODUCT_SHEET_NAME[o]||o}</option>`).join('');
 }
 
 // 오픈시간/선착순 품목·수량/적립금 드롭다운(모달당 1개씩 고정, 사은품처럼 재렌더되지 않음) —
@@ -4107,13 +4111,13 @@ function onLineChange(){
     fProd.value='';
   } else {
     modelRow.style.display='none';
-    fProd.value=line;
+    fProd.value=PRODUCT_SHEET_NAME[line]||line; // "제품명 참고" 필드도 시트 정식 표기로 표시
   }
 }
 
 function onModelChange(){
   const model=document.getElementById('fModel').value;
-  document.getElementById('fProduct').value=model||'';
+  document.getElementById('fProduct').value=model?(PRODUCT_SHEET_NAME[model]||model):'';
 }
 
 function onDateChange(){
