@@ -86,6 +86,12 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .dash-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .dash-period-summary{font-size:12px;font-weight:700;color:var(--minix)}
 .chart-note{font-size:11px;color:var(--text-3);text-align:right;margin-top:4px}
+/* 인플루언서 전역 필터(칩 + 자동완성 목록) — 팝오버 자체는 기존 .ym-dd-pop을 그대로 재사용 */
+.dash-filter-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:14px;background:var(--minix-lt);color:var(--minix);font-size:12px;font-weight:700}
+.dash-filter-chip button{background:none;border:none;color:var(--minix);cursor:pointer;font-size:15px;font-weight:800;line-height:1;padding:2px 4px;font-family:inherit}
+.dash-inf-opt{padding:6px 10px;border-radius:6px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap}
+.dash-inf-opt:hover,.dash-inf-opt.hl{background:var(--minix-lt);color:var(--minix)}
+.dash-inf-opt-empty{padding:6px 10px;font-size:12px;color:var(--text-3)}
 
 /* ── 브랜드별 실적: 연도/월 다중선택 필터 ── */
 .ym-filter-bar{display:flex;flex-wrap:wrap;gap:20px;align-items:center}
@@ -557,6 +563,14 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <div class="ym-dd-pop" id="dashPWeekPop"></div>
           </div>
           <span class="dash-period-summary" id="dashPeriodSummary"></span>
+        </div>
+        <div class="dash-filter-row" style="margin-top:10px">
+          <label style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;font-weight:700;color:var(--text-2)">인플루언서</span>
+            <input class="f-inp f-sel" id="dashInfluencerInput" type="text" placeholder="채널명 검색(예: 러브지나)" autocomplete="off" style="width:200px" oninput="_onDashInfluencerInput(this.value)" onfocus="_onDashInfluencerFocus()" onkeydown="_onDashInfluencerKeydown(event)">
+          </label>
+          <span class="dash-filter-chip" id="dashInfluencerChip" style="display:none"></span>
+          <div class="ym-dd-pop" id="dashInfluencerPop"></div>
         </div>
       </div>
       <div class="kpi-row" id="kpiRow"></div>
@@ -1204,7 +1218,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-modal-product-display-fix-2026-08-21-01';
+const DASHBOARD_VERSION='dash-influencer-global-filter-2026-08-21-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1251,7 +1265,7 @@ let EVENTS=SAMPLE_EVENTS.map(e=>({...e}));
 const _NOW=new Date();
 const ST={prod:'all',model:'all'};
 const DASH_PERIOD_LS_KEY='gp_dash_period';
-const DASH={years:null,months:null,weeks:null};
+const DASH={years:null,months:null,weeks:null,channel:null}; // channel: null=전체, 문자열=해당 인플루언서(채널명)만
 function dashPLoad(){
   try{
     const raw=localStorage.getItem(DASH_PERIOD_LS_KEY);
@@ -1547,6 +1561,7 @@ function dashPToggle(kind,val,checked){
 function dashPAll(kind){DASH[kind]=null;dashPNormalizeChildren(kind);dashPSave();renderDashboard();}
 function dashPNone(kind){DASH[kind]=new Set();dashPNormalizeChildren(kind);dashPSave();renderDashboard();}
 function renderDashPeriodBar(){
+  _renderDashInfluencerChip();
   const years=dashPAvailableYears(),months=dashPAvailableMonths(),weeks=dashPAvailableWeeks();
   document.getElementById('dashPYearBtn').textContent=dashPLabel('years');
   document.getElementById('dashPYearPop').innerHTML=`
@@ -1565,12 +1580,16 @@ function renderDashPeriodBar(){
   const openDd=document.querySelector('.ym-dd.open');
   if(openDd)_positionYmDdPop(openDd);
 }
+// dashPeriodMatch 이름은 그대로 두지만(호출부가 많아 바꾸면 diff가 커짐) 이제 기간뿐 아니라
+// 인플루언서(DASH.channel) 조건도 함께 봄 — dashData()/_dashDoneScope()를 거치는 대시보드 전 섹션
+// (KPI/차트/채널별 성과/개별 공구건 목록/달성률 등)에 이 한 곳만 고쳐서 전역으로 반영됨.
 function dashPeriodMatch(d){
   if(!d.start)return false;
   const y=yearOf(d.start),m=monthOf(d.start),w=_mondayOf(d.start);
   if(_dashActive(DASH.years)&&!DASH.years.has(y))return false;
   if(_dashActive(DASH.months)&&!DASH.months.has(m))return false;
   if(_dashActive(DASH.weeks)&&!DASH.weeks.has(w))return false;
+  if(DASH.channel&&(d.ch||d.influencer||'').trim()!==DASH.channel)return false;
   return true;
 }
 function dashData(){return DATA.filter(d=>d.start&&dashPeriodMatch(d));}
@@ -1587,6 +1606,82 @@ Object.keys(YM_DD_POP_MAP).forEach(ddId=>{
   const pop=document.getElementById(YM_DD_POP_MAP[ddId]);
   if(pop)document.body.appendChild(pop);
 });
+// 인플루언서 자동완성 팝오버도 같은 이유(.card{isolation:isolate} 클리핑)로 body 직속으로 이동
+{
+  const infPop=document.getElementById('dashInfluencerPop');
+  if(infPop)document.body.appendChild(infPop);
+}
+
+// ── 인플루언서(채널명) 전역 필터 — 자동완성 드롭다운 ──
+// 후보 목록은 절대 하드코딩하지 않고 항상 "현재 로드된 DATA"에서 매번 다시 뽑음(중복 제거+가나다순).
+// 그래서 새 인플루언서의 공구가 등록/조회되어 DATA에 채널명이 추가되기만 하면 코드 수정 없이
+// 자동완성 후보에 바로 나타남. 기간 필터와는 별개로 "현재 로드된 전체 데이터" 기준으로 후보를
+// 보여줌(기간을 좁혀도 다른 기간의 채널을 미리 선택해둘 수 있게).
+function _dashInfluencerAvailable(){
+  return[...new Set(DATA.filter(d=>d.start).map(d=>(d.ch||d.influencer||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+}
+function _dashInfluencerNorm(s){return String(s||'').toLowerCase().replace(/\s+/g,'');} // 대소문자·공백 무시 매칭용
+function _onDashInfluencerInput(val){
+  const q=_dashInfluencerNorm(val);
+  const all=_dashInfluencerAvailable();
+  const matches=q?all.filter(ch=>_dashInfluencerNorm(ch).includes(q)):all;
+  _renderDashInfluencerPop(matches.slice(0,30));
+}
+function _onDashInfluencerFocus(){
+  _onDashInfluencerInput(document.getElementById('dashInfluencerInput').value);
+}
+function _onDashInfluencerKeydown(ev){
+  if(ev.key==='Escape'){document.getElementById('dashInfluencerPop').classList.remove('open');return;}
+  if(ev.key!=='Enter')return;
+  ev.preventDefault();
+  const first=document.querySelector('#dashInfluencerPop .dash-inf-opt[data-ch]');
+  if(first)_selectDashInfluencer(first.dataset.ch);
+}
+function _renderDashInfluencerPop(list){
+  const pop=document.getElementById('dashInfluencerPop');
+  pop.innerHTML=list.length
+    ?list.map(ch=>`<div class="dash-inf-opt" data-ch="${_escAttr(ch)}" onclick="_selectDashInfluencer(this.dataset.ch)">${ch}</div>`).join('')
+    :'<div class="dash-inf-opt-empty">일치하는 채널이 없습니다</div>';
+  pop.classList.add('open');
+  _positionDashInfluencerPop();
+}
+function _positionDashInfluencerPop(){
+  const input=document.getElementById('dashInfluencerInput');
+  const pop=document.getElementById('dashInfluencerPop');
+  const r=input.getBoundingClientRect();
+  const margin=4,vw=window.innerWidth,vh=window.innerHeight;
+  pop.style.minWidth=r.width+'px';
+  const popH=pop.offsetHeight,popW=pop.offsetWidth;
+  let top=r.bottom+margin;
+  if(top+popH>vh-8&&r.top-margin-popH>=8)top=r.top-margin-popH;
+  top=Math.max(8,Math.min(top,vh-8-popH));
+  let left=Math.max(8,Math.min(r.left,vw-8-popW));
+  pop.style.top=top+'px';
+  pop.style.left=left+'px';
+}
+function _selectDashInfluencer(ch){
+  DASH.channel=ch;
+  const input=document.getElementById('dashInfluencerInput');
+  input.value='';
+  document.getElementById('dashInfluencerPop').classList.remove('open');
+  _renderDashInfluencerChip();
+  renderDashboard();
+}
+function _clearDashInfluencerFilter(){
+  DASH.channel=null;
+  _renderDashInfluencerChip();
+  renderDashboard();
+}
+function _renderDashInfluencerChip(){
+  const chip=document.getElementById('dashInfluencerChip');
+  if(DASH.channel){
+    chip.style.display='inline-flex';
+    chip.innerHTML=`인플루언서: ${DASH.channel} <button type="button" onclick="_clearDashInfluencerFilter()" title="필터 해제">×</button>`;
+  } else {
+    chip.style.display='none';
+    chip.innerHTML='';
+  }
+}
 
 // 버튼 좌표(getBoundingClientRect) 기준으로 패널 좌표를 계산. 하단 공간이 부족하면 위로 뒤집힘.
 function _positionYmDdPop(ddEl){
@@ -1624,11 +1719,14 @@ function toggleYmDd(ddId,ev){
 function _repositionOpenYmDd(){
   const openDd=document.querySelector('.ym-dd.open');
   if(openDd)_positionYmDdPop(openDd);
+  const infPop=document.getElementById('dashInfluencerPop');
+  if(infPop&&infPop.classList.contains('open'))_positionDashInfluencerPop();
 }
 window.addEventListener('resize',_repositionOpenYmDd);
 window.addEventListener('scroll',_repositionOpenYmDd,true);
 document.addEventListener('click',ev=>{
   if(ev.target.closest('.ym-dd-pop'))return; // 패널 내부(체크박스/전체 선택·해제 버튼) 클릭은 닫지 않음
+  if(ev.target.id==='dashInfluencerInput')return; // 입력창 클릭 자체는 focus로 이미 열었으니 바로 닫지 않음
   _closeAllYmDd();
 });
 
@@ -2169,7 +2267,8 @@ function renderDashSeasonality(){
   const note=document.getElementById('dashSeasonNote');
   const lineSelectEl=document.getElementById('dashSeasonLineFilter');
 
-  const fullScope=DATA.filter(d=>d.start&&_displayStatus(d)==='완료'&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start))));
+  // 이 섹션은 월/주차 필터는 의도적으로 무시하지만(위 주석 참고) 연도·인플루언서 필터는 그대로 반영
+  const fullScope=DATA.filter(d=>d.start&&_displayStatus(d)==='완료'&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start)))&&(!DASH.channel||(d.ch||d.influencer||'').trim()===DASH.channel));
   const lineOptions=_dashSeasonLineOptions(fullScope);
   if(_dashSeasonLineFilter!=='all'&&!lineOptions.includes(_dashSeasonLineFilter))_dashSeasonLineFilter='all';
   lineSelectEl.innerHTML='<option value="all">전체</option>'+lineOptions.map(k=>`<option value="${k}">${PRODUCT_LINE_LABELS[k]||k}</option>`).join('');
