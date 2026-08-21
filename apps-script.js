@@ -1517,9 +1517,11 @@ function _addDeal(ss, data) {
     row[COL.dealId]  = dealId;
     row[COL.codeSeq] = i + 1;
     if (i === 0) {
-      // 실적/조회 필드는 대표 행(첫 행)에만 — 등록 시점에 값이 있는 경우에만 기록(보통은 비어 있음)
+      // 실적/조회 필드는 대표 행(첫 행)에만 — 등록 시점에 값이 있는 경우에만 기록(보통은 비어 있음).
+      // 총매출(COL.revenue)은 여기서 값을 넣지 않음 — 아래에서 그 행 기준 수식(=판매수량×공구가)을
+      // 직접 심어줌(클라이언트가 data.revenue를 보내는 경우가 실제로 없어서, 이 값을 기다리면
+      // 총매출 칸이 계속 빈 채로 남는 버그가 있었음 — 2026-08-21 확인).
       if (data.qty != null) row[COL.qty] = data.qty;
-      if (data.revenue != null) row[COL.revenue] = data.revenue;
       if (data.views != null) row[COL.views] = data.views;
     }
     for (var c = 0; c < numCols; c++) if (row[c] === undefined) row[c] = '';
@@ -1546,6 +1548,12 @@ function _addDeal(ss, data) {
     templateRow.copyTo(newRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
   }
   newRange.setValues(rows);
+
+  // 총매출은 대표 행(첫 행, startRow)에만 "=판매수량×공구가" 수식으로 기록 — 판매수량이 아직
+  // 비어 있어도(등록 시점엔 보통 비어있음) 수식은 정상 저장되고, 그 값을 빈 셀이 아니라 0으로
+  // 계산해서 보여줌(I{row}*빈칸 = 0). 나중에 실적 기입으로 판매수량만 채워지면 화면(K열)이
+  // 자동으로 재계산됨 — 별도 저장 로직 없이 시트 수식이 그 역할을 대신함.
+  sheet.getRange(startRow, COL.revenue + 1).setFormula(_revenueFormula(startRow));
 
   // 인플루언서 링크가 입력됐으면 채널명 셀에도 하이퍼링크를 걸어줌(코드별로 생성된 모든 행에 동일
   // 반영). setValues로는 서식(하이퍼링크)이 안 실리므로 별도 setRichTextValues 호출이 필요함.
@@ -1614,13 +1622,13 @@ function _updateDeal(ss, data) {
   }
   if (newEnd !== undefined) sheet.getRange(primaryRow, COL.endMD + 1).setValue(newEnd || '');
 
+  // 2026-08-21: 예전엔 수식이 없을 때만 "판매수량×공구가"를 고정 숫자로 한 번 계산해 넣었는데,
+  // 그 뒤로는 수식이 아니라 그 시점 스냅샷값이라 다음에 sale/qty가 또 바뀌어도 재계산이 안 됐음
+  // (게다가 신규 등록 건은 아예 수식 자체가 없어서 총매출이 계속 빈 채로 남는 원인이기도 했음).
+  // 이제는 항상 수식(=판매수량×공구가, 그 행 상대참조)을 다시 심어줌 — 이미 같은 수식이면 같은
+  // 문자열을 다시 쓰는 것뿐이라 안전하고, 예전에 빈 칸/고정숫자였던 건은 이 순간 수식으로 교체됨.
   if (c.sale !== undefined || c.qty !== undefined) {
-    var revCell = sheet.getRange(primaryRow, COL.revenue + 1);
-    if (!revCell.getFormula()) {
-      var effSale = c.sale !== undefined ? c.sale : _numOrNull(sheet.getRange(primaryRow, COL.salePrice + 1).getValue());
-      var effQty  = c.qty  !== undefined ? c.qty  : _numOrNull(sheet.getRange(primaryRow, COL.qty + 1).getValue());
-      if (effSale != null && effQty != null) revCell.setValue(effSale * effQty);
-    }
+    sheet.getRange(primaryRow, COL.revenue + 1).setFormula(_revenueFormula(primaryRow));
   }
 
   // 상품코드 배열 반영 — 행 수를 codes.length에 맞춤
@@ -1678,6 +1686,62 @@ function _updateDeal(ss, data) {
   return _json({ success: true });
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 1회성 보정: 총매출(K열)이 수식이 아닌 기존 행에 수식을 채워 넣음 (2026-08-21) ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 신규 등록 시 총매출에 수식을 안 심던 버그(_addDeal 참고) 때문에, 그 버그가 있던 동안 등록된
+// 건들은 총매출이 빈 칸이거나(한 번도 수정 안 함) 그 시점 스냅샷 고정 숫자로(한 번이라도 판매수량을
+// 수정한 적 있음) 남아있음. Apps Script 편집기에서 이 함수만 선택해 "▶ 실행"으로 수동 실행할 것.
+//  1) _backupMainSheetForRevenueFix가 실적통합 시트 전체를 복제해 숨긴 백업 시트로 보존(최초 1회만).
+//  2) 대표 행(코드순번 1 또는 codeSeq 자체가 없는 단독 행) 중 제품명이 있고 총매출이 "이미 수식"이
+//     아닌 행만 골라 그 행 기준 수식(=판매수량×공구가)으로 교체함. 이미 수식인 행은 그대로 둠
+//     (값 유실 없음 — 고정 숫자였던 행도 같은 셀의 판매수량×공구가를 그대로 재계산하는 것이므로
+//     현재 보이는 값이 바뀌지 않음. 코드순번 2 이상인 보조 행/제품명 없는 빈 행은 건드리지 않음).
+function fixMissingRevenueFormulas() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) { Logger.log('[매출수식보정] 실적통합 시트를 찾을 수 없어 중단'); return; }
+
+  _backupMainSheetForRevenueFix(ss, sheet);
+
+  var lastDataRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastDataRow <= DATA_START_ROW) { Logger.log('[매출수식보정] 데이터 행이 없어 중단'); return; }
+
+  var numRows = lastDataRow - DATA_START_ROW;
+  var productVals = sheet.getRange(DATA_START_ROW + 1, COL.product + 1, numRows, 1).getValues();
+  var codeSeqVals = sheet.getRange(DATA_START_ROW + 1, COL.codeSeq + 1, numRows, 1).getValues();
+  var revRange = sheet.getRange(DATA_START_ROW + 1, COL.revenue + 1, numRows, 1);
+  var revFormulas = revRange.getFormulas();
+
+  var fixed = 0, alreadyOk = 0, skippedNotPrimary = 0, skippedNoProduct = 0;
+  for (var i = 0; i < numRows; i++) {
+    if (!String(productVals[i][0] || '').trim()) { skippedNoProduct++; continue; }
+    var seq = _numOrNull(codeSeqVals[i][0]);
+    var isPrimary = (seq == null || seq === 1);
+    if (!isPrimary) { skippedNotPrimary++; continue; }
+    if (revFormulas[i][0]) { alreadyOk++; continue; } // 이미 수식이면 손대지 않음
+    var row = DATA_START_ROW + 1 + i;
+    sheet.getRange(row, COL.revenue + 1).setFormula(_revenueFormula(row));
+    fixed++;
+  }
+  SpreadsheetApp.flush();
+  _invalidateDashboardCache();
+  Logger.log('[매출수식보정 완료] 수식으로 새로 채움=' + fixed + ' / 이미 수식이었음=' + alreadyOk +
+    ' / 대표행 아님(안 건드림)=' + skippedNotPrimary + ' / 제품명 없는 빈 행(안 건드림)=' + skippedNoProduct);
+  return { fixed: fixed, alreadyOk: alreadyOk, skippedNotPrimary: skippedNotPrimary, skippedNoProduct: skippedNoProduct };
+}
+
+var REVENUE_FIX_BACKUP_NAME = '실적통합_백업_매출수식보정전';
+function _backupMainSheetForRevenueFix(ss, sheet) {
+  var existing = ss.getSheetByName(REVENUE_FIX_BACKUP_NAME);
+  if (existing) { Logger.log('[매출수식보정 백업] 이미 존재함 — 다시 만들지 않음: ' + REVENUE_FIX_BACKUP_NAME); return existing; }
+  var copy = sheet.copyTo(ss);
+  copy.setName(REVENUE_FIX_BACKUP_NAME);
+  try { copy.hideSheet(); } catch (e) { Logger.log('백업 시트 숨기기 실패 (무시): ' + e); }
+  Logger.log('[매출수식보정 백업] 완료 — 시트명: ' + REVENUE_FIX_BACKUP_NAME);
+  return copy;
+}
+
 // 공구건 삭제 — dealId 그룹의 모든 행을 하드 삭제(릴스 데이터도 대표 행에 같이 있어 함께 삭제됨)
 function _deleteDeal(ss, data) {
   var sheet = ss.getSheetByName(MAIN_SHEET);
@@ -1697,7 +1761,9 @@ function _deleteDeal(ss, data) {
   return _json({ success: true });
 }
 
-// 실적 기입 → 대표 행에만 판매수량/총매출/조회수 반영
+// 실적 기입 → 대표 행에만 판매수량/총매출/조회수 반영 (현재 프론트에서는 호출하지 않는 액션이지만,
+// 총매출은 다른 경로와 똑같이 항상 수식으로 유지 — data.revenue를 직접 setValue하면 다른 경로가
+// 심어둔 수식을 고정 숫자로 덮어써 버려서 이후 재계산이 끊기므로 여기도 동일하게 맞춤)
 function _addPerf(ss, data) {
   var sheet = ss.getSheetByName(MAIN_SHEET);
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
@@ -1706,9 +1772,9 @@ function _addPerf(ss, data) {
   if (!groupRows.length) return _json({ error: '해당 공구 행을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
   var primaryRow = groupRows[0].row;
 
-  if (data.qty     != null) sheet.getRange(primaryRow, COL.qty     + 1).setValue(data.qty);
-  if (data.revenue != null) sheet.getRange(primaryRow, COL.revenue + 1).setValue(data.revenue);
-  if (data.views   != null) sheet.getRange(primaryRow, COL.views   + 1).setValue(data.views);
+  if (data.qty   != null) sheet.getRange(primaryRow, COL.qty   + 1).setValue(data.qty);
+  if (data.qty   != null) sheet.getRange(primaryRow, COL.revenue + 1).setFormula(_revenueFormula(primaryRow));
+  if (data.views != null) sheet.getRange(primaryRow, COL.views + 1).setValue(data.views);
 
   return _json({ success: true });
 }
@@ -2201,6 +2267,19 @@ function _json(obj) {
 }
 
 function _pad(n) { return n < 10 ? '0' + n : String(n); }
+
+// 0-based 열 인덱스(COL.xxx) → 스프레드시트 A1 열 문자(0→A, 1→B, ..., 25→Z, 26→AA ...).
+// 총매출 수식(=J{row}*I{row})을 만들 때 COL.qty/COL.salePrice 값이 나중에 열이 밀려도 안 깨지게
+// 하드코딩된 'I'/'J' 대신 이걸로 계산함.
+function _colLetter(idx0) {
+  var n = idx0 + 1, s = '';
+  while (n > 0) { var r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+// 총매출 = 판매수량 × 공구가, 해당 행(row, 1-based) 기준 상대참조 수식 문자열
+function _revenueFormula(row) {
+  return '=' + _colLetter(COL.qty) + row + '*' + _colLetter(COL.salePrice) + row;
+}
 
 function _numOrNull(v) {
   if (v === null || v === '' || v === undefined) return null;
