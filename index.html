@@ -656,6 +656,12 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
       <div class="card">
         <div class="card-hd"><span>시즌성 분석(월별)</span><span class="card-hd-r">완료 건 기준 · 연도만 필터 적용</span></div>
+        <div class="dash-stat-line" style="margin-bottom:14px">
+          <label style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;font-weight:700;color:var(--text-2)">제품군</span>
+            <select class="f-inp f-sel dash-filter-select" id="dashSeasonLineFilter" onchange="_onDashSeasonLineFilterChange()"></select>
+          </label>
+        </div>
         <div style="height:260px"><canvas id="dashSeasonChart"></canvas></div>
         <div class="tbl-wrap" style="margin-top:14px">
           <table><thead><tr>
@@ -1198,7 +1204,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-channel-table-sort-2026-08-20-01';
+const DASHBOARD_VERSION='dash-product-taxonomy-season-filter-2026-08-21-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1384,16 +1390,32 @@ function _friendlySaveError(rawMsg){
 }
 
 // 제품별 뱃지/캘린더 막대 색상 — 색상 정의는 이 맵 한 곳에서만 관리 (변경 시 전체에 반영됨)
-const PRODUCT_COLORS={
-  '플렌더PRO':  {bg:'#F3E8FF',fg:'#7C3AED'},
-  '플렌더MAX':  {bg:'#DBEAFE',fg:'#2563EB'},
-  '플렌더mini': {bg:'#DCFCE7',fg:'#16A34A'},
-  '플렌더NEXT': {bg:'#FEF9C3',fg:'#CA8A04'},
-  '시프트':     {bg:'#FFEDD5',fg:'#EA580C'},
-  '슬림':       {bg:'#CCFBF1',fg:'#0D9488'},
-  '에어드라이': {bg:'#FFE4E6',fg:'#E11D48'},
-  other:        {bg:'#F3F4F6',fg:'#6B7280'}
-};
+// ── 제품 분류 규칙(한 곳에서 관리, 2026-08-21) ──────────────────────────────────
+// 세부 모델(fine-grained) → 대분류 제품 라인(line) + 표시 라벨 + 배지 색을 이 배열 하나로 정의.
+// 새 모델이 나오면 이 배열에 한 줄만 추가하면 채널별 성과 필터/시즌성 제품군 필터/제품군별 비교/
+// 배지 색 등 대시보드 전체에 자동 반영됨(PRODUCT_COLORS/PRODUCT_GROUP_LABELS/PRODUCT_LINE_OF는
+// 전부 이 배열에서 파생 — 따로따로 손댈 필요 없음). line 값은 등록 폼의 LINE_HAS_MODELS/
+// LINE_MODEL_OPTIONS와 동일한 "제품 라인" 개념을 그대로 씀.
+// 더 플렌더 NEXT/더 시프트 PRO는 아직 출시 전이라 실제 데이터는 없지만, 미리 등록해두면 출시 후
+// 데이터가 들어오는 순간 별도 코드 수정 없이 모든 필터/집계에 자동으로 나타남.
+const PRODUCT_TAXONOMY=[
+  {key:'플렌더PRO',  line:'더플렌더',    label:'더 플렌더 PRO',  color:{bg:'#F3E8FF',fg:'#7C3AED'}},
+  {key:'플렌더MAX',  line:'더플렌더',    label:'더 플렌더 MAX',  color:{bg:'#DBEAFE',fg:'#2563EB'}},
+  {key:'플렌더mini', line:'더플렌더',    label:'더 플렌더 mini', color:{bg:'#DCFCE7',fg:'#16A34A'}},
+  {key:'플렌더NEXT', line:'더플렌더',    label:'더 플렌더 NEXT', color:{bg:'#FEF9C3',fg:'#CA8A04'}}, // 출시 예정
+  {key:'시프트',     line:'더시프트',    label:'더 시프트',      color:{bg:'#FFEDD5',fg:'#EA580C'}},
+  {key:'시프트PRO',  line:'더시프트',    label:'더 시프트 PRO',  color:{bg:'#FFE1B8',fg:'#C2410C'}}, // 출시 예정
+  {key:'슬림',       line:'더슬림',      label:'더 슬림',        color:{bg:'#CCFBF1',fg:'#0D9488'}},
+  {key:'에어드라이', line:'더에어드라이', label:'더 에어드라이', color:{bg:'#FFE4E6',fg:'#E11D48'}},
+];
+const PRODUCT_COLORS=Object.assign({},...PRODUCT_TAXONOMY.map(t=>({[t.key]:t.color})),{other:{bg:'#F3F4F6',fg:'#6B7280'}});
+const PRODUCT_GROUP_LABELS=Object.assign({},...PRODUCT_TAXONOMY.map(t=>({[t.key]:t.label})),{other:'기타'});
+// 세부 모델 → 제품 라인(대분류) 매핑도 PRODUCT_TAXONOMY 하나에서 파생 — 새 모델 한 줄 추가만으로
+// 시즌성 제품군 필터 등 라인 단위 집계에 자동 반영됨
+const PRODUCT_LINE_OF=Object.assign({},...PRODUCT_TAXONOMY.map(t=>({[t.key]:t.line})));
+// 라인 자체의 표시 라벨(새 "라인"이 통째로 새로 생길 때만 여기 한 줄 추가 필요 — 기존 라인에 모델만
+// 추가되는 경우는 위 PRODUCT_TAXONOMY만 고치면 됨)
+const PRODUCT_LINE_LABELS={'더플렌더':'더 플렌더','더시프트':'더 시프트','더슬림':'더 슬림','더에어드라이':'더 에어드라이',other:'기타'};
 // 실적 표 "포맷" 열(유튜브/릴스/게시물 등) 배지 색 — 값이 늘어나면 여기에만 추가하면 됨.
 // 매핑에 없는 값(예상 못한 포맷)은 other로 폴백돼 깨지지 않고 중립색으로 표시됨.
 const FORMAT_COLORS={
@@ -1403,16 +1425,26 @@ const FORMAT_COLORS={
   other:    {bg:'#EEF2FF',fg:'#4338CA'}
 };
 function formatColor(f){return FORMAT_COLORS[f]||FORMAT_COLORS.other;}
-// 제품명 → 색상 팔레트 키 (공백 제거 후 매칭)
+// 제품명 → 색상 팔레트 키(=PRODUCT_TAXONOMY의 세부 모델 key, 공백 제거 후 매칭)
+// 2026-08-21: 시프트도 플렌더처럼 PRO를 구분하도록 수정(예전엔 시프트/시프트PRO가 구분 안 되고
+// 전부 '시프트' 하나로 묶여서, 시프트 PRO가 출시돼도 별도 필터 옵션으로 못 나타났음).
 function productColorKey(p){
   if(isFlender(p))return'플렌더'+flenderModel(p);
-  if(isShift(p))return'시프트';
+  if(isShift(p))return shiftModel(p)==='PRO'?'시프트PRO':'시프트';
   const np=normP(p);
   if(np==='더슬림')return'슬림';
   if(np.includes('에어드라이'))return'에어드라이';
   return'other';
 }
 function productColor(p){return PRODUCT_COLORS[productColorKey(p)]||PRODUCT_COLORS.other;}
+// 제품명 → 제품 라인(대분류) — PRODUCT_LINE_OF(PRODUCT_TAXONOMY에서 파생)를 그대로 조회.
+// 매핑에 없는 완전히 새로운 제품명(fine key가 'other')은 "기타"로 뭉개지 않고 제품명 자체를
+// 라인으로 써서, 예상 못한 신제품이 들어와도 데이터가 조용히 숨지 않고 자기 이름으로 보임.
+function productLineKey(p){
+  const fine=productColorKey(p);
+  if(fine==='other'){const raw=String(p||'').trim();return raw||'other';}
+  return PRODUCT_LINE_OF[fine]||fine;
+}
 
 function filteredProd(src){
   return(src||DATA).filter(d=>{
@@ -1862,11 +1894,8 @@ function renderDashChannelAnalytics(){
 }
 
 /* 2) 제품군별 비교 — productColorKey/PRODUCT_COLORS(실적 표 배지와 동일 팔레트)를 그대로 재사용해
-   차트·표·실적 표 배지 색이 전부 일관되게 보이도록 함 */
-const PRODUCT_GROUP_LABELS={
-  '플렌더PRO':'더 플렌더 PRO','플렌더MAX':'더 플렌더 MAX','플렌더mini':'더 플렌더 mini','플렌더NEXT':'더 플렌더 NEXT',
-  '시프트':'더 시프트','슬림':'더 슬림','에어드라이':'더 에어드라이',other:'기타'
-};
+   차트·표·실적 표 배지 색이 전부 일관되게 보이도록 함. PRODUCT_GROUP_LABELS는 PRODUCT_TAXONOMY에서
+   파생된 걸 그대로 씀(위쪽 productColorKey 근처에서 이미 선언됨). */
 function renderDashProductAnalytics(){
   const scope=_dashDoneScope();
   const body=document.getElementById('dashProductBody');
@@ -2120,16 +2149,36 @@ function renderDashAchievement(){
    (월 필터로 특정 월만 남기면 성수기/비수기 비교 자체가 불가능해지므로). 현재 월 필터가 걸려있으면
    해당 월만 표/차트에서 강조 표시. */
 let _dashSeasonChartInst=null;
+let _dashSeasonLineFilter='all'; // 'all' 또는 productLineKey() 값 — 시즌성 분석 전용 제품군 필터
+// 실제 데이터에 존재하는 제품 라인만 옵션으로 노출 — 출시 전 모델만 있는 라인(아직 데이터 0건)은
+// PRODUCT_TAXONOMY에 등록돼 있어도 자동으로 옵션에서 빠지고, 데이터가 들어오는 순간 자동 등장함.
+function _dashSeasonLineOptions(scope){
+  const present=new Set(scope.map(d=>productLineKey(d.product)));
+  const known=Object.keys(PRODUCT_LINE_LABELS).filter(k=>present.has(k));
+  const unknown=[...present].filter(k=>!(k in PRODUCT_LINE_LABELS)).sort();
+  return known.concat(unknown);
+}
+function _onDashSeasonLineFilterChange(){
+  _dashSeasonLineFilter=document.getElementById('dashSeasonLineFilter').value;
+  renderDashSeasonality();
+}
 function renderDashSeasonality(){
   const chartEl=document.getElementById('dashSeasonChart');
   const monthBody=document.getElementById('dashSeasonMonthBody');
   const quarterBody=document.getElementById('dashSeasonQuarterBody');
   const note=document.getElementById('dashSeasonNote');
+  const lineSelectEl=document.getElementById('dashSeasonLineFilter');
 
-  const scope=DATA.filter(d=>d.start&&_displayStatus(d)==='완료'&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start))));
+  const fullScope=DATA.filter(d=>d.start&&_displayStatus(d)==='완료'&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start))));
+  const lineOptions=_dashSeasonLineOptions(fullScope);
+  if(_dashSeasonLineFilter!=='all'&&!lineOptions.includes(_dashSeasonLineFilter))_dashSeasonLineFilter='all';
+  lineSelectEl.innerHTML='<option value="all">전체</option>'+lineOptions.map(k=>`<option value="${k}">${PRODUCT_LINE_LABELS[k]||k}</option>`).join('');
+  lineSelectEl.value=_dashSeasonLineFilter;
+
+  const scope=_dashSeasonLineFilter==='all'?fullScope:fullScope.filter(d=>productLineKey(d.product)===_dashSeasonLineFilter);
 
   if(!scope.length){
-    monthBody.innerHTML='<tr><td colspan="5" class="dash-analytics-empty">해당 연도에 완료된 공구건이 없습니다</td></tr>';
+    monthBody.innerHTML=`<tr><td colspan="5" class="dash-analytics-empty">${_dashSeasonLineFilter==='all'?'해당 연도에 완료된 공구건이 없습니다':'해당 연도·제품군 조건에 완료된 공구건이 없습니다'}</td></tr>`;
     quarterBody.innerHTML='';
     note.textContent='';
     if(_dashSeasonChartInst){_dashSeasonChartInst.destroy();_dashSeasonChartInst=null;}
