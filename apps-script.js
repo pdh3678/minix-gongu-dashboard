@@ -793,7 +793,7 @@ function parseMainSheet(sheet) {
     var targetQty  = _numOrNull(pRow[COL.targetQty]);
     var marketingLink = String(pRow[COL.marketingLink] || '').trim();
     var option1    = String(pRow[COL.option1]   || '').trim();
-    var option2    = String(pRow[COL.option2]   || '').trim();
+    var option2    = _normalizeOpenTime(pRow[COL.option2]); // 오픈시간 — Date/시간소수/초포함 등 어떤 형태든 "HH:00"으로
     var firstCome  = String(pRow[COL.firstCome] || '').trim();
     var extraQty   = _numOrNull(pRow[COL.extraQty]);
     var note       = String(pRow[COL.note]      || '').trim();
@@ -1547,6 +1547,11 @@ function _addDeal(ss, data) {
     templateRow.copyTo(newRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
     templateRow.copyTo(newRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
   }
+  // 오픈시간(추가옵션2, "10:00" 같은 문자열)을 구글 시트가 시간(time) 값으로 자동 인식해버리는
+  // 문제 방지(2026-08-21) — 위 서식 복사 단계에서 직전 행이 이미 시간 형식이었다면 그 서식까지
+  // 같이 대물림돼 계속 재발했음. 값을 쓰기 "전"에 이 열만 일반 텍스트로 고정해서 재발을 끊음
+  // (REVIEW_COL.ym에도 같은 문제로 이미 쓰던 setNumberFormat('@') 패턴을 그대로 재사용).
+  sheet.getRange(startRow, COL.option2 + 1, rows.length, 1).setNumberFormat('@');
   newRange.setValues(rows);
 
   // 총매출은 대표 행(첫 행, startRow)에만 "=판매수량×공구가" 수식으로 기록 — 판매수량이 아직
@@ -1598,7 +1603,13 @@ function _updateDeal(ss, data) {
 
   // 대표 행 전용 필드
   for (var k2 in PRIMARY_ONLY_COLS) {
-    if (c[k2] !== undefined) sheet.getRange(primaryRow, PRIMARY_ONLY_COLS[k2] + 1).setValue(c[k2] != null ? c[k2] : '');
+    if (c[k2] !== undefined) {
+      var pCell = sheet.getRange(primaryRow, PRIMARY_ONLY_COLS[k2] + 1);
+      // option2(오픈시간, "10:00")를 구글 시트가 시간 값으로 자동 인식하는 문제 방지 — 값을 쓰기
+      // 전에 이 열만 일반 텍스트로 고정(REVIEW_COL.ym에 이미 쓰던 setNumberFormat('@') 패턴 재사용)
+      if (k2 === 'option2') pCell.setNumberFormat('@');
+      pCell.setValue(c[k2] != null ? c[k2] : '');
+    }
   }
 
   // 채널명 셀의 하이퍼링크도 함께 갱신 — 위 링크 열(COL.link)과 어긋나지 않게, 그룹의 모든 행에
@@ -2279,6 +2290,28 @@ function _colLetter(idx0) {
 // 총매출 = 판매수량 × 공구가, 해당 행(row, 1-based) 기준 상대참조 수식 문자열
 function _revenueFormula(row) {
   return '=' + _colLetter(COL.qty) + row + '*' + _colLetter(COL.salePrice) + row;
+}
+
+// 오픈시간(추가옵션2) 값을 항상 "HH:00" 문자열로 정규화(2026-08-21) — 구글 시트가 "10:00" 같은
+// 문자열을 시간(time) 값으로 자동 인식해버린 셀은 getValues()로 읽으면 Date 객체(1899-12-30
+// 기준일 + 그 시각)나 시간 소수값(0~1, 하루 중 비율)으로 넘어오는데, 이러면 프론트 드롭다운의
+// option value("10:00")와 안 맞아서 매칭이 실패해 빈 드롭다운으로 보임. 어떤 형태로 오든 여기서
+// 하나로 통일해서, 이미 이렇게 저장된 기존 값도 (다시 쓰지 않고 읽을 때만) 정상 매칭되게 함.
+function _normalizeOpenTime(raw) {
+  if (raw == null || raw === '') return '';
+  if (raw instanceof Date) {
+    if (isNaN(raw.getTime())) return '';
+    return _pad(raw.getHours()) + ':00';
+  }
+  if (typeof raw === 'number') {
+    // 시간 값이 0~1 사이 소수(하루 중 비율)로 오는 경우 — 시간 단위로 환산
+    var hour = Math.round(raw * 24) % 24;
+    return _pad(hour) + ':00';
+  }
+  var s = String(raw).trim();
+  var m = s.match(/^(\d{1,2}):(\d{2})/); // "10:00"과 "10:00:00" 둘 다 앞의 시:분만 취함
+  if (m) return _pad(parseInt(m[1], 10)) + ':00';
+  return s; // 알아볼 수 없는 형식은 원문을 그대로 보존(추측해서 지우지 않음)
 }
 
 function _numOrNull(v) {
