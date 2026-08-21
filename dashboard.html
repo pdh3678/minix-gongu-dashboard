@@ -160,7 +160,9 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .sb-bottom-link:hover{color:#fff}
 .app-shell.sb-collapsed .sb-bottom-link{justify-content:center}
 .sb-user{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
-.sb-user-email{font-size:11px;color:#8B93A7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.sb-user-info{display:flex;flex-direction:column;gap:1px;min-width:0;overflow:hidden}
+.sb-user-name{font-size:11px;color:#8B93A7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-user-email{font-size:10px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .sb-signout{font-size:11px;padding:4px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#C7CAD1;cursor:pointer;font-family:inherit;flex-shrink:0;transition:background .15s}
 .sb-signout:hover{background:rgba(255,255,255,.14)}
 .app-shell.sb-collapsed .sb-user{display:none}
@@ -517,7 +519,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="presence-body" id="presenceBody"></div>
       </div>
       <div class="sb-user">
-        <span class="sb-user-email" id="sbUserEmail">—</span>
+        <div class="sb-user-info">
+          <span class="sb-user-name" id="sbUserName">—</span>
+          <span class="sb-user-email" id="sbUserEmail"></span>
+        </div>
         <button class="sb-signout" onclick="signOut()">로그아웃</button>
       </div>
     </div>
@@ -1221,7 +1226,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-filter-row-align-fix-2026-08-21-01';
+const DASHBOARD_VERSION='dash-sidebar-user-email-2026-08-21-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -4852,7 +4857,8 @@ function _showLoginErr(msg){
 function _enterDashboard(user){
   _gsiLog('_enterDashboard: 시작 — 로그인화면 숨김+이름표시');
   document.getElementById('loginScreen').style.display='none';
-  document.getElementById('sbUserEmail').textContent=user.name||user.email;
+  document.getElementById('sbUserName').textContent=user.name||user.email||'—';
+  document.getElementById('sbUserEmail').textContent=user.email||'';
   _applyAdminUI(user.email||'');
   _gsiLog('_enterDashboard: fetchLive/render 호출');
   fetchLive();render();
@@ -4877,7 +4883,8 @@ function signOut(){
   _clearDataCache(); // 다른 계정으로 다시 로그인했을 때 이전 사용자의 캐시 데이터가 보이면 안 됨
   if(window.google&&google.accounts)google.accounts.id.disableAutoSelect();
   document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('sbUserEmail').textContent='—';
+  document.getElementById('sbUserName').textContent='—';
+  document.getElementById('sbUserEmail').textContent='';
   _applyAdminUI('');
 }
 
