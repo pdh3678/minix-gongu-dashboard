@@ -86,7 +86,12 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .dash-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .dash-period-summary{font-size:12px;font-weight:700;color:var(--minix)}
 .chart-note{font-size:11px;color:var(--text-3);text-align:right;margin-top:4px}
-/* 인플루언서 전역 필터(칩 + 자동완성 목록) — 팝오버 자체는 기존 .ym-dd-pop을 그대로 재사용 */
+/* 인플루언서 전역 필터(칩 + 자동완성 목록) — 팝오버 자체는 기존 .ym-dd-pop을 그대로 재사용.
+   입력창은 연도/월/주차 pill(.ym-dd-btn)과 한 줄에 나란히 놓이므로 크기(패딩/폰트)를 그 pill과
+   맞춰서 높이가 들쭉날쭉하지 않게 함(기본 .f-inp는 모달용이라 더 큼). */
+.dash-filter-input{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:11px;font-weight:600;font-family:inherit;width:160px}
+.dash-filter-input:focus{outline:none;border-color:var(--minix)}
+.dash-filter-input::placeholder{color:var(--text-3);font-weight:500}
 .dash-filter-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:14px;background:var(--minix-lt);color:var(--minix);font-size:12px;font-weight:700}
 .dash-filter-chip button{background:none;border:none;color:var(--minix);cursor:pointer;font-size:15px;font-weight:800;line-height:1;padding:2px 4px;font-family:inherit}
 .dash-inf-opt{padding:6px 10px;border-radius:6px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap}
@@ -548,7 +553,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     <!-- ② 대시보드 페이지 -->
     <div class="main page active" id="page-dashboard">
       <div class="card">
-        <div class="card-hd">기간 필터</div>
+        <div class="card-hd">필터</div>
         <div class="dash-filter-row">
           <div class="ym-dd" id="dashPYearDd">
             <button class="ym-dd-btn" id="dashPYearBtn" onclick="toggleYmDd('dashPYearDd',event)">연도: 전체</button>
@@ -563,11 +568,9 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <div class="ym-dd-pop" id="dashPWeekPop"></div>
           </div>
           <span class="dash-period-summary" id="dashPeriodSummary"></span>
-        </div>
-        <div class="dash-filter-row" style="margin-top:10px">
-          <label style="display:flex;align-items:center;gap:8px">
+          <label style="display:flex;align-items:center;gap:8px;margin-left:auto">
             <span style="font-size:11px;font-weight:700;color:var(--text-2)">인플루언서</span>
-            <input class="f-inp f-sel" id="dashInfluencerInput" type="text" placeholder="채널명 검색(예: 러브지나)" autocomplete="off" style="width:200px" oninput="_onDashInfluencerInput(this.value)" onfocus="_onDashInfluencerFocus()" onkeydown="_onDashInfluencerKeydown(event)">
+            <input class="dash-filter-input" id="dashInfluencerInput" type="text" placeholder="채널명 검색(예: 러브지나)" autocomplete="off" oninput="_onDashInfluencerInput(this.value)" onfocus="_onDashInfluencerFocus()" onkeydown="_onDashInfluencerKeydown(event)">
           </label>
           <span class="dash-filter-chip" id="dashInfluencerChip" style="display:none"></span>
           <div class="ym-dd-pop" id="dashInfluencerPop"></div>
@@ -1218,7 +1221,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-influencer-global-filter-2026-08-21-01';
+const DASHBOARD_VERSION='dash-filter-row-oneline-2026-08-21-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
