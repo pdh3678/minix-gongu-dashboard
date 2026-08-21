@@ -568,7 +568,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <div class="ym-dd-pop" id="dashPWeekPop"></div>
           </div>
           <span class="dash-period-summary" id="dashPeriodSummary"></span>
-          <label style="display:flex;align-items:center;gap:8px;margin-left:auto">
+          <label style="display:flex;align-items:center;gap:8px">
             <span style="font-size:11px;font-weight:700;color:var(--text-2)">인플루언서</span>
             <input class="dash-filter-input" id="dashInfluencerInput" type="text" placeholder="채널명 검색(예: 러브지나)" autocomplete="off" oninput="_onDashInfluencerInput(this.value)" onfocus="_onDashInfluencerFocus()" onkeydown="_onDashInfluencerKeydown(event)">
           </label>
@@ -1221,7 +1221,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-filter-row-oneline-2026-08-21-01';
+const DASHBOARD_VERSION='dash-filter-row-align-fix-2026-08-21-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
