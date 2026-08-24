@@ -594,7 +594,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         </div>
       </div>
       <div class="card">
-        <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료 건 기준</span></div>
+        <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료+진행중 기준</span></div>
         <div class="dash-stat-line" style="margin-bottom:14px">
           <label style="display:flex;align-items:center;gap:8px">
             <span style="font-size:11px;font-weight:700;color:var(--text-2)">제품</span>
@@ -619,7 +619,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
 
       <div class="card">
-        <div class="card-hd"><span>제품군별 비교</span><span class="card-hd-r">완료 건 기준</span></div>
+        <div class="card-hd"><span>제품군별 비교</span><span class="card-hd-r">완료+진행중 기준</span></div>
         <div class="analytics-split">
           <div class="tbl-wrap">
             <table><thead><tr>
@@ -633,7 +633,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
 
       <div class="card">
-        <div class="card-hd"><span>플랫폼(포맷)별 효율</span><span class="card-hd-r">완료 건 기준 · 조회당 매출 높은 순</span></div>
+        <div class="card-hd"><span>플랫폼(포맷)별 효율</span><span class="card-hd-r">완료+진행중 기준 · 조회당 매출 높은 순</span></div>
         <div class="analytics-split">
           <div class="tbl-wrap">
             <table><thead><tr>
@@ -647,7 +647,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
 
       <div class="card">
-        <div class="card-hd"><span>달성률 분석</span><span class="card-hd-r" id="dashAchvHdNote">완료 건 기준</span></div>
+        <div class="card-hd"><span>달성률 분석</span><span class="card-hd-r" id="dashAchvHdNote">완료+진행중 기준</span></div>
         <div id="dashAchvBanner" class="dash-note-banner" style="display:none"></div>
         <div class="dash-stat-line" id="dashAchvStats"></div>
         <div class="analytics-split">
@@ -677,7 +677,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
 
       <div class="card">
-        <div class="card-hd"><span>시즌성 분석(월별)</span><span class="card-hd-r">완료 건 기준 · 연도만 필터 적용</span></div>
+        <div class="card-hd"><span>시즌성 분석(월별)</span><span class="card-hd-r">완료+진행중 기준 · 연도만 필터 적용</span></div>
         <div class="dash-stat-line" style="margin-bottom:14px">
           <label style="display:flex;align-items:center;gap:8px">
             <span style="font-size:11px;font-weight:700;color:var(--text-2)">제품군</span>
@@ -1226,7 +1226,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-date-mdformat-2026-08-24-01';
+const DASHBOARD_VERSION='dash-rev-scope-unify-2026-08-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1589,7 +1589,7 @@ function renderDashPeriodBar(){
   if(openDd)_positionYmDdPop(openDd);
 }
 // dashPeriodMatch 이름은 그대로 두지만(호출부가 많아 바꾸면 diff가 커짐) 이제 기간뿐 아니라
-// 인플루언서(DASH.channel) 조건도 함께 봄 — dashData()/_dashDoneScope()를 거치는 대시보드 전 섹션
+// 인플루언서(DASH.channel) 조건도 함께 봄 — dashData()/_dashRevScope()를 거치는 대시보드 전 섹션
 // (KPI/차트/채널별 성과/개별 공구건 목록/달성률 등)에 이 한 곳만 고쳐서 전역으로 반영됨.
 function dashPeriodMatch(d){
   if(!d.start)return false;
@@ -1741,12 +1741,17 @@ document.addEventListener('click',ev=>{
 /* KPI (기간 필터 기준) */
 function renderKPI(){
   const f=dashData(),done=f.filter(d=>_displayStatus(d)==='완료'),act=f.filter(d=>_displayStatus(d)==='진행중'),plan=f.filter(d=>_displayStatus(d)==='예정');
-  // d.views는 이미 "만" 단위(P열 원값) — 실제 조회수로 환산할 때만 ×10000
-  const tRev=done.reduce((s,d)=>s+(d.rev||0),0),tViews=done.reduce((s,d)=>s+(d.views||0),0),tQty=done.reduce((s,d)=>s+(d.qty||0),0);
+  // 매출은 완료+진행중 기준(예정 제외) — 매출 추이 차트(renderDashCharts)와 반드시 같은 기준을 씀.
+  const revScope=f.filter(_isRevStatus);
+  const tRev=revScope.reduce((s,d)=>s+(d.rev||0),0);
+  // d.views는 이미 "만" 단위(P열 원값) — 실제 조회수로 환산할 때만 ×10000. 조회수/판매수량/전환율은
+  // 완료 건만 확정 실적으로 보고 그대로 "완료 건 기준" 유지(매출과 다른 기준 — 진행중 건은 아직
+  // 릴스 조회수·판매수량이 최종 확정 전이라 섞으면 왜곡됨).
+  const tViews=done.reduce((s,d)=>s+(d.views||0),0),tQty=done.reduce((s,d)=>s+(d.qty||0),0);
   const avgV=done.length?tViews/done.length:0;
   const conv=tViews>0&&tQty>0?((tQty/(tViews*10000))*100).toFixed(2)+'%':'—';
   document.getElementById('kpiRow').innerHTML=`
-    <div class="kpi"><div class="kpi-lbl">총 매출 (완료)</div><div class="kpi-val cm">${tRev?won(tRev):'—'}</div><div class="kpi-sub">${done.length}건 완료</div></div>
+    <div class="kpi"><div class="kpi-lbl">총 매출 (완료+진행중)</div><div class="kpi-val cm">${tRev?won(tRev):'—'}</div><div class="kpi-sub">완료 ${done.length}건 · 진행중 ${act.length}건</div></div>
     <div class="kpi"><div class="kpi-lbl">진행 중</div><div class="kpi-val cw">${act.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">${act.map(d=>d.product).join(' · ')||'없음'}</div></div>
     <div class="kpi"><div class="kpi-lbl">예정</div><div class="kpi-val cn">${plan.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">다가오는 공구</div></div>
     <div class="kpi"><div class="kpi-lbl">평균 릴스 조회수</div><div class="kpi-val cm">${avgV?avgV.toFixed(1)+'<span class="kpi-unit">만</span>':'—'}</div><div class="kpi-sub">완료 건 기준</div></div>
@@ -1784,9 +1789,11 @@ let _scChartInst=null,_trendChartInst=null;
 function renderDashCharts(){
   if(typeof Chart==='undefined')return; // CDN 로드 실패 시 조용히 건너뜀
   const periodAll=dashData();
-  // 산점도: 조회수 있는 건만 표시 (매출은 미기입 시 0으로 표시)
-  const scPts=periodAll.filter(d=>d.views!=null);
-  const scExcluded=periodAll.length-scPts.length;
+  // 산점도: 조회수 있는 건만 표시(매출은 미기입 시 0으로 표시) + 매출 집계 기준(완료+진행중, 예정
+  // 제외)과 통일 — KPI 총매출·매출 추이와 같은 공구건 집합을 그려야 서로 어긋나 보이지 않음.
+  const scPts=periodAll.filter(d=>d.views!=null&&_isRevStatus(d));
+  const scViewsMissing=periodAll.filter(d=>d.views==null).length;
+  const scPlanExcluded=periodAll.filter(d=>d.views!=null&&!_isRevStatus(d)).length;
 
   const scEl=document.getElementById('scChart');
   if(_scChartInst)_scChartInst.destroy();
@@ -1803,14 +1810,21 @@ function renderDashCharts(){
     }
   });
   const scNoteEl=document.getElementById('scChartNote');
-  if(scNoteEl)scNoteEl.textContent=scExcluded>0?`조회수 미기입 ${scExcluded}건 제외`:'';
+  if(scNoteEl){
+    const scNoteParts=[];
+    if(scViewsMissing>0)scNoteParts.push(`조회수 미기입 ${scViewsMissing}건`);
+    if(scPlanExcluded>0)scNoteParts.push(`예정 건 ${scPlanExcluded}건`);
+    scNoteEl.textContent=scNoteParts.length?`${scNoteParts.join(', ')} 제외`:'';
+  }
 
-  // 매출·조회수 추이: 조회수 유무와 무관하게 기간 내 모든 공구건 포함
+  // 매출·조회수 추이: 조회수 유무와 무관하게 기간 내 모든 공구건을 날짜축에 포함하되, 매출은
+  // KPI 총매출과 같은 기준(완료+진행중, 예정 제외)만 더함 — 조회수는 예정 건도 거의 항상
+  // 비어있어(아직 콘텐츠 게시 전) 별도 제외 없이 그대로 둠.
   const byDate={};
   periodAll.forEach(d=>{
     const key=d.end||d.start;
     if(!byDate[key])byDate[key]={rev:0,views:0};
-    byDate[key].rev+=d.rev||0;
+    if(_isRevStatus(d))byDate[key].rev+=d.rev||0;
     byDate[key].views+=d.views||0;
   });
   const dates=Object.keys(byDate).sort();
@@ -1834,9 +1848,9 @@ function renderDashCharts(){
     }
   });
 
-  // 검증: 매출 추이 그래프 합계가 KPI 총매출(완료 건 기준)과 일치하는지 확인
-  const trendRevSum=periodAll.reduce((s,d)=>s+(d.rev||0),0);
-  const kpiRevSum=periodAll.filter(d=>_displayStatus(d)==='완료').reduce((s,d)=>s+(d.rev||0),0);
+  // 검증: 매출 추이 그래프 합계가 KPI 총매출(완료+진행중 기준)과 일치하는지 확인
+  const trendRevSum=Object.keys(byDate).reduce((s,k)=>s+byDate[k].rev,0);
+  const kpiRevSum=periodAll.filter(_isRevStatus).reduce((s,d)=>s+(d.rev||0),0);
   if(Math.round(trendRevSum)!==Math.round(kpiRevSum)){
     console.warn('[검증] 매출 추이 합계가 KPI 총매출과 다릅니다',{trendRevSum,kpiRevSum});
   }else{
@@ -1844,12 +1858,12 @@ function renderDashCharts(){
   }
 }
 
-/* ── 대시보드: 채널별·제품군별·플랫폼별 분석 ──
-   셋 다 dashData()(상단 기간 필터 결과)를 그대로 재사용해 자동으로 기간 필터에 연동됨.
-   "완료" 상태 건만 집계 대상으로 삼음 — KPI 카드(총매출·평균 조회수 등)와 동일한 기준이라
-   숫자가 서로 다른 화면끼리 어긋나 보이지 않음(진행중/예정 건은 실적 값이 비어있는 경우가
-   많아 포함하면 왜곡됨). */
-function _dashDoneScope(){return dashData().filter(d=>_displayStatus(d)==='완료');}
+/* ── 대시보드: 채널별·제품군별·플랫폼별·달성률 분석 ──
+   전부 dashData()(상단 기간 필터 결과)를 그대로 재사용해 자동으로 기간 필터에 연동됨.
+   "완료+진행중" 상태 건만 집계 대상으로 삼음(2026-08-24) — KPI 카드 총매출·매출 추이 차트와
+   동일한 매출 기준(_isRevStatus)이라 숫자가 서로 다른 화면끼리 어긋나 보이지 않음. 예정 건은
+   아직 시작 전이라 실적 값이 없는 게 정상이므로 제외. */
+function _dashRevScope(){return dashData().filter(_isRevStatus);}
 function _safeDiv(n,d){return(d&&d>0)?n/d:null;} // 분모가 0/없음이면 null → 호출부에서 '—'로 표시
 function _pct1(n){return n==null?'—':n.toFixed(1)+'%';}
 function _wonPerView(rev,viewsManwon){return _safeDiv(rev,viewsManwon*10000);} // views는 "만" 단위 저장값
@@ -1918,7 +1932,7 @@ function _renderDashChannelSortIcons(){
   });
 }
 function renderDashChannelAnalytics(){
-  const fullScope=_dashDoneScope();
+  const fullScope=_dashRevScope();
 
   const selectEl=document.getElementById('dashChannelProductFilter');
   const availableKeys=_dashChannelProductOptions(fullScope);
@@ -1932,7 +1946,7 @@ function renderDashChannelAnalytics(){
   const note=document.getElementById('dashChannelNote');
   const chartEl=document.getElementById('dashChannelChart');
   if(!scope.length){
-    body.innerHTML=`<tr><td colspan="7" class="dash-analytics-empty">${_dashChannelProductFilter==='all'?'해당 기간에 완료된 공구건이 없습니다':'해당 기간·제품 조건에 완료된 공구건이 없습니다'}</td></tr>`;
+    body.innerHTML=`<tr><td colspan="7" class="dash-analytics-empty">${_dashChannelProductFilter==='all'?'해당 기간에 완료·진행중인 공구건이 없습니다':'해당 기간·제품 조건에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     note.textContent='';
     if(_dashChannelChartInst){_dashChannelChartInst.destroy();_dashChannelChartInst=null;}
     return;
@@ -2003,12 +2017,12 @@ function renderDashChannelAnalytics(){
    차트·표·실적 표 배지 색이 전부 일관되게 보이도록 함. PRODUCT_GROUP_LABELS는 PRODUCT_TAXONOMY에서
    파생된 걸 그대로 씀(위쪽 productColorKey 근처에서 이미 선언됨). */
 function renderDashProductAnalytics(){
-  const scope=_dashDoneScope();
+  const scope=_dashRevScope();
   const body=document.getElementById('dashProductBody');
   const note=document.getElementById('dashProductNote');
   const chartEl=document.getElementById('dashProductChart');
   if(!scope.length){
-    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간에 완료된 공구건이 없습니다</td></tr>';
+    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간에 완료·진행중인 공구건이 없습니다</td></tr>';
     note.textContent='';
     if(_dashProductChartInst){_dashProductChartInst.destroy();_dashProductChartInst=null;}
     return;
@@ -2060,12 +2074,12 @@ function renderDashProductAnalytics(){
    효율적인가"가 표 맨 위에 바로 드러나게 함(최상위 행 강조 + 🏆). 색은 실적 표의
    FORMAT_COLORS(유튜브 빨강/릴스 파랑/게시물 중립)와 동일하게 맞춤. */
 function renderDashPlatformAnalytics(){
-  const scope=_dashDoneScope();
+  const scope=_dashRevScope();
   const body=document.getElementById('dashPlatformBody');
   const note=document.getElementById('dashPlatformNote');
   const chartEl=document.getElementById('dashPlatformChart');
   if(!scope.length){
-    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간에 완료된 공구건이 없습니다</td></tr>';
+    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간에 완료·진행중인 공구건이 없습니다</td></tr>';
     note.textContent='';
     if(_dashPlatformChartInst){_dashPlatformChartInst.destroy();_dashPlatformChartInst=null;}
     return;
@@ -2080,7 +2094,7 @@ function renderDashPlatformAnalytics(){
   const assignedCount=[...map.values()].reduce((s,g)=>s+g.items.length,0);
   const unassigned=scope.length-assignedCount;
   if(!map.size){
-    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간 완료 건에 포맷(플랫폼) 정보가 없습니다</td></tr>';
+    body.innerHTML='<tr><td colspan="6" class="dash-analytics-empty">해당 기간 완료·진행중 건에 포맷(플랫폼) 정보가 없습니다</td></tr>';
     note.textContent='';
     if(_dashPlatformChartInst){_dashPlatformChartInst.destroy();_dashPlatformChartInst=null;}
     return;
@@ -2207,7 +2221,7 @@ function _dashAchvRenderCommon(entries,buckets,crossValLabel){
   });
 }
 function renderDashAchievement(){
-  const scope=_dashDoneScope();
+  const scope=_dashRevScope();
   const banner=document.getElementById('dashAchvBanner');
   const stats=document.getElementById('dashAchvStats');
   const distBody=document.getElementById('dashAchvDistBody');
@@ -2222,7 +2236,7 @@ function renderDashAchievement(){
     if(_dashAchvChartInst){_dashAchvChartInst.destroy();_dashAchvChartInst=null;}
   }
 
-  if(!scope.length){empty('해당 기간에 완료된 공구건이 없습니다');return;}
+  if(!scope.length){empty('해당 기간에 완료·진행중인 공구건이 없습니다');return;}
 
   const withTarget=scope.filter(d=>d.targetQty!=null&&d.targetQty>0&&d.qty!=null);
 
@@ -2238,7 +2252,7 @@ function renderDashAchievement(){
     _dashAchvRenderCommon(entries,buckets,'평균 달성률');
   } else {
     banner.style.display='block';
-    banner.textContent='⚠ 이 기간의 완료 건에는 목표수량 데이터가 없어, 매출 기준 상대 성과(전체 평균 대비 %)로 대체해 보여줍니다.';
+    banner.textContent='⚠ 이 기간의 완료·진행중 건에는 목표수량 데이터가 없어, 매출 기준 상대 성과(전체 평균 대비 %)로 대체해 보여줍니다.';
     distColHd.textContent='상대 성과 구간';crossTitle.textContent='상대 성과 상위 조건';
     const withRev=scope.filter(d=>d.rev!=null);
     if(!withRev.length){empty('매출 데이터가 없어 상대 성과도 계산할 수 없습니다');return;}
@@ -2275,8 +2289,9 @@ function renderDashSeasonality(){
   const note=document.getElementById('dashSeasonNote');
   const lineSelectEl=document.getElementById('dashSeasonLineFilter');
 
-  // 이 섹션은 월/주차 필터는 의도적으로 무시하지만(위 주석 참고) 연도·인플루언서 필터는 그대로 반영
-  const fullScope=DATA.filter(d=>d.start&&_displayStatus(d)==='완료'&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start)))&&(!DASH.channel||(d.ch||d.influencer||'').trim()===DASH.channel));
+  // 이 섹션은 월/주차 필터는 의도적으로 무시하지만(위 주석 참고) 연도·인플루언서 필터는 그대로 반영.
+  // 매출 집계 기준은 다른 섹션과 동일하게 완료+진행중(예정 제외, _isRevStatus).
+  const fullScope=DATA.filter(d=>d.start&&_isRevStatus(d)&&(!_dashActive(DASH.years)||DASH.years.has(yearOf(d.start)))&&(!DASH.channel||(d.ch||d.influencer||'').trim()===DASH.channel));
   const lineOptions=_dashSeasonLineOptions(fullScope);
   if(_dashSeasonLineFilter!=='all'&&!lineOptions.includes(_dashSeasonLineFilter))_dashSeasonLineFilter='all';
   lineSelectEl.innerHTML='<option value="all">전체</option>'+lineOptions.map(k=>`<option value="${k}">${PRODUCT_LINE_LABELS[k]||k}</option>`).join('');
@@ -2285,7 +2300,7 @@ function renderDashSeasonality(){
   const scope=_dashSeasonLineFilter==='all'?fullScope:fullScope.filter(d=>productLineKey(d.product)===_dashSeasonLineFilter);
 
   if(!scope.length){
-    monthBody.innerHTML=`<tr><td colspan="5" class="dash-analytics-empty">${_dashSeasonLineFilter==='all'?'해당 연도에 완료된 공구건이 없습니다':'해당 연도·제품군 조건에 완료된 공구건이 없습니다'}</td></tr>`;
+    monthBody.innerHTML=`<tr><td colspan="5" class="dash-analytics-empty">${_dashSeasonLineFilter==='all'?'해당 연도에 완료·진행중인 공구건이 없습니다':'해당 연도·제품군 조건에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     quarterBody.innerHTML='';
     note.textContent='';
     if(_dashSeasonChartInst){_dashSeasonChartInst.destroy();_dashSeasonChartInst=null;}
@@ -4370,6 +4385,9 @@ function _displayStatus(d){
   console.warn(`[진행상태 불일치] ${d.product||'?'}·${d.ch||'?'}(${d.start}~${d.end}) — 시트="${sheetStatus}" / 날짜기준="${dateStatus}" → 화면엔 날짜기준으로 표시(시트 값은 정리 참고용)`);
   return dateStatus;
 }
+// 매출 집계 포함 기준(2026-08-24 통일) — 완료+진행중만 포함, 예정은 제외. 대시보드의 총매출 KPI·
+// 매출 추이 차트·채널/제품군/플랫폼 분석·시즌성·산점도가 전부 이 기준 하나를 공유함.
+function _isRevStatus(d){const s=_displayStatus(d);return s==='완료'||s==='진행중';}
 
 function savePromo(){
   const name=document.getElementById('fpName').value.trim();
