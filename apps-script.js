@@ -817,9 +817,6 @@ function parseMainSheet(sheet) {
     }
     var influencerLink = linkColVal || channelCellLink;
 
-    var views = _numOrNull(pRow[COL.views]);
-    if (views === 0) views = null;
-
     var reels = [];
     if (reelRich) {
       var richRow = reelRich[pIdx - DATA_START_ROW];
@@ -834,6 +831,20 @@ function parseMainSheet(sheet) {
           reels.push({ views: v, url: linkUrl || '', thumb: thumbsArr[k] || '' });
         }
       }
+    }
+
+    // 조회수: Y열(저장 시점에 기록된 합계)에 기대지 않고, 릴스 슬롯(Z~AI)에서 매 요청마다 실시간
+    // 합산함 — 모달의 합계 계산(_modalReels.reduce((s,r)=>s+(r.views||0),0))과 동일한 기준.
+    // 릴스별 조회수는 입력해뒀지만 모달 저장을 안 해서 Y열이 비어 있는 건도 바로 반영되게 하기 위함
+    // (2026-08-24 이슈: "저장 안 하면 조회수 —" 버그). 릴스 조회수가 하나도 없는 건(레거시로 Y열에만
+    // 합계가 수동 입력된 경우 등)은 Y열 값을 그대로 사용.
+    var hasReelViews = reels.some(function (r) { return r.views != null; });
+    var views;
+    if (hasReelViews) {
+      views = reels.reduce(function (s, r) { return s + (r.views || 0); }, 0);
+    } else {
+      views = _numOrNull(pRow[COL.views]);
+      if (views === 0) views = null;
     }
 
     var startDate = _parseDate(startCell, year);
