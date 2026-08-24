@@ -1226,7 +1226,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-sidebar-user-email-2026-08-21-01';
+const DASHBOARD_VERSION='dash-date-mdformat-2026-08-24-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1296,7 +1296,7 @@ function dashPSave(){
 dashPLoad();
 const won=n=>n==null?'—':'₩'+n.toLocaleString('ko-KR');
 const num=n=>n==null?'—':n.toLocaleString('ko-KR');
-const fmtS=s=>{const d=new Date(s+'T00:00:00');return`${d.getMonth()+1}.${d.getDate()}`};
+const fmtS=s=>{const d=new Date(s+'T00:00:00');return`${d.getMonth()+1}/${d.getDate()}`};
 const fmtF=s=>{const d=new Date(s+'T00:00:00');return`${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.`};
 const yearOf=s=>s?new Date(s+'T00:00:00').getFullYear():null;
 const monthOf=s=>s?new Date(s+'T00:00:00').getMonth()+1:null;

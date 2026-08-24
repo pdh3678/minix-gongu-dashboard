@@ -1484,8 +1484,8 @@ function _addDeal(ss, data) {
 
   var dealId = Utilities.getUuid();
   var scheme = data.s || {};
-  var startDate = data.start ? new Date(data.start) : null;
-  var endDate   = data.end   ? new Date(data.end)   : startDate;
+  var startDate = _toDateOnly(data.start);
+  var endDate   = _toDateOnly(data.end) || startDate;
   var numCols = sheet.getMaxColumns();
 
   // 공통 필드 — 그룹의 모든 행에 동일하게 기록
@@ -1563,6 +1563,10 @@ function _addDeal(ss, data) {
   // 같이 대물림돼 계속 재발했음. 값을 쓰기 "전"에 이 열만 일반 텍스트로 고정해서 재발을 끊음
   // (REVIEW_COL.ym에도 같은 문제로 이미 쓰던 setNumberFormat('@') 패턴을 그대로 재사용).
   sheet.getRange(startRow, COL.option2 + 1, rows.length, 1).setNumberFormat('@');
+  // 시작일/종료일도 같은 이유로 값을 쓰기 전에 시간 없는 날짜 서식으로 고정(2026-08-24) — 직전 행
+  // 서식을 그대로 물려받으면 과거에 섞여 있던 날짜+시간 서식까지 같이 대물림될 수 있음.
+  sheet.getRange(startRow, COL.startMD + 1, rows.length, 1).setNumberFormat('yyyy-mm-dd');
+  sheet.getRange(startRow, COL.endMD + 1, rows.length, 1).setNumberFormat('yyyy-mm-dd');
   newRange.setValues(rows);
 
   // 총매출은 대표 행(첫 행, startRow)에만 "=판매수량×공구가" 수식으로 기록 — 판매수량이 아직
@@ -1636,13 +1640,19 @@ function _updateDeal(ss, data) {
   if (c.comm !== undefined) sheet.getRange(primaryRow, COL.commission + 1).setValue(c.comm != null ? c.comm / 100 : '');
   if (c.qty !== undefined) sheet.getRange(primaryRow, COL.qty + 1).setValue(c.qty != null ? c.qty : '');
 
-  var newStart = c.start !== undefined ? (c.start ? new Date(c.start) : null) : undefined;
-  var newEnd   = c.end   !== undefined ? (c.end   ? new Date(c.end)   : null) : undefined;
+  var newStart = c.start !== undefined ? _toDateOnly(c.start) : undefined;
+  var newEnd   = c.end   !== undefined ? _toDateOnly(c.end)   : undefined;
   if (newStart !== undefined) {
-    sheet.getRange(primaryRow, COL.startMD + 1).setValue(newStart || '');
+    var startCell = sheet.getRange(primaryRow, COL.startMD + 1);
+    startCell.setNumberFormat('yyyy-mm-dd');
+    startCell.setValue(newStart || '');
     if (newStart) sheet.getRange(primaryRow, COL.year + 1).setValue(newStart.getFullYear());
   }
-  if (newEnd !== undefined) sheet.getRange(primaryRow, COL.endMD + 1).setValue(newEnd || '');
+  if (newEnd !== undefined) {
+    var endCell = sheet.getRange(primaryRow, COL.endMD + 1);
+    endCell.setNumberFormat('yyyy-mm-dd');
+    endCell.setValue(newEnd || '');
+  }
 
   // 2026-08-21: 예전엔 수식이 없을 때만 "판매수량×공구가"를 고정 숫자로 한 번 계산해 넣었는데,
   // 그 뒤로는 수식이 아니라 그 시점 스냅샷값이라 다음에 sale/qty가 또 바뀌어도 재계산이 안 됐음
@@ -2331,6 +2341,18 @@ function _numOrNull(v) {
   return isNaN(n) ? null : n;
 }
 
+// "YYYY-MM-DD"(프론트가 시작일/종료일로 항상 이 형식을 보냄) → 시간 없는 Date로 안전하게 변환.
+// new Date("YYYY-MM-DD")는 스펙상 UTC 자정으로 해석되는데, 이 스크립트/시트 타임존이 UTC+9(한국)라
+// 시트에는 그 날짜 오전 9시로 저장돼버리는 문제가 있었음(2026-08-24 확인 — "2026. 8. 27 오전
+// 9:00:00"처럼 보이던 값의 실제 원인). 연/월/일을 직접 뽑아 new Date(y, m-1, d)로 만들면 로컬
+// 자정이 되어 이 시차가 생기지 않음.
+function _toDateOnly(dateStr) {
+  if (!dateStr) return null;
+  var m = String(dateStr).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
+
 // 날짜 파싱: Date 셀 → "YYYY-MM-DD" (연도 + "M/D" 텍스트 형식도 폴백 지원)
 function _parseDate(cell, year) {
   if (cell instanceof Date && !isNaN(cell.getTime())) {
@@ -2356,4 +2378,135 @@ function _fixYearWrap(startDate, endDate) {
   var ey = parseInt(endDate.slice(0, 4), 10), em = parseInt(endDate.slice(5, 7), 10);
   if (sy === ey && em < sm) return (ey + 1) + endDate.slice(4);
   return endDate;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 일회성: 시작일/종료일 뒤섞인 기존 데이터 정규화 (2026-08-24) ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 시트에 "8/27"(연도 없는 텍스트) / "2026. 8. 25"(날짜) / "2026. 8. 27 오전 9:00:00"(날짜+시간,
+// _toDateOnly 도입 전 UTC 파싱 버그로 생긴 값) 세 형태가 섞여 있던 걸 전부 "연도 포함, 시간 없는
+// 날짜"로 통일하는 일회성 스크립트. Apps Script 편집기에서 함수 선택 드롭다운으로 아래 순서대로
+// 직접 실행할 것(웹앱 경유 아님 — 실수로 재실행되는 걸 막기 위해 일부러 doGet에 연결하지 않음):
+//   1) backupMainSheetForDateFix()   — 원본을 별도 시트로 복제. 반드시 먼저 실행.
+//   2) previewDateNormalization()    — 아무것도 쓰지 않고 무엇이/왜 바뀔지만 계산해 반환(Executions
+//                                       로그 또는 실행 후 "실행 기록" 패널에서 반환값 확인).
+//   3) 위 결과(특히 wrapCases/unresolved)를 확인하고 문제 없으면 applyDateNormalization() 실행 —
+//      이때 실제로 시트에 반영됨.
+function backupMainSheetForDateFix() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) { Logger.log('실적통합 시트를 찾을 수 없습니다.'); return null; }
+  var stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
+  var backupName = (MAIN_SHEET + '_백업_날짜정규화전_' + stamp).slice(0, 100);
+  var copy = sheet.copyTo(ss);
+  copy.setName(backupName);
+  Logger.log('백업 완료: "' + backupName + '" 시트가 생성되었습니다. 이 시트를 지우지 말고 보관하세요.');
+  return backupName;
+}
+
+function previewDateNormalization() {
+  return _normalizeSheetDates(true);
+}
+
+function applyDateNormalization() {
+  return _normalizeSheetDates(false);
+}
+
+// raw 셀 값(Date 인스턴스 또는 텍스트) → {y,m,d}. "M/D"(연도 없음) 텍스트는 yearHint(해당 행의
+// 연도 열 값)를 그대로 사용 — 연도를 추측하지 않고 반드시 이 값에서만 가져옴.
+function _parseDateLoose(raw, yearHint) {
+  if (raw instanceof Date && !isNaN(raw.getTime())) {
+    return { y: raw.getFullYear(), m: raw.getMonth() + 1, d: raw.getDate() };
+  }
+  var s = String(raw == null ? '' : raw).trim();
+  if (!s) return null;
+  var mFull = s.match(/^(\d{4})[.\-\/]\s*(\d{1,2})[.\-\/]\s*(\d{1,2})/);
+  if (mFull) return { y: parseInt(mFull[1], 10), m: parseInt(mFull[2], 10), d: parseInt(mFull[3], 10) };
+  var mShort = s.match(/^(\d{1,2})[\/\-.](\d{1,2})$/);
+  if (mShort && yearHint) return { y: parseInt(yearHint, 10), m: parseInt(mShort[1], 10), d: parseInt(mShort[2], 10) };
+  return null;
+}
+
+function _isoOf(p) { return p ? (p.y + '-' + _pad(p.m) + '-' + _pad(p.d)) : null; }
+
+// dryRun=true면 아무것도 쓰지 않고 무엇이 바뀔지만 계산해서 반환(안전 확인용).
+// dryRun=false면 실제로 시작일/종료일 열에 반영(연도 열은 건드리지 않음 — 그대로 신뢰해 입력값으로만 씀).
+function _normalizeSheetDates(dryRun) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) { Logger.log('실적통합 시트를 찾을 수 없습니다.'); return { error: '시트 없음' }; }
+
+  var lastDataRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastDataRow <= DATA_START_ROW) {
+    Logger.log('데이터 행이 없습니다.');
+    return { totalRows: 0, changed: 0, wrapCases: [], unresolved: [] };
+  }
+
+  var numRows = lastDataRow - DATA_START_ROW;
+  var startRange = sheet.getRange(DATA_START_ROW + 1, COL.startMD + 1, numRows, 1);
+  var endRange   = sheet.getRange(DATA_START_ROW + 1, COL.endMD   + 1, numRows, 1);
+  var yearRange  = sheet.getRange(DATA_START_ROW + 1, COL.year    + 1, numRows, 1);
+  var startVals = startRange.getValues();
+  var endVals   = endRange.getValues();
+  var yearVals  = yearRange.getValues();
+
+  var changed = 0, wrapCases = [], unresolved = [];
+  var newStartVals = [], newEndVals = [];
+
+  for (var i = 0; i < numRows; i++) {
+    var rowNum = DATA_START_ROW + 1 + i;
+    var rawStart = startVals[i][0];
+    var rawEnd = endVals[i][0];
+    var hasStart = (rawStart instanceof Date) || String(rawStart || '').trim() !== '';
+
+    if (!hasStart) { // 시작일 자체가 없는 행은 건드리지 않음
+      newStartVals.push([rawStart]); newEndVals.push([rawEnd]);
+      continue;
+    }
+
+    var yearHint = _numOrNull(yearVals[i][0]);
+    var ps = _parseDateLoose(rawStart, yearHint);
+    var pe = _parseDateLoose(rawEnd, yearHint) || ps;
+
+    if (!ps) {
+      unresolved.push({ row: rowNum, rawStart: String(rawStart), rawEnd: String(rawEnd), yearCol: yearVals[i][0] });
+      newStartVals.push([rawStart]); newEndVals.push([rawEnd]);
+      continue;
+    }
+
+    var startISO = _isoOf(ps);
+    var endISO = _isoOf(pe);
+    if (endISO < startISO) {
+      var oldEndISO = endISO;
+      pe = { y: ps.y + 1, m: pe.m, d: pe.d };
+      endISO = _isoOf(pe);
+      wrapCases.push({ row: rowNum, start: startISO, oldEnd: oldEndISO, newEnd: endISO });
+    }
+
+    var wasAlreadyClean =
+      (rawStart instanceof Date) && rawStart.getHours() === 0 && rawStart.getMinutes() === 0 && rawStart.getSeconds() === 0 &&
+      (rawEnd instanceof Date) && rawEnd.getHours() === 0 && rawEnd.getMinutes() === 0 && rawEnd.getSeconds() === 0 &&
+      rawStart.getFullYear() === ps.y && rawStart.getMonth() + 1 === ps.m && rawStart.getDate() === ps.d &&
+      rawEnd.getFullYear() === pe.y && rawEnd.getMonth() + 1 === pe.m && rawEnd.getDate() === pe.d;
+    if (!wasAlreadyClean) changed++;
+
+    newStartVals.push([new Date(ps.y, ps.m - 1, ps.d)]);
+    newEndVals.push([new Date(pe.y, pe.m - 1, pe.d)]);
+  }
+
+  var summary = { totalRows: numRows, changed: changed, wrapCases: wrapCases, unresolved: unresolved, dryRun: dryRun };
+  Logger.log('[날짜 정규화 ' + (dryRun ? '미리보기' : '적용') + '] 전체 ' + numRows + '행 중 변경대상 ' + changed +
+    '건, 연말-연초 걸침 보정 ' + wrapCases.length + '건, 인식 불가(미변경) ' + unresolved.length + '건');
+  if (wrapCases.length) Logger.log('[연말-연초 걸침 보정 상세] ' + JSON.stringify(wrapCases));
+  if (unresolved.length) Logger.log('[인식 불가 상세 — 수동 확인 필요] ' + JSON.stringify(unresolved));
+
+  if (!dryRun) {
+    startRange.setValues(newStartVals);
+    endRange.setValues(newEndVals);
+    startRange.setNumberFormat('yyyy-mm-dd');
+    endRange.setNumberFormat('yyyy-mm-dd');
+    Logger.log('[날짜 정규화 적용 완료] 시트에 반영했습니다.');
+  }
+
+  return summary;
 }
