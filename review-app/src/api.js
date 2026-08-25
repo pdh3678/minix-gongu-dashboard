@@ -53,3 +53,13 @@ export async function deleteReview(bridge, id) {
   if (j.error) throw new Error(j.error);
   return j;
 }
+
+// 원본을 통째로 복제한 새 회고를 만들어달라고 서버에 요청 — 본문/이미지 복제는 전부 GAS
+// 쪽에서 처리(이미지는 Drive 파일 자체를 복사해 원본과 독립시킴). 새로 생성된 id를 돌려받아
+// 호출부가 바로 그 문서의 편집 화면으로 이동할 수 있게 함.
+export async function duplicateReview(bridge, id) {
+  const j = await bridge.gasWrite('duplicateReview', { id }, { _timeoutMs: 60000 });
+  if (j.error) throw new Error(j.error);
+  if (!j || !j.success || !j.id) throw new Error('서버 응답이 올바르지 않습니다.');
+  return j; // {success, id, title, updatedAt, editedBy}
+}

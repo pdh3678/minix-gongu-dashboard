@@ -12,7 +12,7 @@ import { makeNotionPasteHandler } from './notionPaste.js';
 import { CustomSideMenu } from './turnInto.jsx';
 import { CustomFormattingToolbar } from './formattingToolbar.jsx';
 import { PeriodFilter, reviewMatchesPeriod } from './periodFilter.jsx';
-import { listReviews, getReview, getReviewMetaQuick, saveReview, deleteReview } from './api.js';
+import { listReviews, getReview, getReviewMetaQuick, saveReview, deleteReview, duplicateReview } from './api.js';
 
 const AUTOSAVE_DELAY_MS = 3000;
 
@@ -56,6 +56,7 @@ function ReviewList({ bridge, onOpen, onNew }) {
   const [state, setState] = useState('loading'); // loading | ready | error
   const [filterYear, setFilterYear] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
+  const [busyId, setBusyId] = useState(''); // 복사/삭제 진행 중인 항목 id — 중복 클릭 방지
 
   const load = useCallback(async () => {
     setState('loading');
@@ -76,6 +77,38 @@ function ReviewList({ bridge, onOpen, onNew }) {
     () => reviews.filter((r) => reviewMatchesPeriod(r.ym, filterYear, filterMonth)),
     [reviews, filterYear, filterMonth]
   );
+
+  const handleDuplicate = useCallback(async (r, ev) => {
+    ev.stopPropagation();
+    if (busyId) return;
+    setBusyId(r.id);
+    try {
+      const j = await duplicateReview(bridge, r.id);
+      bridge.showToast('복사본이 생성되었습니다.', { type: 'success' });
+      onOpen(j.id); // 복사 직후 바로 새 회고 편집 화면으로 이동
+    } catch (e) {
+      bridge.showToast('복사 실패: ' + e.message, { type: 'error' });
+    } finally {
+      setBusyId('');
+    }
+  }, [bridge, busyId, onOpen]);
+
+  const handleDelete = useCallback(async (r, ev) => {
+    ev.stopPropagation();
+    if (busyId) return;
+    if (!window.confirm('이 회고를 삭제하시겠습니까? 되돌릴 수 없습니다.\n\n' + (r.title || '제목 없음'))) return;
+    setBusyId(r.id);
+    try {
+      await deleteReview(bridge, r.id);
+      setReviews((prev) => prev.filter((x) => x.id !== r.id));
+      bridge.showToast('삭제되었습니다.', { type: 'success' });
+    } catch (e) {
+      bridge.showToast('삭제 실패: ' + e.message, { type: 'error' });
+    } finally {
+      setBusyId('');
+    }
+  }, [bridge, busyId]);
+
   return (
     <div className="rv2-card">
       <div className="rv2-card-hd">
@@ -101,6 +134,10 @@ function ReviewList({ bridge, onOpen, onNew }) {
               {[r.ym, r.team, r.part, r.owner].filter(Boolean).join(' · ')}
               {r.updatedAt ? ' · ' + fmtTime(r.updatedAt) : ''}
             </div>
+            <div className="rv2-list-item-actions">
+              <button type="button" className="rv2-icon-btn" title="복사" aria-label="복사" disabled={!!busyId} onClick={(ev) => handleDuplicate(r, ev)}>{busyId === r.id ? '...' : '📋'}</button>
+              <button type="button" className="rv2-icon-btn danger" title="삭제" aria-label="삭제" disabled={!!busyId} onClick={(ev) => handleDelete(r, ev)}>{busyId === r.id ? '...' : '🗑'}</button>
+            </div>
           </div>
         ))}
       </div>
@@ -108,15 +145,18 @@ function ReviewList({ bridge, onOpen, onNew }) {
   );
 }
 
-function ReviewEditor({ bridge, docId, onBack }) {
+function ReviewEditor({ bridge, docId, onBack, onOpen }) {
   const [doc, setDoc] = useState(emptyDoc());
   const [initialBlocks, setInitialBlocks] = useState(docId ? undefined : []);
   const [loadState, setLoadState] = useState(docId ? 'loading' : 'ready');
   const [saveStatus, setSaveStatus] = useState('');
   const [saveErr, setSaveErr] = useState(false);
   const [isSaving, setIsSaving] = useState(false); // 저장 버튼 비활성화/라벨 전환용(ref는 리렌더를 안 일으켜 별도 state 필요)
+  const [isDup, setIsDup] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
+  const deletingRef = useRef(false); // 삭제 요청 도중 편집이 들어와도 자동저장이 그 회고를 되살리지 않게 막음
   const baseUpdatedAtRef = useRef('');
   const autosaveTimer = useRef(null);
   const docRef = useRef(doc);
@@ -200,6 +240,7 @@ function ReviewEditor({ bridge, docId, onBack }) {
   }, [editor, bridge, loadState]);
 
   const onEdit = useCallback(() => {
+    if (deletingRef.current) return; // 삭제 진행 중엔 편집을 자동저장 대상으로 잡지 않음(아래 handleDelete 참고)
     dirtyRef.current = true;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => doSave(false), AUTOSAVE_DELAY_MS);
@@ -210,6 +251,43 @@ function ReviewEditor({ bridge, docId, onBack }) {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     if (dirtyRef.current) doSave(false);
   }, [doSave]);
+
+  // 복사 — 서버가 메타+본문+이미지를 전부 복제한 새 문서를 만들어주면, 그 id로 바로 편집 화면 이동.
+  const handleDuplicate = useCallback(async () => {
+    if (!doc.id || isDup) return;
+    setIsDup(true);
+    try {
+      const j = await duplicateReview(bridge, doc.id);
+      bridge.showToast('복사본이 생성되었습니다.', { type: 'success' });
+      onOpen(j.id);
+    } catch (e) {
+      bridge.showToast('복사 실패: ' + e.message, { type: 'error' });
+    } finally {
+      setIsDup(false);
+    }
+  }, [bridge, doc.id, isDup, onOpen]);
+
+  // 삭제 — 확인 즉시 대기 중인 자동저장을 끊고 dirty를 꺼서, 삭제 요청이 나간 뒤 컴포넌트가
+  // 언마운트될 때(위 이탈 처리 effect)나 삭제 도중의 편집으로 도로 저장되어 "되살아나는" 일이
+  // 없게 함(2026-08-25 — deleteReview는 행을 완전히 지우므로, 뒤늦은 saveReview가 같은 id로
+  // 다시 appendRow해버리면 삭제가 무의미해짐).
+  const handleDelete = useCallback(async () => {
+    if (!doc.id || isDeleting) return;
+    if (!window.confirm('이 회고를 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+    deletingRef.current = true;
+    if (autosaveTimer.current) { clearTimeout(autosaveTimer.current); autosaveTimer.current = null; }
+    dirtyRef.current = false;
+    setIsDeleting(true);
+    try {
+      await deleteReview(bridge, doc.id);
+      bridge.showToast('삭제되었습니다.', { type: 'success' });
+      onBack();
+    } catch (e) {
+      deletingRef.current = false;
+      bridge.showToast('삭제 실패: ' + e.message, { type: 'error' });
+      setIsDeleting(false);
+    }
+  }, [bridge, doc.id, isDeleting, onBack]);
 
   // 붙여넣기 직후 외부(비-Drive) 이미지 URL을 Drive로 재업로드 — 노션 S3 서명 URL 만료 회피
   const onPasteCapture = useCallback(() => {
@@ -233,6 +311,8 @@ function ReviewEditor({ bridge, docId, onBack }) {
         <input className="rv2-title-input" placeholder="제목 없음" value={doc.title} onChange={(e) => updateMeta({ title: e.target.value })} />
         <div className="rv2-top-r">
           <input className="rv2-ym-input" type="month" value={doc.ym} onChange={(e) => updateMeta({ ym: e.target.value })} />
+          {doc.id && <button className="rv2-btn-cancel" onClick={handleDuplicate} disabled={isDup || isDeleting}>{isDup ? '복사 중...' : '📋 복사'}</button>}
+          {doc.id && <button className="rv2-btn-cancel danger" onClick={handleDelete} disabled={isDeleting || isDup}>{isDeleting ? '삭제 중...' : '🗑 삭제'}</button>}
           <button className="rv2-btn-primary" onClick={() => doSave(true)} disabled={isSaving}>{isSaving ? '저장 중...' : '저장'}</button>
         </div>
       </div>
@@ -268,10 +348,16 @@ export default function ReviewApp({ bridge }) {
 
   if (route.view === 'detail') {
     return (
+      // key=docId: 복사 직후처럼 편집기가 마운트된 채로 다른 문서 id로 넘어갈 때, ReviewEditor의
+      // 내부 상태/이펙트(로드 상태·자동저장 타이머·BlockNote 에디터 인스턴스)가 전부 새 문서
+      // 기준으로 깨끗하게 다시 초기화되도록 React가 컴포넌트를 완전히 새로 마운트하게 강제함
+      // (docId prop만 바뀌면 같은 인스턴스가 재사용돼 옛 문서의 상태가 일부 남는 문제가 있었음).
       <ReviewEditor
+        key={route.docId}
         bridge={bridge}
         docId={route.docId}
         onBack={() => setRoute({ view: 'list' })}
+        onOpen={(id) => setRoute({ view: 'detail', docId: id })}
       />
     );
   }

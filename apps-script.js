@@ -1343,6 +1343,7 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
+    else if (action === 'duplicateReview') { resp = _duplicateReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'uploadReviewImage') { resp = _uploadReviewImage(data); skipCacheInvalidate = true; }
     else if (action === 'uploadReviewImageByUrl') { resp = _uploadReviewImageByUrl(data); skipCacheInvalidate = true; }
     else if (action === 'shareReviewImages') { resp = _shareReviewImages(data); skipCacheInvalidate = true; }
@@ -2210,6 +2211,66 @@ function _deleteReview(ss, data) {
   if (!row) return _json({ error: '해당 회고 문서를 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
   sheet.deleteRow(row);
   return _json({ success: true });
+}
+
+// 복사 — 원본 회고를 통째로 복제해 새 id로 저장(원본은 그대로 유지). 제목만 "- 복사본"을 붙여
+// 구분하고, 나머지 메타(담당자/팀/파트/연월)와 본문은 그대로 복제함. 본문에 박힌 이미지는
+// _cloneReviewImages로 Drive 파일 자체를 복사해 원본과 독립시킴 — 원본을 나중에 삭제해도
+// 복사본 이미지가 함께 사라지지 않게 하기 위함(2026-08-25).
+function _duplicateReview(ss, data, idToken) {
+  var srcId = String((data && data.id) || '').trim();
+  var src = _getReviewDoc(ss, srcId);
+  if (!src) return _json({ error: '원본 회고를 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
+
+  var newContent = _cloneReviewImages(src.content);
+  var newTitle = (src.title && src.title.trim() ? src.title.trim() : '제목 없음') + ' - 복사본';
+
+  var payload = _decodeIdTokenPayload(idToken);
+  var editor = (payload && (payload.name || payload.email)) || '';
+  var sheet = _ensureReviewSheet(ss);
+  var newId = Utilities.getUuid();
+  var now = new Date().toISOString();
+  var chunks = _splitReviewBody(newContent);
+  var rowData = [newId, newTitle, src.ym, src.owner, src.team, src.part, chunks[0], now, editor];
+  sheet.appendRow(rowData);
+  var row = _findReviewRow(sheet, newId);
+  // ym 셀 날짜 자동변환 방지(원본 셀도 이미 텍스트로 저장돼 있지만 appendRow는 재검증 안 하므로 동일하게 고정)
+  sheet.getRange(row, REVIEW_COL.ym + 1).setNumberFormat('@').setValue(rowData[REVIEW_COL.ym]);
+  var extra = chunks.length - 1;
+  if (extra > 0) {
+    _ensureReviewOverflowHeaders(sheet, extra);
+    sheet.getRange(row, REVIEW_BODY_EXTRA_START_COL, 1, extra).setValues([chunks.slice(1)]);
+  }
+  return _json({ success: true, id: newId, title: newTitle, updatedAt: now, editedBy: editor });
+}
+
+// 본문(JSON 문자열) 안에 박힌 우리 Drive 이미지 URL(lh3.googleusercontent.com/d/<fileId>)을 전부
+// 찾아 실제 Drive 파일을 복사하고, 문자열 치환으로 새 URL을 끼워넣음. 같은 이미지가 문서 안에
+// 여러 번 쓰였어도 파일당 한 번만 복사(idMap으로 중복 방지). 개별 이미지 복사가 실패해도(권한 등)
+// 전체 복사 자체는 계속 진행 — 그 이미지만 원본 파일을 그대로 참조(복사본이 아예 안 만들어지는 것보단
+// 나음, 다만 그 한 장은 원본 삭제 시 함께 깨질 수 있음 — 실패는 Logger에 남겨 추적 가능).
+function _cloneReviewImages(content) {
+  var re = /https:\/\/lh3\.googleusercontent\.com\/d\/([A-Za-z0-9_-]+)/g;
+  var idMap = {};
+  var m;
+  while ((m = re.exec(content)) !== null) {
+    var fileId = m[1];
+    if (idMap.hasOwnProperty(fileId)) continue;
+    try {
+      var copy = DriveApp.getFileById(fileId).makeCopy(_getReviewImgFolder());
+      try { _shareFilePublic(copy); } catch (shareErr) { /* 공유 실패해도 복사 자체는 성공 처리 */ }
+      idMap[fileId] = copy.getId();
+    } catch (err) {
+      Logger.log('[회고 복사] 이미지 복제 실패(원본 파일을 그대로 참조함): fileId=' + fileId + ' err=' + err);
+      idMap[fileId] = fileId;
+    }
+  }
+  var result = content;
+  for (var oldId in idMap) {
+    if (idMap[oldId] === oldId) continue;
+    result = result.split('https://lh3.googleusercontent.com/d/' + oldId).join('https://lh3.googleusercontent.com/d/' + idMap[oldId]);
+  }
+  return result;
 }
 
 // 회고 본문에 삽입하는 이미지 — 릴스 썸네일과 완전히 같은 방식(전용 Drive 폴더에 비공개로 저장하고

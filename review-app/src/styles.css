@@ -9,6 +9,16 @@
 .rv2-list-meta{font-size:11px;color:var(--text-3);white-space:nowrap}
 .rv2-placeholder{padding:70px 20px;text-align:center;color:var(--text-3);font-size:13px;line-height:1.7}
 
+/* 목록 항목 우측 액션(복사/삭제) — 평소엔 숨겨뒀다가 항목에 마우스 올리면 나타남.
+   opacity만 바꾸고 레이아웃은 항상 차지해둬서(display:none 아님) 호버 시 다른 요소가
+   밀리지 않게 함. */
+.rv2-list-item-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;opacity:0;transition:opacity .12s}
+.rv2-list-item:hover .rv2-list-item-actions,.rv2-list-item-actions:focus-within{opacity:1}
+.rv2-icon-btn{width:26px;height:26px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-2);font-size:13px;line-height:1;cursor:pointer;font-family:inherit}
+.rv2-icon-btn:hover{background:var(--surface-2)}
+.rv2-icon-btn:disabled{opacity:.5;cursor:default}
+.rv2-icon-btn.danger:hover{background:rgba(220,38,38,.1);border-color:#DC2626;color:#DC2626}
+
 .rv2-detail{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);padding:22px 26px;display:flex;flex-direction:column;gap:14px}
 .rv2-detail-top{display:flex;align-items:center;gap:12px}
 .rv2-title-input{flex:1;border:none;background:transparent;font-size:20px;font-weight:800;color:var(--text);font-family:inherit;padding:4px 2px;min-width:0;outline:none}
@@ -28,6 +38,9 @@
 .rv2-btn-primary:disabled{opacity:.6;cursor:default}
 .rv2-card-hd .rv2-btn-primary{padding:6px 14px;font-size:12px}
 .rv2-btn-cancel{padding:8px 18px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0}
+.rv2-btn-cancel:disabled{opacity:.6;cursor:default}
+.rv2-btn-cancel.danger{color:#DC2626;border-color:rgba(220,38,38,.4)}
+.rv2-btn-cancel.danger:hover{background:rgba(220,38,38,.08)}
 
 /* BlockNote 표면을 대시보드 배경에 맞춤 — 세부 색상은 theme.js가 CSS 변수로 주입 */
 .rv2-editor .bn-container{font-size:13px}
