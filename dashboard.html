@@ -647,7 +647,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
 
       <div class="card">
-        <div class="card-hd"><span>달성률 분석</span><span class="card-hd-r" id="dashAchvHdNote">완료+진행중 기준</span></div>
+        <div class="card-hd"><span>달성률 분석</span><span class="card-hd-r" id="dashAchvHdNote">완료 건 기준</span></div>
         <div id="dashAchvBanner" class="dash-note-banner" style="display:none"></div>
         <div class="dash-stat-line" id="dashAchvStats"></div>
         <div class="analytics-split">
@@ -1226,7 +1226,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-rev-scope-unify-2026-08-24-01';
+const DASHBOARD_VERSION='dash-achv-done-only-2026-08-25-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1858,11 +1858,14 @@ function renderDashCharts(){
   }
 }
 
-/* ── 대시보드: 채널별·제품군별·플랫폼별·달성률 분석 ──
+/* ── 대시보드: 채널별·제품군별·플랫폼별 분석 ──
    전부 dashData()(상단 기간 필터 결과)를 그대로 재사용해 자동으로 기간 필터에 연동됨.
    "완료+진행중" 상태 건만 집계 대상으로 삼음(2026-08-24) — KPI 카드 총매출·매출 추이 차트와
    동일한 매출 기준(_isRevStatus)이라 숫자가 서로 다른 화면끼리 어긋나 보이지 않음. 예정 건은
-   아직 시작 전이라 실적 값이 없는 게 정상이므로 제외. */
+   아직 시작 전이라 실적 값이 없는 게 정상이므로 제외.
+   ※ 달성률 분석(renderDashAchievement)은 이 매출 기준을 따르지 않음(아래 별도 주석 참고) —
+   달성률은 판매가 끝나야 확정되는 지표라 진행중 건을 섞으면 "아직 목표에 못 미친 게 당연한"
+   건이 미달로 잡혀 평균·분포가 왜곡됨(2026-08-25 확인). */
 function _dashRevScope(){return dashData().filter(_isRevStatus);}
 function _safeDiv(n,d){return(d&&d>0)?n/d:null;} // 분모가 0/없음이면 null → 호출부에서 '—'로 표시
 function _pct1(n){return n==null?'—':n.toFixed(1)+'%';}
@@ -2220,8 +2223,12 @@ function _dashAchvRenderCommon(entries,buckets,crossValLabel){
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{stepSize:1,precision:0}}}}
   });
 }
+// 달성률(실적/목표)은 판매가 끝나야 확정되는 지표 — 진행중 건은 아직 판매 중이라 실적(qty)이
+// 목표에 못 미치는 게 당연한데, 이걸 매출 KPI와 같은 완료+진행중 기준(_dashRevScope)으로 섞으면
+// 전부 "미달"로 잡혀 평균·분포가 왜곡됨(2026-08-25 확인 — 8월 진행중 건이 평균을 끌어내리던 문제).
+// 그래서 이 섹션만 완료 건으로 한정 — 다른 분석 카드(채널/제품군/플랫폼)와 기준이 다름에 유의.
 function renderDashAchievement(){
-  const scope=_dashRevScope();
+  const scope=dashData().filter(d=>_displayStatus(d)==='완료');
   const banner=document.getElementById('dashAchvBanner');
   const stats=document.getElementById('dashAchvStats');
   const distBody=document.getElementById('dashAchvDistBody');
@@ -2236,7 +2243,7 @@ function renderDashAchievement(){
     if(_dashAchvChartInst){_dashAchvChartInst.destroy();_dashAchvChartInst=null;}
   }
 
-  if(!scope.length){empty('해당 기간에 완료·진행중인 공구건이 없습니다');return;}
+  if(!scope.length){empty('해당 기간에 완료된 공구건이 없습니다');return;}
 
   const withTarget=scope.filter(d=>d.targetQty!=null&&d.targetQty>0&&d.qty!=null);
 
@@ -2246,13 +2253,19 @@ function renderDashAchievement(){
     const entries=withTarget.map(d=>({d,val:d.qty/d.targetQty*100}));
     const avg=entries.reduce((s,e)=>s+e.val,0)/entries.length;
     const over=entries.filter(e=>e.val>=100).length,under=entries.length-over;
-    const excluded=scope.length-entries.length;
-    stats.innerHTML=`평균 달성률 <b>${avg.toFixed(0)}%</b> · 초과달성 <b>${over}건</b> · 미달 <b>${under}건</b> · 대상 <b>${entries.length}건</b>${excluded?` · 목표 미기입 ${excluded}건 제외`:''}`;
+    // 제외 사유를 실제로 구분해서 라벨에 반영 — "목표 미기입"이라고 뭉뚱그리면, 목표는 있지만
+    // 판매수량(실적)만 아직 비어 있는 건까지 잘못된 사유로 표시되는 문제가 있었음(2026-08-25).
+    const noTarget=scope.filter(d=>d.targetQty==null||d.targetQty<=0).length;
+    const noQty=scope.filter(d=>d.targetQty!=null&&d.targetQty>0&&d.qty==null).length;
+    const excludeParts=[];
+    if(noTarget)excludeParts.push(`목표 미기입 ${noTarget}건`);
+    if(noQty)excludeParts.push(`판매수량 미기입 ${noQty}건`);
+    stats.innerHTML=`평균 달성률 <b>${avg.toFixed(0)}%</b> · 초과달성 <b>${over}건</b> · 미달 <b>${under}건</b> · 대상 <b>${entries.length}건</b>${excludeParts.length?` · ${excludeParts.join(', ')} 제외`:''}`;
     const buckets=[{label:'~80%',test:v=>v<80},{label:'80~100%',test:v=>v>=80&&v<100},{label:'100~150%',test:v=>v>=100&&v<150},{label:'150%+',test:v=>v>=150}];
     _dashAchvRenderCommon(entries,buckets,'평균 달성률');
   } else {
     banner.style.display='block';
-    banner.textContent='⚠ 이 기간의 완료·진행중 건에는 목표수량 데이터가 없어, 매출 기준 상대 성과(전체 평균 대비 %)로 대체해 보여줍니다.';
+    banner.textContent='⚠ 이 기간의 완료 건에는 목표수량 데이터가 없어, 매출 기준 상대 성과(전체 평균 대비 %)로 대체해 보여줍니다.';
     distColHd.textContent='상대 성과 구간';crossTitle.textContent='상대 성과 상위 조건';
     const withRev=scope.filter(d=>d.rev!=null);
     if(!withRev.length){empty('매출 데이터가 없어 상대 성과도 계산할 수 없습니다');return;}
