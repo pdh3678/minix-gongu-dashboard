@@ -117,9 +117,9 @@ function _buildQtyOptions() {
 var QTY_STANDARD_OPTIONS = _buildQtyOptions(); // [50,100,150,...,500,600,700,...,3000]
 var OPEN_TIME_OPTIONS = (function () {
   var opts = [];
-  for (var h = 10; h <= 24; h++) opts.push(_pad(h) + ':00');
+  for (var h = 0; h <= 23; h++) opts.push(_pad(h) + ':00');
   return opts;
-})(); // ['10:00',...,'24:00']
+})(); // ['00:00',...,'23:00']
 var POINTS_OPTIONS = ['NPAY 1만원', 'NPAY 2만원', 'NPAY 3만원', 'NPAY 4만원', 'NPAY 5만원'];
 var QTY_UNSPECIFIED_LABEL = '전원증정'; // 기존 자유텍스트에 수량 명시가 없을 때 마이그레이션 기본값
 
@@ -163,7 +163,7 @@ function _matchQtyNumber(text) {
   return QTY_STANDARD_OPTIONS.indexOf(n) !== -1 ? n : null;
 }
 
-// 텍스트에서 "10:00"/"10시"/"오후 2시" 등의 시간 표현을 찾아 10:00~22:00(1시간 단위)에 맞으면
+// 텍스트에서 "10:00"/"10시"/"오후 2시" 등의 시간 표현을 찾아 00:00~23:00(1시간 단위)에 맞으면
 // "HH:00" 형태로 반환(없거나 범위 밖이면 null) — 오전/오후·AM/PM 표기를 24시간제로 환산함.
 // 분이 "00"이 아닌 값(예: "10:30", "10시 30분")은 드롭다운이 1시간 단위라 억지로 반올림하지 않고
 // 확신 매칭 실패로 처리함 — 그래야 호출부가 원문을 신규 비고에 그대로 보존해 정밀도 유실을 막음.
@@ -180,8 +180,8 @@ function _matchOpenTime(text) {
   var isAM = /오전|AM/i.test(t);
   if (isPM && hour < 12) hour += 12;
   if (isAM && hour === 12) hour = 0;
-  if (hour === 0) hour = 24; // 자정(00:00)은 "다음날 0시"가 아니라 영업 마감 24:00으로 취급(2026-08-18 범위 확장 반영)
-  if (hour < 10 || hour > 24) return null;
+  if (hour === 24) hour = 0; // "24:00"은 00:00과 같은 시각 — 드롭다운이 00:00~23:00이므로 0시로 통일(2026-08-27)
+  if (hour < 0 || hour > 23) return null;
   return _pad(hour) + ':00';
 }
 
@@ -2392,7 +2392,9 @@ function _normalizeOpenTime(raw) {
   }
   var s = String(raw).trim();
   var m = s.match(/^(\d{1,2}):(\d{2})/); // "10:00"과 "10:00:00" 둘 다 앞의 시:분만 취함
-  if (m) return _pad(parseInt(m[1], 10)) + ':00';
+  // "24:00"은 00:00과 동일한 시각으로 통일(2026-08-27 드롭다운 00:00~23:00 정리) — 예전에
+  // 24:00으로 저장된 건도 읽을 때 00:00으로 넘어가 드롭다운에 정상 매칭됨(시트 값은 건드리지 않음).
+  if (m) return _pad(parseInt(m[1], 10) % 24) + ':00';
   return s; // 알아볼 수 없는 형식은 원문을 그대로 보존(추측해서 지우지 않음)
 }
 
