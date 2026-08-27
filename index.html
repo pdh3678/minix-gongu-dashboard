@@ -196,7 +196,7 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
    화면에서 행 전체가 가로로 넘침(실측 확인 — 390px 화면에서 kpi-row가 560px까지 밀려남).
    minmax(0,1fr)로 바꾸면 트랙이 실제 컨테이너 폭에 맞춰 정상적으로 줄어듦(Chart.js 캔버스가
    부모 크기를 기준으로 반응형 리사이즈되는 표준 패턴이기도 함). */
-.kpi-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.kpi-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 #salesKpiRow{grid-template-columns:repeat(3,minmax(0,1fr))}
 .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:15px 17px;box-shadow:var(--sh)}
 .kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-3);margin-bottom:5px}
@@ -288,13 +288,20 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
    화면에서 실제로 적용됨(동일 우선순위 선택자는 나중 규칙이 이김 — 처음엔 이 오버라이드를
    위쪽 사이드바 미디어쿼리 블록 안에 뒀다가 .kpi-row 기본 정의보다 앞에 있어서 무시되는
    버그가 있었음, 실측으로 발견). minmax(0,1fr)만으로는 5칸/2칸이 너무 좁아져 내용이 읽기
-   힘들어지므로 칸 수 자체도 줄임. */
+   힘들어지므로 칸 수 자체도 줄임(기본 3칸 → 2칸 → 1칸). */
 @media(max-width:900px){
   .chart-row{grid-template-columns:minmax(0,1fr)}
   .kpi-row,#salesKpiRow{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media(max-width:420px){
   .kpi-row,#salesKpiRow{grid-template-columns:minmax(0,1fr)}
+}
+/* KPI 6장을 한 줄에 늘어놓으려면 칸 안쪽이 ~198px는 돼야 총 매출이 카드 밖으로 삐져나오지 않음
+   (₩1,463,613,000 = 24px 볼드 tabular-nums로 실측 186px). 사이드바 220px + 본문 좌우 여백 48px +
+   카드 좌우 패딩 34px + gap 12px×5를 빼고 6으로 나누면 뷰포트 1720px부터 충족됨(1728px인 16" 노트북
+   포함). 그 아래는 기본값인 3칸(3+3 두 줄) 유지 — 6칸을 억지로 유지하면 금액이 잘림. */
+@media(min-width:1720px){
+  .kpi-row{grid-template-columns:repeat(6,minmax(0,1fr))}
 }
 
 .dash-analytics-empty{padding:28px 10px;text-align:center;color:var(--text-3);font-size:12px}
@@ -1226,7 +1233,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-achv-done-only-2026-08-25-01';
+const DASHBOARD_VERSION='dash-kpi-total-qty-2026-08-27-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1744,14 +1751,17 @@ function renderKPI(){
   // 매출은 완료+진행중 기준(예정 제외) — 매출 추이 차트(renderDashCharts)와 반드시 같은 기준을 씀.
   const revScope=f.filter(_isRevStatus);
   const tRev=revScope.reduce((s,d)=>s+(d.rev||0),0);
-  // d.views는 이미 "만" 단위(P열 원값) — 실제 조회수로 환산할 때만 ×10000. 조회수/판매수량/전환율은
-  // 완료 건만 확정 실적으로 보고 그대로 "완료 건 기준" 유지(매출과 다른 기준 — 진행중 건은 아직
-  // 릴스 조회수·판매수량이 최종 확정 전이라 섞으면 왜곡됨).
+  const tRevQty=revScope.reduce((s,d)=>s+(d.qty||0),0); // 총 판매수량 KPI — 총 매출과 같은 스코프
+  // d.views는 이미 "만" 단위(P열 원값) — 실제 조회수로 환산할 때만 ×10000. 아래 tViews/tQty는
+  // 평균 조회수·전환율 계산용이라 완료 건만 확정 실적으로 보고 "완료 건 기준"을 유지함(진행중 건은
+  // 아직 릴스 조회수가 최종 확정 전이라 분모에 섞으면 전환율이 왜곡됨). 반면 "총 판매수량" KPI는
+  // 총 매출과 짝을 이루는 수치라 위 tRevQty(완료+진행중)를 씀 — 두 기준이 공존하는 건 의도된 것.
   const tViews=done.reduce((s,d)=>s+(d.views||0),0),tQty=done.reduce((s,d)=>s+(d.qty||0),0);
   const avgV=done.length?tViews/done.length:0;
   const conv=tViews>0&&tQty>0?((tQty/(tViews*10000))*100).toFixed(2)+'%':'—';
   document.getElementById('kpiRow').innerHTML=`
     <div class="kpi"><div class="kpi-lbl">총 매출 (완료+진행중)</div><div class="kpi-val cm">${tRev?won(tRev):'—'}</div><div class="kpi-sub">완료 ${done.length}건 · 진행중 ${act.length}건</div></div>
+    <div class="kpi"><div class="kpi-lbl">총 판매수량</div><div class="kpi-val cn">${tRevQty?num(tRevQty)+'<span class="kpi-unit">개</span>':'—'}</div><div class="kpi-sub">완료+진행중 기준</div></div>
     <div class="kpi"><div class="kpi-lbl">진행 중</div><div class="kpi-val cw">${act.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">${act.map(d=>d.product).join(' · ')||'없음'}</div></div>
     <div class="kpi"><div class="kpi-lbl">예정</div><div class="kpi-val cn">${plan.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">다가오는 공구</div></div>
     <div class="kpi"><div class="kpi-lbl">평균 릴스 조회수</div><div class="kpi-val cm">${avgV?avgV.toFixed(1)+'<span class="kpi-unit">만</span>':'—'}</div><div class="kpi-sub">완료 건 기준</div></div>
