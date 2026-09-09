@@ -228,6 +228,7 @@ tbody tr:hover td{background:var(--surface-2)}
 .bm{background:var(--minix-lt);color:var(--minix)}
 .bp-vendor{background:var(--nbg);color:#374151;letter-spacing:0;text-transform:none}
 .bp-fmt{background:#EEF2FF;color:#4338CA;letter-spacing:0;text-transform:none}
+.bp-tier{letter-spacing:0;text-transform:none}
 
 /* 정렬 가능한 헤더 */
 th.sortable{cursor:pointer;user-select:none}
@@ -313,6 +314,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .dash-stat-line{font-size:12px;color:var(--text-2);margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap}
 .dash-stat-line b{color:var(--text)}
 .dash-season-highlight{outline:2px solid var(--minix);outline-offset:-2px}
+/* 등급별 성과: 표본이 TIER_MIN_SAMPLE 미만인 등급 행은 옅게 — 평균·전환율을 과대 해석하지 않도록 */
+.tier-low-sample{opacity:.5}
+.tier-sample-badge{display:inline-block;margin-left:5px;font-size:9.5px;font-weight:700;color:var(--warn);background:var(--warn-bg);padding:1px 5px;border-radius:3px;white-space:nowrap;letter-spacing:0}
+.tier-help{cursor:help}
 
 /* Modals shared */
 .ov{display:none;position:fixed;inset:0;background:rgba(17,24,39,.55);backdrop-filter:blur(3px);z-index:100;align-items:center;justify-content:center}
@@ -585,6 +590,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <input class="dash-filter-input" id="dashInfluencerInput" type="text" placeholder="채널명 검색(예: 러브지나)" autocomplete="off" oninput="_onDashInfluencerInput(this.value)" onfocus="_onDashInfluencerFocus()" onkeydown="_onDashInfluencerKeydown(event)">
           </label>
           <span class="dash-filter-chip" id="dashInfluencerChip" style="display:none"></span>
+          <label style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;font-weight:700;color:var(--text-2)">등급</span>
+            <select class="f-inp f-sel dash-filter-select" id="dashTierFilter" onchange="_onDashTierFilterChange()"></select>
+          </label>
           <div class="ym-dd-pop" id="dashInfluencerPop"></div>
         </div>
       </div>
@@ -601,6 +610,19 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         </div>
       </div>
       <div class="card">
+        <div class="card-hd"><span>등급별 성과</span><span class="card-hd-r" id="dashTierHdNote">완료+진행중 기준</span></div>
+        <div class="tbl-wrap">
+          <table><thead><tr>
+            <th>등급</th><th class="num-col">건수</th><th class="num-col">총매출</th><th class="num-col">건당 평균매출</th>
+            <th class="num-col">평균 판매수량</th><th class="num-col">평균 조회수</th><th class="num-col">전환율</th><th class="num-col">조회수 1만당 매출</th>
+          </tr></thead><tbody id="dashTierBody"></tbody></table>
+        </div>
+        <div class="f-sec" style="margin-top:14px">건수 비중 vs 매출 기여도</div>
+        <div style="height:170px"><canvas id="dashTierShareChart"></canvas></div>
+        <div class="chart-note" id="dashTierNote"></div>
+      </div>
+
+      <div class="card">
         <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료+진행중 기준</span></div>
         <div class="dash-stat-line" style="margin-bottom:14px">
           <label style="display:flex;align-items:center;gap:8px">
@@ -612,6 +634,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <div class="tbl-wrap">
             <table><thead><tr>
               <th class="sortable" id="dashChHdCh" onclick="_sortDashChannelTable('ch')">채널<span class="sort-ic">⇕</span></th>
+              <th class="sortable" id="dashChHdTier" onclick="_sortDashChannelTable('tier')">등급<span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdCount" onclick="_sortDashChannelTable('count')">공구 횟수<span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdRev" onclick="_sortDashChannelTable('revSum')">누적 매출<span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdQty" onclick="_sortDashChannelTable('avgQty')">평균 판매수량<span class="sort-ic">⇕</span></th>
@@ -818,10 +841,14 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         </div>
 
         <div class="f-sec">채널 정보</div>
-        <div class="fg fg-3">
+        <div class="fg fg-4">
           <div class="f-grp">
             <label class="f-lbl">채널명 <span class="f-req">*</span></label>
-            <input class="f-inp" type="text" id="mInfluencer">
+            <input class="f-inp" type="text" id="mInfluencer" list="chNameList" autocomplete="off" oninput="_onModalInfluencerInput()">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">등급 <span class="f-badge tier-help" id="mTierHelp">기준 ?</span></label>
+            <select class="f-inp f-sel" id="mTier" onchange="_onModalTierChange()"></select>
           </div>
           <div class="f-grp">
             <label class="f-lbl">플랫폼 <span class="f-req">*</span></label>
@@ -1056,11 +1083,17 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
     </div>
 
+    <!-- 채널명 자동완성 후보 — 등록 폼/수정 모달의 채널명 입력이 같이 참조(내용은 _refreshChannelNameList가 채움) -->
+    <datalist id="chNameList"></datalist>
     <div class="f-sec">채널 정보</div>
-    <div class="fg fg-3">
+    <div class="fg fg-4">
       <div class="f-grp">
         <label class="f-lbl">채널명 <span class="f-req">*</span></label>
-        <input class="f-inp" type="text" id="fInfluencer" placeholder="예: 민이">
+        <input class="f-inp" type="text" id="fInfluencer" placeholder="예: 민이" list="chNameList" autocomplete="off" oninput="_onFormInfluencerInput()">
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl">등급 <span class="f-badge tier-help" id="fTierHelp">기준 ?</span></label>
+        <select class="f-inp f-sel" id="fTier" onchange="_onFormTierChange()"></select>
       </div>
       <div class="f-grp">
         <label class="f-lbl">플랫폼 <span class="f-req">*</span></label>
@@ -1233,7 +1266,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-kpi-total-qty-2026-08-27-01';
+const DASHBOARD_VERSION='dash-influencer-tier-2026-09-09-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1242,7 +1275,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='gift-fields-migration-2026-08-18-01';
+const REQUIRED_SCRIPT_VERSION='tier-classification-2026-09-09-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -1259,13 +1292,13 @@ const DEFAULT_GAS_URL='https://script.google.com/macros/s/AKfycbxz5VBbD1IDha4mLC
 // 하므로 openCfg()는 이 함수를 쓰지 않고 localStorage를 직접 읽음).
 function _getGasUrl(){return localStorage.getItem('gp_gas_url')||DEFAULT_GAS_URL;}
 const SAMPLE=[
-  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
+  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',tier:'매크로',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
   {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:19.8,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
-  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:41.2,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
-  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:15.6,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
-  {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'키친퀸',platform:'인스타그램',chId:'kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:33.4,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
-  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:27.8,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
-  {id:7,brand:'Minix',product:'더 플렌더 MAX',ch:'뷰티노트',platform:'인스타그램',chId:'beauty.note',start:'2026-07-02',end:'2026-07-04',status:'예정',views:null,qty:null,rev:null,code:'MX-BLD-002',s:{retail:59900,sale:49900,comm:14,note:'신규 채널 기본 스킴'}},
+  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',tier:'매크로',platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:41.2,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
+  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',tier:'마이크로',platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:15.6,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
+  {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'키친퀸',tier:'메가',platform:'인스타그램',chId:'kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:33.4,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
+  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',tier:'매크로',platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:27.8,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
+  {id:7,brand:'Minix',product:'더 플렌더 MAX',ch:'뷰티노트',tier:'나노',platform:'인스타그램',chId:'beauty.note',start:'2026-07-02',end:'2026-07-04',status:'예정',views:null,qty:null,rev:null,code:'MX-BLD-002',s:{retail:59900,sale:49900,comm:14,note:'신규 채널 기본 스킴'}},
   {id:8,brand:'Minix',product:'더슬림',ch:'핏푸디',platform:'인스타그램',chId:'fit.foodie',start:'2026-07-08',end:'2026-07-10',status:'예정',views:null,qty:null,rev:null,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
 ];
 SAMPLE.forEach(d=>{d.link=buildChannelLink(d.platform,d.chId);});
@@ -1280,7 +1313,9 @@ let EVENTS=SAMPLE_EVENTS.map(e=>({...e}));
 const _NOW=new Date();
 const ST={prod:'all',model:'all'};
 const DASH_PERIOD_LS_KEY='gp_dash_period';
-const DASH={years:null,months:null,weeks:null,channel:null}; // channel: null=전체, 문자열=해당 인플루언서(채널명)만
+// channel: null=전체, 문자열=해당 인플루언서(채널명)만 / tier: 'all'=전체, 그 외는 해당 등급만
+// (기간 3종만 localStorage에 저장 — channel/tier는 세션 내 임시 필터라 새로고침 시 전체로 돌아감)
+const DASH={years:null,months:null,weeks:null,channel:null,tier:'all'};
 function dashPLoad(){
   try{
     const raw=localStorage.getItem(DASH_PERIOD_LS_KEY);
@@ -1445,6 +1480,32 @@ const PRODUCT_LINE_OF=Object.assign({},...PRODUCT_TAXONOMY.map(t=>({[t.key]:t.li
 // 라인 자체의 표시 라벨(새 "라인"이 통째로 새로 생길 때만 여기 한 줄 추가 필요 — 기존 라인에 모델만
 // 추가되는 경우는 위 PRODUCT_TAXONOMY만 고치면 됨)
 const PRODUCT_LINE_LABELS={'더플렌더':'더 플렌더','더시프트':'더 시프트','더슬림':'더 슬림','더에어드라이':'더 에어드라이',other:'기타'};
+/* ── 인플루언서 등급 분류 규칙(한 곳에서 관리, 2026-09-09) ────────────────────
+   등급 목록·정렬 순서·배지 색을 이 배열 하나로 정의 — 위 PRODUCT_TAXONOMY와 같은 방식.
+   배열 순서가 곧 모든 테이블/차트/범례/정렬의 기준 순서라, 순서를 바꾸면 화면 전체가 따라 바뀜.
+   apps-script.js의 TIER_OPTIONS/TIER_MIN_SAMPLE과 값·순서가 반드시 일치해야 함(그쪽은 시트 값 검증용,
+   여긴 드롭다운/집계/표시용). 색상은 화면 전용이라 여기에만 있음. */
+const TIER_TAXONOMY=[
+  {key:'메가',     label:'메가',     color:{bg:'#EDE9FE',fg:'#6D28D9'}},
+  {key:'매크로',   label:'매크로',   color:{bg:'#DBEAFE',fg:'#1D4ED8'}},
+  {key:'마이크로', label:'마이크로', color:{bg:'#D1FAE5',fg:'#047857'}},
+  {key:'나노',     label:'나노',     color:{bg:'#FEF3C7',fg:'#B45309'}},
+];
+const TIER_OPTIONS=TIER_TAXONOMY.map(t=>t.key);
+const TIER_UNCLASSIFIED='미분류'; // 시트 값이 비어 있는 기존 건의 표시 라벨(저장값은 계속 빈 문자열)
+const TIER_COLORS=Object.assign({},...TIER_TAXONOMY.map(t=>({[t.key]:t.color})),{[TIER_UNCLASSIFIED]:{bg:'#F3F4F6',fg:'#6B7280'}});
+const TIER_MIN_SAMPLE=3; // 이 건수 미만이면 등급별 성과 표에서 "표본 적음"으로 표시
+const TIER_CRITERIA='메가 100만 이상 · 매크로 10만~100만 · 마이크로 1만~10만 · 나노 1만 미만 (팔로워 수 기준)';
+// 공구건의 등급 — 허용값(TIER_OPTIONS) 밖이거나 비어 있으면 빈 문자열(=미분류). 등급별 집계
+// 제외 판정도 전부 이 함수 하나를 기준으로 하므로, 서버가 정규화를 놓쳐도 화면이 흔들리지 않음.
+function tierOf(d){const t=String((d&&d.tier)||'').trim();return TIER_OPTIONS.includes(t)?t:'';}
+function tierLabel(t){return t||TIER_UNCLASSIFIED;}
+function tierColor(t){return TIER_COLORS[tierLabel(t)]||TIER_COLORS[TIER_UNCLASSIFIED];}
+function tierBadge(t){const c=tierColor(t);return`<span class="bp bp-tier" style="background:${c.bg};color:${c.fg}">${tierLabel(t)}</span>`;}
+// 정렬용 순위 — TIER_OPTIONS 순서가 기준. 미분류는 null을 돌려 기존 "빈 값은 항상 맨 아래" 규칙을 그대로 탐.
+function tierRank(t){const i=TIER_OPTIONS.indexOf(t||'');return i===-1?null:i;}
+function _tierOptionsHtml(){return`<option value="">${TIER_UNCLASSIFIED}</option>`+TIER_OPTIONS.map(t=>`<option value="${t}">${t}</option>`).join('');}
+
 // 실적 표 "포맷" 열(유튜브/릴스/게시물 등) 배지 색 — 값이 늘어나면 여기에만 추가하면 됨.
 // 매핑에 없는 값(예상 못한 포맷)은 other로 폴백돼 깨지지 않고 중립색으로 표시됨.
 const FORMAT_COLORS={
@@ -1577,6 +1638,8 @@ function dashPAll(kind){DASH[kind]=null;dashPNormalizeChildren(kind);dashPSave()
 function dashPNone(kind){DASH[kind]=new Set();dashPNormalizeChildren(kind);dashPSave();renderDashboard();}
 function renderDashPeriodBar(){
   _renderDashInfluencerChip();
+  const tierSel=document.getElementById('dashTierFilter');
+  if(tierSel)tierSel.value=DASH.tier||'all';
   const years=dashPAvailableYears(),months=dashPAvailableMonths(),weeks=dashPAvailableWeeks();
   document.getElementById('dashPYearBtn').textContent=dashPLabel('years');
   document.getElementById('dashPYearPop').innerHTML=`
@@ -1605,6 +1668,7 @@ function dashPeriodMatch(d){
   if(_dashActive(DASH.months)&&!DASH.months.has(m))return false;
   if(_dashActive(DASH.weeks)&&!DASH.weeks.has(w))return false;
   if(DASH.channel&&(d.ch||d.influencer||'').trim()!==DASH.channel)return false;
+  if(DASH.tier&&DASH.tier!=='all'&&tierOf(d)!==DASH.tier)return false;
   return true;
 }
 function dashData(){return DATA.filter(d=>d.start&&dashPeriodMatch(d));}
@@ -1680,6 +1744,11 @@ function _selectDashInfluencer(ch){
   input.value='';
   document.getElementById('dashInfluencerPop').classList.remove('open');
   _renderDashInfluencerChip();
+  renderDashboard();
+}
+// 등급 전역 필터 — 기간/인플루언서 필터와 AND로 조합됨(판정은 dashPeriodMatch 한 곳에서)
+function _onDashTierFilterChange(){
+  DASH.tier=document.getElementById('dashTierFilter').value;
   renderDashboard();
 }
 function _clearDashInfluencerFilter(){
@@ -1805,16 +1874,24 @@ function renderDashCharts(){
   const scViewsMissing=periodAll.filter(d=>d.views==null).length;
   const scPlanExcluded=periodAll.filter(d=>d.views!=null&&!_isRevStatus(d)).length;
 
+  // 점 색을 등급별로 구분(미분류는 회색) — 등급마다 별도 데이터셋으로 나눠야 Chart.js 범례가
+  // 자동으로 등급 범례가 됨. 데이터셋 순서는 TIER_OPTIONS 순서(+맨 뒤 미분류)로 고정해서
+  // 범례 순서가 표/차트와 항상 같게 맞춤. 해당 등급의 점이 하나도 없으면 범례에서도 뺌.
+  const scDatasets=[...TIER_OPTIONS,''].map(t=>({
+    label:tierLabel(t),
+    data:scPts.filter(d=>tierOf(d)===t).map(d=>({x:d.views,y:d.rev||0,ch:d.ch,product:d.product,tier:tierLabel(t)})),
+    backgroundColor:tierColor(t).fg
+  })).filter(ds=>ds.data.length);
   const scEl=document.getElementById('scChart');
   if(_scChartInst)_scChartInst.destroy();
   _scChartInst=new Chart(scEl.getContext('2d'),{
     type:'scatter',
-    data:{datasets:[{label:'공구건',data:scPts.map(d=>({x:d.views,y:d.rev||0,ch:d.ch,product:d.product})),backgroundColor:'#3B56E5'}]},
+    data:{datasets:scDatasets},
     options:{
       responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{
+      plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:10,font:{size:11},usePointStyle:true}},tooltip:{callbacks:{label:ctx=>{
         const d=ctx.raw;
-        return[`${d.ch} (${d.product})`,`조회수: ${d.x.toFixed(1)}만`,`매출: ${won(d.y)}`];
+        return[`${d.ch} (${d.product})`,`등급: ${d.tier}`,`조회수: ${d.x.toFixed(1)}만`,`매출: ${won(d.y)}`];
       }}}},
       scales:{x:{title:{display:true,text:'릴스 조회수(만)'}},y:{title:{display:true,text:'매출(원)'}}}
     }
@@ -1883,9 +1960,99 @@ function _wonPerView(rev,viewsManwon){return _safeDiv(rev,viewsManwon*10000);} /
 
 let _dashChannelChartInst=null,_dashProductChartInst=null,_dashPlatformChartInst=null;
 function renderDashAnalytics(){
+  renderDashTierAnalytics();
   renderDashChannelAnalytics();
   renderDashProductAnalytics();
   renderDashPlatformAnalytics();
+}
+
+/* 0) 등급별 성과 — 인플루언서 등급(TIER_TAXONOMY) 단위 비교.
+   다른 분석 섹션과 같은 매출 기준(_dashRevScope = 완료+진행중)을 그대로 씀.
+   등급 미분류 건은 집계에서 빼고 건수만 안내함(플랫폼별 효율의 "포맷 미기입 N건 제외"와 같은 패턴).
+   표는 데이터 유무와 무관하게 항상 4등급을 TIER_OPTIONS 순서로 전부 보여줌 — 필터를 바꿔도 행 순서가
+   흔들리지 않아야 등급 간 비교가 눈에 남기 때문(제품군별 비교처럼 매출순으로 재정렬하지 않는 이유).
+   건수가 TIER_MIN_SAMPLE 미만이면 행 전체를 옅게 처리하고 비율 지표에 "참고용" 툴팁을 달아,
+   1~2건짜리 평균·전환율이 다른 등급과 동등한 근거처럼 읽히지 않게 함. */
+let _dashTierShareChartInst=null;
+function renderDashTierAnalytics(){
+  const scope=_dashRevScope();
+  const body=document.getElementById('dashTierBody');
+  const note=document.getElementById('dashTierNote');
+  const chartEl=document.getElementById('dashTierShareChart');
+  const classified=scope.filter(d=>tierOf(d));
+  const unclassified=scope.length-classified.length;
+  const noteText=unclassified>0?`등급 미분류 ${unclassified}건 제외`:'';
+
+  if(!classified.length){
+    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${scope.length?'해당 조건의 공구건에 등급이 기입되지 않았습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
+    note.textContent=noteText;
+    if(_dashTierShareChartInst){_dashTierShareChartInst.destroy();_dashTierShareChartInst=null;}
+    return;
+  }
+
+  const totalCount=classified.length;
+  const totalRev=classified.reduce((s,d)=>s+(d.rev||0),0);
+  const rows=TIER_OPTIONS.map(key=>{
+    const items=classified.filter(d=>tierOf(d)===key);
+    const revSum=items.reduce((s,d)=>s+(d.rev||0),0);
+    const qtyVals=items.filter(d=>d.qty!=null).map(d=>d.qty);
+    const viewVals=items.filter(d=>d.views!=null).map(d=>d.views);
+    const qtySum=qtyVals.reduce((s,v)=>s+v,0),viewSum=viewVals.reduce((s,v)=>s+v,0);
+    return{
+      key,count:items.length,revSum,
+      avgRev:_safeDiv(revSum,items.length),
+      avgQty:_safeDiv(qtySum,qtyVals.length),
+      avgViews:_safeDiv(viewSum,viewVals.length),
+      conv:_safeDiv(qtySum,viewSum*10000),
+      // views는 "만" 단위 저장값이라 그대로 나누면 곧바로 "조회수 1만당 매출"이 됨
+      revPer10k:_safeDiv(revSum,viewSum),
+      countShare:_safeDiv(items.length,totalCount),
+      revShare:_safeDiv(revSum,totalRev)
+    };
+  });
+
+  body.innerHTML=rows.map(r=>{
+    const low=r.count<TIER_MIN_SAMPLE;
+    // 건수 0은 "표본이 적다"기보다 "아예 없다"라서 배지를 달지 않음(행이 옅어지는 것으로 충분)
+    const badge=(low&&r.count>0)?'<span class="tier-sample-badge">표본 적음</span>':'';
+    const tip=low?` class="num-col tier-help" title="표본 ${r.count}건, 참고용"`:' class="num-col"';
+    return`
+    <tr${low?' class="tier-low-sample"':''}>
+      <td>${tierBadge(r.key)}</td>
+      <td class="num-col">${r.count}${badge}</td>
+      <td class="num-col"><strong>${won(r.revSum)}</strong></td>
+      <td${tip}>${r.avgRev!=null?won(Math.round(r.avgRev)):'—'}</td>
+      <td${tip}>${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
+      <td${tip}>${r.avgViews!=null?r.avgViews.toFixed(1)+'만':'—'}</td>
+      <td${tip}>${_pct1(r.conv!=null?r.conv*100:null)}</td>
+      <td${tip}>${r.revPer10k!=null?won(Math.round(r.revPer10k)):'—'}</td>
+    </tr>`;
+  }).join('');
+  note.textContent=noteText;
+
+  if(typeof Chart==='undefined')return;
+  // 건수 비중 vs 매출 기여도 — 누적 바 2개를 나란히(가로 100% 스택). "건수는 적은데 매출 기여는 큰"
+  // 등급이 두 막대의 길이 차이로 바로 보이게 하는 게 목적이라, 두 축을 같은 100% 스케일로 고정함.
+  if(_dashTierShareChartInst)_dashTierShareChartInst.destroy();
+  _dashTierShareChartInst=new Chart(chartEl.getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:['건수 비중','매출 기여도'],
+      datasets:rows.map(r=>({
+        label:r.key,
+        data:[(r.countShare||0)*100,(r.revShare||0)*100],
+        backgroundColor:tierColor(r.key).fg
+      }))
+    },
+    options:{
+      indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%`}}
+      },
+      scales:{x:{stacked:true,min:0,max:100,ticks:{callback:v=>v+'%'}},y:{stacked:true}}
+    }
+  });
 }
 
 /* 1) 채널(인플루언서)별 성과 — 매출 상위순 표 + 차트, 회차별 추세는 "회차" 전용 필드가 없어
@@ -1925,6 +2092,8 @@ function _sortDashChannelTable(key){
 // 바꿔 하나의 숫자로 취급 — 그래야 "성장 중인 채널이 위/아래로 몰린다"는 정렬이 자연스럽게 동작함.
 function _dashChannelSortVal(r,key){
   if(key==='trend')return r.trend?(r.trend.dir==='down'?-r.trend.pct:r.trend.pct):null;
+  // 등급은 TIER_OPTIONS 순서(메가=0 … 나노=3)로 정렬. 미분류는 null이라 방향과 무관하게 항상 맨 아래.
+  if(key==='tier')return tierRank(r.tier);
   return r[key];
 }
 function _dashChannelCompare(a,b,key,dir){
@@ -1935,7 +2104,7 @@ function _dashChannelCompare(a,b,key,dir){
   if(bv==null)return -1;
   return (av-bv)*dir;
 }
-const DASH_CHANNEL_HD_IDS={ch:'dashChHdCh',count:'dashChHdCount',revSum:'dashChHdRev',avgQty:'dashChHdQty',avgViews:'dashChHdViews',conv:'dashChHdConv',trend:'dashChHdTrend'};
+const DASH_CHANNEL_HD_IDS={ch:'dashChHdCh',tier:'dashChHdTier',count:'dashChHdCount',revSum:'dashChHdRev',avgQty:'dashChHdQty',avgViews:'dashChHdViews',conv:'dashChHdConv',trend:'dashChHdTrend'};
 function _renderDashChannelSortIcons(){
   Object.keys(DASH_CHANNEL_HD_IDS).forEach(k=>{
     const el=document.getElementById(DASH_CHANNEL_HD_IDS[k]);
@@ -1959,7 +2128,7 @@ function renderDashChannelAnalytics(){
   const note=document.getElementById('dashChannelNote');
   const chartEl=document.getElementById('dashChannelChart');
   if(!scope.length){
-    body.innerHTML=`<tr><td colspan="7" class="dash-analytics-empty">${_dashChannelProductFilter==='all'?'해당 기간에 완료·진행중인 공구건이 없습니다':'해당 기간·제품 조건에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
+    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${_dashChannelProductFilter==='all'?'해당 기간에 완료·진행중인 공구건이 없습니다':'해당 기간·제품 조건에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     note.textContent='';
     if(_dashChannelChartInst){_dashChannelChartInst.destroy();_dashChannelChartInst=null;}
     return;
@@ -1989,7 +2158,11 @@ function renderDashChannelAnalytics(){
         else trend={dir:'flat',pct:0};
       }
     }
-    return{ch:g.ch,count:items.length,revSum,avgQty,avgViews,conv,trend};
+    // 채널 등급은 "최근 건 기준" — 등급이 기입된 건만 놓고 시작일 내림차순 첫 건을 씀.
+    // (최근 건이 미분류라고 해서 과거에 확인된 등급까지 버리면 표가 이유 없이 비어 보임)
+    const tierItems=items.filter(d=>tierOf(d)).sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')));
+    const tier=tierItems.length?tierOf(tierItems[0]):'';
+    return{ch:g.ch,tier,count:items.length,revSum,avgQty,avgViews,conv,trend};
   });
 
   // 차트는 표 정렬 기준과 무관하게 항상 "매출 상위 10개"를 보여줌(차트 자체가 "누적 매출" 기준으로
@@ -2004,6 +2177,7 @@ function renderDashChannelAnalytics(){
   body.innerHTML=rows.map(r=>`
     <tr>
       <td>${r.ch}</td>
+      <td>${tierBadge(r.tier)}</td>
       <td class="num-col">${r.count}</td>
       <td class="num-col"><strong>${won(r.revSum)}</strong></td>
       <td class="num-col">${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
@@ -2925,6 +3099,9 @@ function _openRegisteredModal(d){
   // 역추출해서 채워줌. mOnPlatformChange 호출 시점엔 아직 비워둬야 mOnChannelIdChange가 빈 값으로
   // 보고 링크를 안 건드림 — 링크를 실제 값으로 설정한 다음에 마지막으로 ID만 대입(이벤트 안 태움).
   document.getElementById('mInfluencer').value=d.ch||d.influencer||'';
+  _refreshChannelNameList();
+  _modalTierTouched=false;
+  document.getElementById('mTier').value=tierOf(d); // 허용값 밖/빈값이면 '' = 미분류 옵션이 선택됨
   document.getElementById('mPlatform').value=d.platform||'';
   document.getElementById('mChannelId').value='';
   mOnPlatformChange(); // 라벨/placeholder만 갱신(채널ID가 비어있어 링크는 안 건드림)
@@ -3295,6 +3472,7 @@ function _collectModalChanges(d){
   const influencer=document.getElementById('mInfluencer').value.trim();
   const platform=document.getElementById('mPlatform').value;
   const vendor=document.getElementById('mVendor').value.trim();
+  const tier=document.getElementById('mTier').value;
   const link=document.getElementById('mLinkInput').value.trim();
   const marketingLink=document.getElementById('mMarketingLink').value.trim();
   const start=document.getElementById('mStart').value;
@@ -3335,13 +3513,13 @@ function _collectModalChanges(d){
     giftItem1:d.giftItem1||'',giftQty1:d.giftQty1!=null?String(d.giftQty1):'',
     giftItem2:d.giftItem2||'',giftQty2:d.giftQty2!=null?String(d.giftQty2):'',
     giftItem3:d.giftItem3||'',giftQty3:d.giftQty3!=null?String(d.giftQty3):'',
-    extraQty:d.extraQty!=null?d.extraQty:null,note2:s.note!=null?s.note:''
+    extraQty:d.extraQty!=null?d.extraQty:null,note2:s.note!=null?s.note:'',tier:tierOf(d)
   };
   const next={
     product,channel:influencer,platform,vendor,link,marketingLink,start,end,sale,comm,format,composition,targetQty,qty,
     option2,firstCome,firstComeQty,note,
     giftItem1,giftQty1,giftItem2,giftQty2,giftItem3,giftQty3,
-    extraQty,note2:noteText
+    extraQty,note2:noteText,tier
   };
 
   const changes={};
@@ -3405,7 +3583,7 @@ async function saveSchemeModal(){
       }
     })().then(()=>{
       // fetchLive()가 끝나기 전에 모달/테이블/캘린더가 빈 상태로 보이지 않도록, 방금 저장한 값을 로컬 DATA에도 바로 반영
-      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,status:_calcStatus(next.start,next.end)});
+      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,status:_calcStatus(next.start,next.end)});
       if(codesChanged)d.codes=codes;
       d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
       if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
@@ -3417,7 +3595,7 @@ async function saveSchemeModal(){
       fetchLive();
     }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+_friendlySaveError(e.message),{type:'error'});setLoad(false);});
   } else {
-    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,status:_calcStatus(next.start,next.end)});
+    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,status:_calcStatus(next.start,next.end)});
     if(codesChanged)d.codes=codes;
     d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
     if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
@@ -3771,6 +3949,7 @@ function adaptGAS(j){
     giftItem2:p.giftItem2||'',giftQty2:p.giftQty2!=null?String(p.giftQty2):'',
     giftItem3:p.giftItem3||'',giftQty3:p.giftQty3!=null?String(p.giftQty3):'',
     extraQty:p.extraQty!=null?Number(p.extraQty):null,
+    tier:p.tier||'', // 인플루언서 등급(빈 문자열=미분류) — 기존 건은 계속 빈 값으로 들어옴
     status:p.status||'예정',
     views:p.views!=null?Number(p.views):null,qty:p.qty!=null?Number(p.qty):null,rev:p.revenue!=null?Number(p.revenue):null,
     codes:Array.isArray(p.codes)?p.codes:[],reels:Array.isArray(p.reels)?p.reels:[],
@@ -3829,7 +4008,7 @@ function _mergeDuplicateCodeRows(deals){
 
     // 그 외 필드: 첫 행 기준, 행마다 값이 다르면 경고만 남김(첫 행 값 사용).
     // 'noteText'는 실제 필드가 아니라 s.note(신규 자유입력 비고)를 비교하기 위한 가상 키.
-    const scalarFields=['vendor','platform','format','composition','marketingLink','note','noteText','option2','firstCome','firstComeQty','targetQty','extraQty','link','status','giftItem1','giftQty1','giftItem2','giftQty2','giftItem3','giftQty3'];
+    const scalarFields=['vendor','platform','format','composition','marketingLink','note','noteText','option2','firstCome','firstComeQty','targetQty','extraQty','link','status','giftItem1','giftQty1','giftItem2','giftQty2','giftItem3','giftQty3','tier'];
     scalarFields.forEach(f=>{
       members.slice(1).forEach(m=>{
         const a=f==='noteText'?(first.s&&first.s.note):first[f];
@@ -4063,6 +4242,42 @@ function _rebuildModelOptions(selectEl,line){
 ['mFirstComeItem','fFirstComeItem'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_giftItemOptionsHtml();});
 ['mFirstComeQty','fFirstComeQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_firstComeQtyOptionsHtml();});
 ['mPoints','fPoints'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_pointsOptionsHtml();});
+// 등급 드롭다운 + 기준 툴팁 — 기준 문구를 HTML에 중복해 쓰지 않도록 TIER_CRITERIA에서 주입
+['mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_tierOptionsHtml();});
+['mTierHelp','fTierHelp'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=TIER_CRITERIA;});
+['mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=TIER_CRITERIA;});
+// 등급 전역 필터 옵션(전체 + 4등급) — 미분류는 선택지로 두지 않음(등급별 집계 대상이 아니므로)
+(()=>{const el=document.getElementById('dashTierFilter');if(el)el.innerHTML='<option value="all">전체</option>'+TIER_OPTIONS.map(t=>`<option value="${t}">${t}</option>`).join('');})();
+
+/* ── 채널명 자동완성(datalist) + 등급 자동 채움 ──
+   후보는 하드코딩하지 않고 매번 현재 DATA에서 다시 뽑음(대시보드 인플루언서 필터와 동일한 방식).
+   기존 채널을 고르면 그 채널의 "가장 최근(시작일 기준) 등급이 기입된 건"의 등급을 제안값으로 채움 —
+   등급은 채널에 붙는 속성이라 매번 다시 고르게 하는 건 낭비이고, 등급이 바뀌었으면 최신 건이 정답이기 때문.
+   사용자가 드롭다운을 직접 건드린 뒤에는(_xTierTouched) 덮어쓰지 않음 — 어디까지나 제안값. */
+let _formTierTouched=false,_modalTierTouched=false;
+function _refreshChannelNameList(){
+  const el=document.getElementById('chNameList');
+  if(el)el.innerHTML=_dashInfluencerAvailable().map(ch=>`<option value="${_escAttr(ch)}"></option>`).join('');
+}
+function _latestTierOfChannel(ch){
+  const key=_dashInfluencerNorm(ch);
+  if(!key)return'';
+  const items=DATA.filter(d=>_dashInfluencerNorm(d.ch||d.influencer||'')===key&&tierOf(d));
+  if(!items.length)return'';
+  items.sort((a,b)=>String(b.start||'').localeCompare(String(a.start||''))); // 시작일 내림차순 = 최근 건이 앞
+  return tierOf(items[0]);
+}
+// value를 코드로 대입할 땐 input 이벤트가 안 뜨므로(모달 오픈 등) 여기가 호출되지 않음 —
+// 즉 저장된 등급이 자동 채움으로 조용히 덮이는 일은 없음.
+function _autofillTierFrom(inputId,selectId,touched){
+  if(touched)return;
+  const t=_latestTierOfChannel(document.getElementById(inputId).value);
+  if(t)document.getElementById(selectId).value=t;
+}
+function _onFormTierChange(){_formTierTouched=true;}
+function _onModalTierChange(){_modalTierTouched=true;}
+function _onFormInfluencerInput(){_autofillTierFrom('fInfluencer','fTier',_formTierTouched);}
+function _onModalInfluencerInput(){_autofillTierFrom('mInfluencer','mTier',_modalTierTouched);}
 
 let _formCodes=['']; // 새 공구건 등록 폼의 상품코드 목록(모달의 _modalCodes와 별개 인스턴스)
 function renderFormCodeList(){
@@ -4143,6 +4358,9 @@ function openDealForm(){
   document.getElementById('fFirstComeItem').value='';
   document.getElementById('fFirstComeQty').value='';
   document.getElementById('fPoints').value='';
+  document.getElementById('fTier').value='';
+  _formTierTouched=false;
+  _refreshChannelNameList();
   fRecalcComposition();
   document.getElementById('fCopyNotice').style.display='none';
   document.getElementById('dealOv').classList.add('open');
@@ -4191,6 +4409,7 @@ function copyDealToNew(){
   onPlatformChange(); // 라벨/placeholder 갱신용 — fChannelId가 아직 비어있어 fLink를 건드리지만 바로 아래서 원본 값으로 덮어씀
   document.getElementById('fChannelId').value=_extractChannelIdFromLink(d.platform,d.link);
   document.getElementById('fVendor').value=d.vendor||'';
+  document.getElementById('fTier').value=tierOf(d); // 복사한 건의 등급을 그대로 이어받음(같은 채널이므로)
   document.getElementById('fLink').value=d.link||'';
   document.getElementById('fMarketingLink').value=d.marketingLink||'';
 
@@ -4326,6 +4545,7 @@ function saveDeal(){
     giftItem3:formGifts[2]?formGifts[2].item:'',giftQty3:formGifts[2]?formGifts[2].qty:'',
     extraQty:document.getElementById('fExtraQty').value?Number(document.getElementById('fExtraQty').value):null,
     note2:noteText,
+    tier:document.getElementById('fTier').value,
     status:_calcStatus(start,end),views:null,qty:null,rev:null,
     codes:_formCodes.map(c=>c.trim()).filter(c=>c),
     s:{retail:null,sale:Number(document.getElementById('fSalePrice').value)||null,comm:Number(document.getElementById('fCommission').value)||null,note:noteText}
