@@ -318,6 +318,22 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .tier-low-sample{opacity:.5}
 .tier-sample-badge{display:inline-block;margin-left:5px;font-size:9.5px;font-weight:700;color:var(--warn);background:var(--warn-bg);padding:1px 5px;border-radius:3px;white-space:nowrap;letter-spacing:0}
 .tier-help{cursor:help}
+/* 등급별 성과 2차 분석 — 2×2 그리드(좁은 화면에선 1열로 접힘) */
+.tier2-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px 26px;margin-top:20px}
+@media(max-width:1240px){.tier2-grid{grid-template-columns:1fr}}
+.tier2-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+.tier2-sub{font-size:11px;color:var(--text-3);margin:0 0 10px;line-height:1.5}
+.tier2-empty{padding:44px 10px;text-align:center;color:var(--text-3);font-size:12px;border:1px dashed var(--border-s);border-radius:var(--r);margin-top:20px}
+/* 등급×제품군 히트맵 — Chart.js에 히트맵 타입이 없어 CSS grid로 직접 그림 */
+.heat{display:grid;gap:4px}
+.heat-h{font-size:10px;font-weight:700;color:var(--text-3);text-align:center;padding:3px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.heat-rowlbl{display:flex;align-items:center;justify-content:flex-start}
+.heat-cell{border-radius:5px;padding:6px 4px;text-align:center;line-height:1.3;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:help}
+.heat-val{font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)}
+.heat-n{font-size:9.5px;color:var(--text-2)}
+.heat-cell.heat-low{opacity:.45}
+.heat-cell.heat-empty{background:var(--surface-2)}
+.heat-cell.heat-empty .heat-val{color:var(--text-3);font-weight:400}
 
 /* Modals shared */
 .ov{display:none;position:fixed;inset:0;background:rgba(17,24,39,.55);backdrop-filter:blur(3px);z-index:100;align-items:center;justify-content:center}
@@ -620,6 +636,48 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="f-sec" style="margin-top:14px">건수 비중 vs 매출 기여도</div>
         <div style="height:170px"><canvas id="dashTierShareChart"></canvas></div>
         <div class="chart-note" id="dashTierNote"></div>
+
+        <!-- 2차 분석 2×2 — 등급 데이터가 한 건도 없으면 이 그리드를 통째로 숨기고 빈 상태 카드로 대체 -->
+        <div class="tier2-empty" id="dashTier2Empty" style="display:none">등급 데이터가 쌓이면 표시됩니다</div>
+        <div class="tier2-grid" id="dashTier2Grid">
+          <div>
+            <div class="tier2-hd">
+              <div class="f-sec" style="margin:0">등급 × 제품군 히트맵</div>
+              <select class="f-inp f-sel dash-filter-select" id="dashTierHeatMetric" onchange="_onDashTierHeatMetricChange()">
+                <option value="avgRev">건당 평균매출</option>
+                <option value="revSum">총매출</option>
+                <option value="conv">전환율</option>
+              </select>
+            </div>
+            <div class="tier2-sub">색 진하기는 같은 제품군(열) 안에서의 상대값 · 셀에 마우스를 올리면 상세</div>
+            <div class="heat" id="dashTierHeatmap"></div>
+          </div>
+
+          <div>
+            <div class="tier2-hd"><div class="f-sec" style="margin:0">등급별 매출 안정성</div></div>
+            <div class="tier2-sub">건당 매출의 최소~최대 범위와 평균(●) · 우측 변동계수(표준편차÷평균)가 낮을수록 회차별 매출이 안정적입니다</div>
+            <div style="height:210px"><canvas id="dashTierStabilityChart"></canvas></div>
+          </div>
+
+          <div>
+            <div class="tier2-hd"><div class="f-sec" style="margin:0">등급별 재협업률</div></div>
+            <div class="tier2-sub">전체 기간 기준 · 2회 이상 진행한 채널 ÷ 해당 등급 채널 수 (기간을 자르면 재협업이 보이지 않아 기간 필터를 적용하지 않음)</div>
+            <div style="height:210px"><canvas id="dashTierRepeatChart"></canvas></div>
+          </div>
+
+          <div>
+            <div class="tier2-hd">
+              <div class="f-sec" style="margin:0">월별 등급 믹스 추이</div>
+              <select class="f-inp f-sel dash-filter-select" id="dashTierMixMode" onchange="_onDashTierMixModeChange()">
+                <option value="count">건수 기준</option>
+                <option value="rev">매출 기준</option>
+                <option value="pct">100% 비율</option>
+              </select>
+            </div>
+            <div class="tier2-sub" id="dashTierMixSub"></div>
+            <div style="height:210px"><canvas id="dashTierMixChart"></canvas></div>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -693,6 +751,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <select class="f-inp f-sel dash-filter-select" id="dashAchvCrossDim" onchange="_onDashAchvCrossDimChange()">
               <option value="채널">채널별</option>
               <option value="제품군">제품군별</option>
+              <option value="등급">등급별</option>
             </select>
           </label>
         </div>
@@ -702,6 +761,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <th class="num-col sortable" id="dashAchvCrossValHd" onclick="_sortDashAchvCross('avg')">평균 달성률<span class="sort-ic">⇕</span></th>
             <th class="num-col sortable" id="dashAchvCrossCountHd" onclick="_sortDashAchvCross('count')">건수<span class="sort-ic">⇕</span></th>
           </tr></thead><tbody id="dashAchvCrossBody"></tbody></table>
+        </div>
+        <!-- 기준이 '등급'일 때만 나타나는 등급별 평균 달성률 막대(100% 기준선 포함) -->
+        <div id="dashAchvTierWrap" style="display:none">
+          <div style="height:210px;margin-top:14px"><canvas id="dashAchvTierChart"></canvas></div>
         </div>
         <div class="chart-note" id="dashAchvNote"></div>
       </div>
@@ -1266,7 +1329,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-kpi-product-summary-2026-09-09-02';
+const DASHBOARD_VERSION='dash-tier-2nd-analytics-2026-09-09-03';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1661,14 +1724,24 @@ function renderDashPeriodBar(){
 // dashPeriodMatch 이름은 그대로 두지만(호출부가 많아 바꾸면 diff가 커짐) 이제 기간뿐 아니라
 // 인플루언서(DASH.channel) 조건도 함께 봄 — dashData()/_dashRevScope()를 거치는 대시보드 전 섹션
 // (KPI/차트/채널별 성과/개별 공구건 목록/달성률 등)에 이 한 곳만 고쳐서 전역으로 반영됨.
-function dashPeriodMatch(d){
+// opts로 특정 조건만 건너뛸 수 있음(기본값 없음 = 전부 적용). 등급별 성과 섹션처럼 "이 필터는
+// 일부러 무시해야 의미가 있는" 차트들이 스코프 규칙을 각자 새로 짜지 않고 여기 한 곳을 재사용하게 함:
+//   ignoreTier      — 등급 비교 차트(한 등급만 남기면 비교 대상이 사라짐 → 대신 강조로 표현)
+//   ignorePeriod    — 재협업률(기간을 자르면 재협업이 원리상 안 보임)
+//   ignoreMonthWeek — 월별 믹스/시즌성(월을 자르면 월별 추이 자체가 없어짐)
+function dashPeriodMatch(d,opts){
+  const o=opts||{};
   if(!d.start)return false;
   const y=yearOf(d.start),m=monthOf(d.start),w=_mondayOf(d.start);
-  if(_dashActive(DASH.years)&&!DASH.years.has(y))return false;
-  if(_dashActive(DASH.months)&&!DASH.months.has(m))return false;
-  if(_dashActive(DASH.weeks)&&!DASH.weeks.has(w))return false;
+  if(!o.ignorePeriod){
+    if(_dashActive(DASH.years)&&!DASH.years.has(y))return false;
+    if(!o.ignoreMonthWeek){
+      if(_dashActive(DASH.months)&&!DASH.months.has(m))return false;
+      if(_dashActive(DASH.weeks)&&!DASH.weeks.has(w))return false;
+    }
+  }
   if(DASH.channel&&(d.ch||d.influencer||'').trim()!==DASH.channel)return false;
-  if(DASH.tier&&DASH.tier!=='all'&&tierOf(d)!==DASH.tier)return false;
+  if(!o.ignoreTier&&DASH.tier&&DASH.tier!=='all'&&tierOf(d)!==DASH.tier)return false;
   return true;
 }
 function dashData(){return DATA.filter(d=>d.start&&dashPeriodMatch(d));}
@@ -1999,58 +2072,120 @@ function renderDashAnalytics(){
   renderDashPlatformAnalytics();
 }
 
+/* ── 등급별 성과: 스코프 헬퍼 ──────────────────────────────────────────────
+   이 섹션(1차 표·비중 바 + 2차 4개 차트)만은 전역 "등급 필터"를 스코프에서 빼고 4등급을 항상
+   전부 그린다. 등급 간 비교가 존재 이유인 섹션인데 한 등급만 남기면 비교 대상 자체가 사라지기
+   때문 — 대신 선택된 등급을 진하게, 나머지를 흐리게 해서 필터가 걸린 사실은 그대로 드러냄.
+   (KPI·채널별·제품군별 등 나머지 섹션은 예전처럼 등급 필터를 그대로 반영함) */
+function _dashTierScope(){return DATA.filter(d=>d.start&&dashPeriodMatch(d,{ignoreTier:true})&&_isRevStatus(d));}
+// 재협업률 전용 — 기간을 자르면 "이 채널과 여러 번 했는지"가 원리상 보이지 않으므로 연/월/주차를 무시.
+function _dashTierScopeAllTime(){return DATA.filter(d=>d.start&&dashPeriodMatch(d,{ignoreTier:true,ignorePeriod:true})&&_isRevStatus(d));}
+// 월별 믹스 전용 — 시즌성 분석과 같은 규칙(연도만 적용, 월/주차는 무시하고 선택 월을 강조).
+function _dashTierScopeYear(){return DATA.filter(d=>d.start&&dashPeriodMatch(d,{ignoreTier:true,ignoreMonthWeek:true})&&_isRevStatus(d));}
+
+// 등급 필터가 특정 등급일 때, 그 등급이 아닌 것들을 흐리게 하기 위한 판정/색 계산
+const TIER_DIM_ALPHA=0.22;
+function _tierDimmed(key){return !!(DASH.tier&&DASH.tier!=='all'&&DASH.tier!==key);}
+function _hexAlpha(hex,a){
+  const h=String(hex||'').replace('#','');
+  const full=h.length===3?h.split('').map(c=>c+c).join(''):h;
+  const n=parseInt(full,16);
+  return`rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+}
+function _tierChartColor(key){
+  const fg=tierColor(key).fg;
+  return _tierDimmed(key)?_hexAlpha(fg,TIER_DIM_ALPHA):fg;
+}
+// 표본 부족 판정은 1차 표와 완전히 같은 기준(TIER_MIN_SAMPLE) 하나만 씀
+function _tierLowSample(n){return n<TIER_MIN_SAMPLE;}
+
 /* 0) 등급별 성과 — 인플루언서 등급(TIER_TAXONOMY) 단위 비교.
-   다른 분석 섹션과 같은 매출 기준(_dashRevScope = 완료+진행중)을 그대로 씀.
-   등급 미분류 건은 집계에서 빼고 건수만 안내함(플랫폼별 효율의 "포맷 미기입 N건 제외"와 같은 패턴).
+   다른 분석 섹션과 같은 매출 기준(완료+진행중)을 쓰되, 스코프만 위 _dashTierScope를 씀.
+   등급 미분류 건은 집계에서 빼고 건수는 카드 우측 상단에 안내.
    표는 데이터 유무와 무관하게 항상 4등급을 TIER_OPTIONS 순서로 전부 보여줌 — 필터를 바꿔도 행 순서가
    흔들리지 않아야 등급 간 비교가 눈에 남기 때문(제품군별 비교처럼 매출순으로 재정렬하지 않는 이유).
    건수가 TIER_MIN_SAMPLE 미만이면 행 전체를 옅게 처리하고 비율 지표에 "참고용" 툴팁을 달아,
    1~2건짜리 평균·전환율이 다른 등급과 동등한 근거처럼 읽히지 않게 함. */
-let _dashTierShareChartInst=null;
+let _dashTierShareChartInst=null,_dashTierStabilityChartInst=null,_dashTierRepeatChartInst=null,_dashTierMixChartInst=null;
+let _dashTierHeatMetric='avgRev'; // 'avgRev' | 'revSum' | 'conv'
+let _dashTierMixMode='count';     // 'count' | 'rev' | 'pct'
+function _onDashTierHeatMetricChange(){
+  _dashTierHeatMetric=document.getElementById('dashTierHeatMetric').value;
+  renderDashTierHeatmap();
+}
+function _onDashTierMixModeChange(){
+  _dashTierMixMode=document.getElementById('dashTierMixMode').value;
+  renderDashTierMix();
+}
+
+// 공구건 묶음 하나에서 등급 표/히트맵이 공통으로 쓰는 지표를 뽑음(집계 규칙을 한 곳에만 두기 위함)
+function _tierMetrics(items){
+  const revSum=items.reduce((s,d)=>s+(d.rev||0),0);
+  const qtyVals=items.filter(d=>d.qty!=null).map(d=>d.qty);
+  const viewVals=items.filter(d=>d.views!=null).map(d=>d.views);
+  const qtySum=qtyVals.reduce((s,v)=>s+v,0),viewSum=viewVals.reduce((s,v)=>s+v,0);
+  return{
+    count:items.length,revSum,
+    avgRev:_safeDiv(revSum,items.length),
+    avgQty:_safeDiv(qtySum,qtyVals.length),
+    avgViews:_safeDiv(viewSum,viewVals.length),
+    conv:_safeDiv(qtySum,viewSum*10000),
+    // views는 "만" 단위 저장값이라 그대로 나누면 곧바로 "조회수 1만당 매출"이 됨
+    revPer10k:_safeDiv(revSum,viewSum)
+  };
+}
+
 function renderDashTierAnalytics(){
-  const scope=_dashRevScope();
+  const scope=_dashTierScope();
   const body=document.getElementById('dashTierBody');
+  const hdNote=document.getElementById('dashTierHdNote');
   const note=document.getElementById('dashTierNote');
   const chartEl=document.getElementById('dashTierShareChart');
+  const grid=document.getElementById('dashTier2Grid');
+  const empty=document.getElementById('dashTier2Empty');
   const classified=scope.filter(d=>tierOf(d));
   const unclassified=scope.length-classified.length;
-  const noteText=unclassified>0?`등급 미분류 ${unclassified}건 제외`:'';
+
+  // 미분류 안내는 카드 우측 상단으로(2차 차트까지 이 섹션 전체에 걸리는 조건이라 맨 위가 맞음)
+  hdNote.textContent='완료+진행중 기준'+(unclassified>0?` · 등급 미분류 ${unclassified}건 제외`:'');
+  // 아래 note는 "왜 필터를 걸었는데 다른 등급도 보이나"를 설명하는 자리로 씀
+  note.textContent=(DASH.tier&&DASH.tier!=='all')
+    ?`등급 필터: ${DASH.tier} 강조 — 비교를 위해 나머지 등급도 흐리게 함께 표시합니다`:'';
 
   if(!classified.length){
     body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${scope.length?'해당 조건의 공구건에 등급이 기입되지 않았습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
-    note.textContent=noteText;
     if(_dashTierShareChartInst){_dashTierShareChartInst.destroy();_dashTierShareChartInst=null;}
+    // 2차 영역은 통째로 빈 상태 카드로 대체
+    grid.style.display='none';
+    empty.style.display='';
+    [_dashTierStabilityChartInst,_dashTierRepeatChartInst,_dashTierMixChartInst].forEach(c=>{if(c)c.destroy();});
+    _dashTierStabilityChartInst=_dashTierRepeatChartInst=_dashTierMixChartInst=null;
+    document.getElementById('dashTierHeatmap').innerHTML='';
     return;
   }
+  grid.style.display='';
+  empty.style.display='none';
 
   const totalCount=classified.length;
   const totalRev=classified.reduce((s,d)=>s+(d.rev||0),0);
   const rows=TIER_OPTIONS.map(key=>{
     const items=classified.filter(d=>tierOf(d)===key);
-    const revSum=items.reduce((s,d)=>s+(d.rev||0),0);
-    const qtyVals=items.filter(d=>d.qty!=null).map(d=>d.qty);
-    const viewVals=items.filter(d=>d.views!=null).map(d=>d.views);
-    const qtySum=qtyVals.reduce((s,v)=>s+v,0),viewSum=viewVals.reduce((s,v)=>s+v,0);
-    return{
-      key,count:items.length,revSum,
-      avgRev:_safeDiv(revSum,items.length),
-      avgQty:_safeDiv(qtySum,qtyVals.length),
-      avgViews:_safeDiv(viewSum,viewVals.length),
-      conv:_safeDiv(qtySum,viewSum*10000),
-      // views는 "만" 단위 저장값이라 그대로 나누면 곧바로 "조회수 1만당 매출"이 됨
-      revPer10k:_safeDiv(revSum,viewSum),
-      countShare:_safeDiv(items.length,totalCount),
-      revShare:_safeDiv(revSum,totalRev)
-    };
+    const m=_tierMetrics(items);
+    return Object.assign({key},m,{
+      countShare:_safeDiv(m.count,totalCount),
+      revShare:_safeDiv(m.revSum,totalRev)
+    });
   });
 
   body.innerHTML=rows.map(r=>{
-    const low=r.count<TIER_MIN_SAMPLE;
+    const low=_tierLowSample(r.count);
     // 건수 0은 "표본이 적다"기보다 "아예 없다"라서 배지를 달지 않음(행이 옅어지는 것으로 충분)
     const badge=(low&&r.count>0)?'<span class="tier-sample-badge">표본 적음</span>':'';
     const tip=low?` class="num-col tier-help" title="표본 ${r.count}건, 참고용"`:' class="num-col"';
+    // 등급 필터가 걸려 있으면 선택 등급 외에는 표에서도 같이 흐리게(차트와 강조 기준을 일치시킴)
+    const cls=(low||_tierDimmed(r.key))?'tier-low-sample':'';
     return`
-    <tr${low?' class="tier-low-sample"':''}>
+    <tr${cls?` class="${cls}"`:''}>
       <td>${tierBadge(r.key)}</td>
       <td class="num-col">${r.count}${badge}</td>
       <td class="num-col"><strong>${won(r.revSum)}</strong></td>
@@ -2061,29 +2196,358 @@ function renderDashTierAnalytics(){
       <td${tip}>${r.revPer10k!=null?won(Math.round(r.revPer10k)):'—'}</td>
     </tr>`;
   }).join('');
-  note.textContent=noteText;
 
-  if(typeof Chart==='undefined')return;
-  // 건수 비중 vs 매출 기여도 — 누적 바 2개를 나란히(가로 100% 스택). "건수는 적은데 매출 기여는 큰"
-  // 등급이 두 막대의 길이 차이로 바로 보이게 하는 게 목적이라, 두 축을 같은 100% 스케일로 고정함.
-  if(_dashTierShareChartInst)_dashTierShareChartInst.destroy();
-  _dashTierShareChartInst=new Chart(chartEl.getContext('2d'),{
-    type:'bar',
+  if(typeof Chart!=='undefined'){
+    // 건수 비중 vs 매출 기여도 — 누적 바 2개를 나란히(가로 100% 스택). "건수는 적은데 매출 기여는 큰"
+    // 등급이 두 막대의 길이 차이로 바로 보이게 하는 게 목적이라, 두 축을 같은 100% 스케일로 고정함.
+    if(_dashTierShareChartInst)_dashTierShareChartInst.destroy();
+    _dashTierShareChartInst=new Chart(chartEl.getContext('2d'),{
+      type:'bar',
+      data:{
+        labels:['건수 비중','매출 기여도'],
+        datasets:rows.map(r=>({
+          label:r.key,
+          data:[(r.countShare||0)*100,(r.revShare||0)*100],
+          backgroundColor:_tierChartColor(r.key)
+        }))
+      },
+      options:{
+        indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}},
+          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%`}}
+        },
+        scales:{x:{stacked:true,min:0,max:100,ticks:{callback:v=>v+'%'}},y:{stacked:true}}
+      }
+    });
+  }
+
+  renderDashTierHeatmap();
+  renderDashTierStability();
+  renderDashTierRepeat();
+  renderDashTierMix();
+}
+
+/* 2-1) 등급 × 제품군 히트맵 — Chart.js에 히트맵 타입이 없어 CSS grid로 직접 그림.
+   행은 TIER_OPTIONS 4등급 고정, 열은 PRODUCT_LINE_LABELS(제품 라인) 순서 중 실제 데이터가 있는 것만.
+   색 진하기는 "열 안에서의 상대값" — 제품군마다 매출 규모가 달라서 전체 공통 스케일로 칠하면
+   큰 제품군만 진해지고 등급 간 차이가 안 보이기 때문. 색상(hue)은 행의 등급 색을 그대로 써서
+   어느 등급 행인지도 색으로 읽히게 함. */
+function renderDashTierHeatmap(){
+  const host=document.getElementById('dashTierHeatmap');
+  if(!host)return;
+  const sel=document.getElementById('dashTierHeatMetric');
+  if(sel)sel.value=_dashTierHeatMetric;
+  const classified=_dashTierScope().filter(d=>tierOf(d));
+  if(!classified.length){host.innerHTML='';return;}
+
+  const present=new Set(classified.map(d=>productLineKey(d.product)));
+  const known=Object.keys(PRODUCT_LINE_LABELS).filter(k=>k!=='other'&&present.has(k));
+  const unknown=[...present].filter(k=>!(k in PRODUCT_LINE_LABELS)).sort();
+  const lines=known.concat(unknown);
+  if(!lines.length){host.innerHTML='<div class="dash-analytics-empty">제품군 정보를 읽을 수 있는 건이 없습니다</div>';return;}
+
+  const cell=(tier,line)=>_tierMetrics(classified.filter(d=>tierOf(d)===tier&&productLineKey(d.product)===line));
+  const matrix=TIER_OPTIONS.map(t=>lines.map(l=>cell(t,l)));
+
+  const pick=m=>m.count?(_dashTierHeatMetric==='revSum'?m.revSum:_dashTierHeatMetric==='conv'?m.conv:m.avgRev):null;
+  const fmt=v=>v==null?'—':(_dashTierHeatMetric==='conv'?_pct1(v*100):won(Math.round(v)));
+
+  // 열별 min/max — 같은 제품군 안에서만 상대 비교
+  const colRange=lines.map((_,ci)=>{
+    const vals=matrix.map(row=>pick(row[ci])).filter(v=>v!=null);
+    return vals.length?{min:Math.min(...vals),max:Math.max(...vals)}:null;
+  });
+
+  host.style.gridTemplateColumns=`74px repeat(${lines.length},minmax(0,1fr))`;
+  const head=['<div></div>'].concat(lines.map(l=>`<div class="heat-h" title="${_escAttr(PRODUCT_LINE_LABELS[l]||l)}">${PRODUCT_LINE_LABELS[l]||l}</div>`));
+  const bodyCells=TIER_OPTIONS.map((t,ri)=>{
+    const rowDim=_tierDimmed(t);
+    const lbl=`<div class="heat-rowlbl"${rowDim?' style="opacity:.35"':''}>${tierBadge(t)}</div>`;
+    const cells=lines.map((l,ci)=>{
+      const m=matrix[ri][ci];
+      const v=pick(m);
+      if(!m.count)return`<div class="heat-cell heat-empty"><span class="heat-val">—</span></div>`;
+      const r=colRange[ci];
+      const rel=(r&&r.max>r.min&&v!=null)?(v-r.min)/(r.max-r.min):1;
+      // 0.10~0.55 범위로만 칠함 — 더 진해지면 흰 글씨가 필요해져 표 전체 대비가 흐트러짐
+      const alpha=(0.10+0.45*rel)*(rowDim?0.3:1);
+      const low=_tierLowSample(m.count);
+      const tip=[
+        `${t} × ${PRODUCT_LINE_LABELS[l]||l}`,
+        `건수: ${m.count}건${low?' (표본 적음)':''}`,
+        `총매출: ${won(m.revSum)}`,
+        `건당 평균매출: ${m.avgRev!=null?won(Math.round(m.avgRev)):'—'}`,
+        `평균 조회수: ${m.avgViews!=null?m.avgViews.toFixed(1)+'만':'—'}`,
+        `전환율: ${_pct1(m.conv!=null?m.conv*100:null)}`
+      ].join('\n');
+      return`<div class="heat-cell${low?' heat-low':''}" style="background:${_hexAlpha(tierColor(t).fg,alpha)}" title="${_escAttr(tip)}">
+        <span class="heat-val">${fmt(v)}</span>
+        <span class="heat-n">${m.count}건${low?' · 표본 적음':''}</span>
+      </div>`;
+    });
+    return [lbl].concat(cells).join('');
+  });
+  host.innerHTML=head.join('')+bodyCells.join('');
+}
+
+/* 2-2) 등급별 매출 안정성 — 건당 매출의 최소~최대를 가로 범위 바로, 평균을 ● 마커로.
+   우측 라벨은 변동계수(CV=표준편차÷평균). 표준편차는 모표준편차(÷n) — 표본표준편차(÷n-1)는
+   1건짜리 등급에서 정의되지 않아 화면이 빈칸이 되는데, 여기선 "1건이면 흩어짐 0"이 더 자연스러움.
+   표본이 TIER_MIN_SAMPLE 미만인 등급은 범위 바를 그리지 않고 평균 점만 찍음(범위를 그리면
+   2건짜리 두 점 사이가 마치 분포처럼 보여서 과대 해석됨). */
+function _tierStabilityRows(){
+  const classified=_dashTierScope().filter(d=>tierOf(d)&&d.rev!=null);
+  return TIER_OPTIONS.map(key=>{
+    const items=classified.filter(d=>tierOf(d)===key);
+    if(!items.length)return{key,count:0};
+    const vals=items.map(d=>d.rev);
+    const n=vals.length;
+    const mean=vals.reduce((s,v)=>s+v,0)/n;
+    const std=Math.sqrt(vals.reduce((s,v)=>s+(v-mean)*(v-mean),0)/n);
+    const minD=items.reduce((a,b)=>b.rev<a.rev?b:a);
+    const maxD=items.reduce((a,b)=>b.rev>a.rev?b:a);
+    return{key,count:n,mean,std,cv:mean>0?std/mean*100:null,
+      min:minD.rev,max:maxD.rev,minCh:(minD.ch||minD.influencer||'—'),maxCh:(maxD.ch||maxD.influencer||'—')};
+  });
+}
+function renderDashTierStability(){
+  const el=document.getElementById('dashTierStabilityChart');
+  if(!el||typeof Chart==='undefined')return;
+  const rows=_tierStabilityRows();
+  if(_dashTierStabilityChartInst)_dashTierStabilityChartInst.destroy();
+
+  // 우측 변동계수 라벨은 Chart.js 기본 기능으로 못 그려서 인라인 플러그인으로 직접 그림
+  const cvLabels={
+    id:'tierCvLabels',
+    afterDatasetsDraw(chart){
+      const{ctx,scales:{x,y}}=chart;
+      ctx.save();
+      ctx.font='700 10px system-ui,sans-serif';
+      ctx.textBaseline='middle';
+      rows.forEach((r,i)=>{
+        if(!r.count)return;
+        const py=y.getPixelForValue(i);
+        const anchor=Math.max(x.getPixelForValue(r.max||r.mean),x.getPixelForValue(r.mean));
+        const txt=(r.cv!=null?`CV ${r.cv.toFixed(0)}%`:'CV —')+(_tierLowSample(r.count)?' · 표본 적음':'');
+        ctx.fillStyle=_tierDimmed(r.key)?'#B9BEC9':'#5B6375';
+        ctx.textAlign='left';
+        let px=anchor+8;
+        if(px+ctx.measureText(txt).width>chart.chartArea.right){ // 오른쪽 공간이 없으면 바 안쪽에 그림
+          ctx.textAlign='right';px=anchor-8;
+        }
+        ctx.fillText(txt,px,py);
+      });
+      ctx.restore();
+    }
+  };
+
+  _dashTierStabilityChartInst=new Chart(el.getContext('2d'),{
     data:{
-      labels:['건수 비중','매출 기여도'],
-      datasets:rows.map(r=>({
-        label:r.key,
-        data:[(r.countShare||0)*100,(r.revShare||0)*100],
-        backgroundColor:tierColor(r.key).fg
-      }))
+      labels:TIER_OPTIONS,
+      datasets:[
+        {
+          type:'bar',label:'매출 범위',
+          // 표본 적음/0건 등급은 범위 바를 생략 — 평균 점(아래 scatter)만 남음
+          data:rows.map(r=>(r.count&&!_tierLowSample(r.count))?[r.min,r.max]:null),
+          backgroundColor:rows.map(r=>_hexAlpha(tierColor(r.key).fg,_tierDimmed(r.key)?0.15:0.35)),
+          borderColor:rows.map(r=>_tierChartColor(r.key)),
+          borderWidth:1,borderSkipped:false,borderRadius:3,barPercentage:.55
+        },
+        {
+          type:'scatter',label:'평균',
+          // 값 없는 등급도 null이 아니라 {x:null}로 넣어야 함 — scatter는 객체 데이터를 파싱할 때
+          // 원소의 .x를 바로 읽어서, 원소 자체가 null이면 TypeError로 차트가 통째로 죽음(2026-09-09 확인).
+          data:rows.map((r,i)=>({x:r.count?r.mean:null,y:i})),
+          backgroundColor:rows.map(r=>_tierChartColor(r.key)),
+          pointRadius:5,pointHoverRadius:7
+        }
+      ]
     },
     options:{
       indexAxis:'y',responsive:true,maintainAspectRatio:false,
       plugins:{
-        legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}},
-        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%`}}
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title:items=>TIER_OPTIONS[items[0].dataIndex],
+          label:ctx=>{
+            const r=rows[ctx.dataIndex];
+            if(!r||!r.count)return '데이터 없음';
+            return[
+              `건수: ${r.count}건${_tierLowSample(r.count)?' (표본 적음)':''}`,
+              `평균: ${won(Math.round(r.mean))}`,
+              `표준편차: ${won(Math.round(r.std))}${r.cv!=null?` (CV ${r.cv.toFixed(0)}%)`:''}`,
+              `최소: ${won(r.min)} · ${r.minCh}`,
+              `최대: ${won(r.max)} · ${r.maxCh}`
+            ];
+          }
+        }}
       },
-      scales:{x:{stacked:true,min:0,max:100,ticks:{callback:v=>v+'%'}},y:{stacked:true}}
+      scales:{
+        x:{min:0,title:{display:true,text:'건당 매출(원)'},ticks:{callback:v=>won(v)}},
+        y:{type:'category',labels:TIER_OPTIONS,offset:true}
+      }
+    },
+    plugins:[cvLabels]
+  });
+}
+
+/* 2-3) 등급별 재협업률 — (2회 이상 진행한 채널 ÷ 그 등급 채널 수) × 100.
+   채널의 등급은 "가장 최근 공구건" 기준(채널별 성과 표와 같은 규칙).
+   기간 필터를 일부러 무시함 — 한 달만 잘라 보면 재협업이 원리상 0으로 보이기 때문. */
+function _tierRepeatRows(){
+  const scope=_dashTierScopeAllTime();
+  const byCh=new Map();
+  scope.forEach(d=>{
+    const ch=(d.ch||d.influencer||'').trim();
+    if(!ch)return;
+    if(!byCh.has(ch))byCh.set(ch,[]);
+    byCh.get(ch).push(d);
+  });
+  const chans=[];
+  byCh.forEach((items,ch)=>{
+    const withTier=items.filter(d=>tierOf(d)).sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')));
+    if(!withTier.length)return; // 등급이 한 번도 기입된 적 없는 채널은 등급별 집계 대상 아님
+    chans.push({ch,tier:tierOf(withTier[0]),n:items.length});
+  });
+  return TIER_OPTIONS.map(key=>{
+    const mine=chans.filter(c=>c.tier===key);
+    const repeat=mine.filter(c=>c.n>=2).length;
+    const top=mine.slice().sort((a,b)=>b.n-a.n)[0];
+    return{
+      key,total:mine.length,repeat,
+      rate:mine.length?repeat/mine.length*100:null,
+      avgRounds:mine.length?mine.reduce((s,c)=>s+c.n,0)/mine.length:null,
+      topCh:top?top.ch:'',topN:top?top.n:0
+    };
+  });
+}
+function renderDashTierRepeat(){
+  const el=document.getElementById('dashTierRepeatChart');
+  if(!el||typeof Chart==='undefined')return;
+  const rows=_tierRepeatRows();
+  if(_dashTierRepeatChartInst)_dashTierRepeatChartInst.destroy();
+
+  // 막대 위 "N/M 채널" 라벨 — 기본 기능으로 못 그려서 인라인 플러그인으로 직접 그림
+  const barLabels={
+    id:'tierRepeatLabels',
+    afterDatasetsDraw(chart){
+      const{ctx}=chart;
+      const meta=chart.getDatasetMeta(0);
+      ctx.save();
+      ctx.font='700 10px system-ui,sans-serif';
+      ctx.textAlign='center';ctx.textBaseline='bottom';
+      rows.forEach((r,i)=>{
+        const bar=meta.data[i];
+        if(!bar||!r.total)return;
+        ctx.fillStyle=_tierDimmed(r.key)?'#B9BEC9':'#5B6375';
+        const txt=`${r.repeat}/${r.total} 채널`+(_tierLowSample(r.total)?' · 표본 적음':'');
+        ctx.fillText(txt,bar.x,bar.y-4);
+      });
+      ctx.restore();
+    }
+  };
+
+  _dashTierRepeatChartInst=new Chart(el.getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:TIER_OPTIONS,
+      datasets:[{
+        label:'재협업률',
+        data:rows.map(r=>r.rate),
+        backgroundColor:rows.map(r=>{
+          const base=_tierChartColor(r.key);
+          // 채널 수가 TIER_MIN_SAMPLE 미만인 등급은 막대도 옅게(1차 표의 "표본 적음"과 같은 규칙)
+          return _tierLowSample(r.total)?_hexAlpha(tierColor(r.key).fg,_tierDimmed(r.key)?0.12:0.35):base;
+        }),
+        borderRadius:4,maxBarThickness:56
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      layout:{padding:{top:18}}, // 막대 위 라벨이 잘리지 않게
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>{
+          const r=rows[ctx.dataIndex];
+          if(!r||!r.total)return '해당 등급 채널 없음';
+          return[
+            `재협업률: ${r.rate!=null?r.rate.toFixed(0)+'%':'—'} (${r.repeat}/${r.total} 채널)`,
+            `평균 회차: ${r.avgRounds!=null?r.avgRounds.toFixed(1)+'회':'—'}`,
+            `최다 회차: ${r.topCh||'—'} ${r.topN}회`,
+            ...(_tierLowSample(r.total)?[`채널 ${r.total}곳뿐 — 참고용`]:[])
+          ];
+        }}}
+      },
+      scales:{y:{min:0,max:100,title:{display:true,text:'재협업률(%)'},ticks:{callback:v=>v+'%'}}}
+    },
+    plugins:[barLabels]
+  });
+}
+
+/* 2-4) 월별 등급 믹스 — 선택 연도의 1~12월 × 등급 누적 막대.
+   시즌성 분석과 같은 이유로 월/주차 필터를 무시하고 12개월을 항상 그린 뒤, 선택된 월만 진하게 함
+   (월을 잘라내면 "믹스가 달마다 어떻게 변하는지"라는 이 차트의 목적 자체가 사라짐). */
+function renderDashTierMix(){
+  const el=document.getElementById('dashTierMixChart');
+  const sub=document.getElementById('dashTierMixSub');
+  const sel=document.getElementById('dashTierMixMode');
+  if(sel)sel.value=_dashTierMixMode;
+  if(!el||typeof Chart==='undefined')return;
+
+  const classified=_dashTierScopeYear().filter(d=>tierOf(d));
+  const hlMonths=_dashActive(DASH.months)?DASH.months:null;
+  const isPct=_dashTierMixMode==='pct';
+  const useRev=_dashTierMixMode==='rev';
+
+  // [등급][월] 원값
+  const raw=TIER_OPTIONS.map(t=>Array.from({length:12},()=>0));
+  const cnt=TIER_OPTIONS.map(t=>Array.from({length:12},()=>0));
+  classified.forEach(d=>{
+    const m=monthOf(d.start); if(!m)return;
+    const ti=TIER_OPTIONS.indexOf(tierOf(d)); if(ti<0)return;
+    cnt[ti][m-1]+=1;
+    raw[ti][m-1]+=useRev?(d.rev||0):1;
+  });
+  const monthTotals=Array.from({length:12},(_,mi)=>TIER_OPTIONS.reduce((s,_t,ti)=>s+raw[ti][mi],0));
+
+  if(sub){
+    const parts=[isPct?'월별 구성비(100%)':useRev?'매출 기준':'건수 기준','연도 전체 표시'];
+    if(hlMonths)parts.push(`선택 월(${[...hlMonths].sort((a,b)=>a-b).join('·')}월) 강조`);
+    sub.textContent=parts.join(' · ');
+  }
+
+  if(_dashTierMixChartInst)_dashTierMixChartInst.destroy();
+  _dashTierMixChartInst=new Chart(el.getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:Array.from({length:12},(_,i)=>`${i+1}월`),
+      datasets:TIER_OPTIONS.map((t,ti)=>({
+        label:t,
+        data:raw[ti].map((v,mi)=>isPct?(monthTotals[mi]>0?v/monthTotals[mi]*100:0):v),
+        // 등급 필터 강조와 "선택 월" 강조가 같이 걸릴 수 있어 두 배율을 곱해서 한 번에 반영
+        backgroundColor:raw[ti].map((_v,mi)=>{
+          const a=(_tierDimmed(t)?TIER_DIM_ALPHA:1)*((hlMonths&&!hlMonths.has(mi+1))?0.35:1);
+          return a>=1?tierColor(t).fg:_hexAlpha(tierColor(t).fg,a);
+        }),
+        _counts:cnt[ti]
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}, // 범례 클릭으로 등급 on/off(Chart.js 기본)
+        tooltip:{callbacks:{label:ctx=>{
+          const n=ctx.dataset._counts?ctx.dataset._counts[ctx.dataIndex]:null;
+          if(isPct)return`${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%${n!=null?` (${n}건)`:''}`;
+          if(useRev)return`${ctx.dataset.label}: ${won(Math.round(ctx.raw))}${n!=null?` (${n}건)`:''}`;
+          return`${ctx.dataset.label}: ${ctx.raw}건`;
+        }}}
+      },
+      scales:{
+        x:{stacked:true},
+        y:{stacked:true,min:0,...(isPct?{max:100,ticks:{callback:v=>v+'%'}}:useRev?{ticks:{callback:v=>won(v)}}:{ticks:{stepSize:1,precision:0}})}
+      }
     }
   });
 }
@@ -2365,7 +2829,9 @@ function renderDashPlatformAnalytics(){
 // 보여주는 단일 표로 개편함(2026-08-18). 표를 나누지 않고 같은 표/헤더를 기준에 맞게 재집계.
 const DASH_ACHV_CROSS_DIMS={
   '채널':d=>d.ch||d.influencer,
-  '제품군':d=>PRODUCT_GROUP_LABELS[productColorKey(d.product)]||productColorKey(d.product)
+  '제품군':d=>PRODUCT_GROUP_LABELS[productColorKey(d.product)]||productColorKey(d.product),
+  // 미분류 건은 빈 문자열을 돌려 아래 집계 루프에서 자동으로 빠짐(다른 차원의 빈 값 처리와 동일)
+  '등급':d=>tierOf(d)
 };
 let _dashAchvCrossDim='채널'; // 기본값: 채널별
 // 헤더 클릭 전까지는 "신뢰도 우선" 기본 정렬(건수 2건 이상을 먼저, 그 안에서 평균 내림차순)을 씀 —
@@ -2382,7 +2848,7 @@ function _sortDashAchvCross(key){
   renderDashAchievement();
 }
 let _dashAchvChartInst=null;
-function _dashAchvRenderCommon(entries,buckets,crossValLabel){
+function _dashAchvRenderCommon(entries,buckets,crossValLabel,overLabel,underLabel){
   const distBody=document.getElementById('dashAchvDistBody');
   const crossBody=document.getElementById('dashAchvCrossBody');
   const chartEl=document.getElementById('dashAchvChart');
@@ -2405,10 +2871,10 @@ function _dashAchvRenderCommon(entries,buckets,crossValLabel){
   const map=new Map();
   entries.forEach(({d,val})=>{
     const key=keyFn(d); if(key==null||key==='')return;
-    if(!map.has(key))map.set(key,{value:key,sum:0,count:0});
-    const g=map.get(key); g.sum+=val; g.count++;
+    if(!map.has(key))map.set(key,{value:key,sum:0,count:0,over:0});
+    const g=map.get(key); g.sum+=val; g.count++; if(val>=100)g.over++;
   });
-  let cross=[...map.values()].map(g=>({value:g.value,avg:g.sum/g.count,count:g.count}));
+  let cross=[...map.values()].map(g=>({value:g.value,avg:g.sum/g.count,count:g.count,over:g.over,under:g.count-g.over}));
   if(_dashAchvCrossSort.key){
     cross.sort((a,b)=>(a[_dashAchvCrossSort.key]-b[_dashAchvCrossSort.key])*_dashAchvCrossSort.dir);
   } else {
@@ -2439,6 +2905,76 @@ function _dashAchvRenderCommon(entries,buckets,crossValLabel){
     data:{labels:buckets.map(b=>b.label),datasets:[{label:'건수',data:bucketCounts,backgroundColor:['#DC2626','#F59E0B','#3B56E5','#0A7C5E']}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{stepSize:1,precision:0}}}}
   });
+
+  _renderDashAchvTierChart(map,crossValLabel,overLabel||'달성',underLabel||'미달');
+}
+
+/* 달성률 기준을 '등급'으로 골랐을 때만 나타나는 등급별 평균 달성률 막대.
+   표(달성률 상위 조건)는 정렬 상태에 따라 순서가 바뀌지만 이 차트는 항상 TIER_OPTIONS 순서로 고정 —
+   등급 간 비교가 목적이라 순서가 흔들리면 눈으로 비교가 안 되기 때문.
+   100% 기준선은 Chart.js 기본 기능으로 못 그려서 인라인 플러그인으로 직접 그림(annotation 플러그인 미로드). */
+let _dashAchvTierChartInst=null;
+function _renderDashAchvTierChart(map,valLabel,overLabel,underLabel){
+  const wrap=document.getElementById('dashAchvTierWrap');
+  const el=document.getElementById('dashAchvTierChart');
+  if(!wrap||!el)return;
+  if(_dashAchvCrossDim!=='등급'){
+    wrap.style.display='none';
+    if(_dashAchvTierChartInst){_dashAchvTierChartInst.destroy();_dashAchvTierChartInst=null;}
+    return;
+  }
+  wrap.style.display='';
+  // map의 값은 avg가 아니라 sum을 들고 있으므로 여기서 평균을 계산해 씀(그대로 병합하면 avg가 null로 남음)
+  const rows=TIER_OPTIONS.map(k=>{
+    const g=map.get(k);
+    return g?{value:k,avg:g.sum/g.count,count:g.count,over:g.over,under:g.count-g.over}
+            :{value:k,avg:null,count:0,over:0,under:0};
+  });
+  const baseline={
+    id:'achvBaseline',
+    afterDatasetsDraw(chart){
+      const y=chart.scales.y;
+      if(!y)return;
+      const py=y.getPixelForValue(100);
+      if(py<chart.chartArea.top||py>chart.chartArea.bottom)return; // 축 범위 밖이면 안 그림
+      const{ctx,chartArea}=chart;
+      ctx.save();
+      ctx.strokeStyle='#DC2626';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+      ctx.beginPath();ctx.moveTo(chartArea.left,py);ctx.lineTo(chartArea.right,py);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#DC2626';ctx.font='700 10px system-ui,sans-serif';
+      ctx.textAlign='right';ctx.textBaseline='bottom';
+      ctx.fillText('100%',chartArea.right-2,py-2);
+      ctx.restore();
+    }
+  };
+  if(_dashAchvTierChartInst)_dashAchvTierChartInst.destroy();
+  _dashAchvTierChartInst=new Chart(el.getContext('2d'),{
+    type:'bar',
+    data:{labels:TIER_OPTIONS,datasets:[{
+      label:valLabel,
+      data:rows.map(r=>r.count?r.avg:null),
+      backgroundColor:rows.map(r=>_tierLowSample(r.count)?_hexAlpha(tierColor(r.value).fg,0.35):tierColor(r.value).fg),
+      borderRadius:4,maxBarThickness:56
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>{
+          const r=rows[ctx.dataIndex];
+          if(!r||!r.count)return '해당 등급의 대상 건이 없습니다';
+          return[
+            `${valLabel}: ${r.avg.toFixed(0)}%`,
+            `대상: ${r.count}건${_tierLowSample(r.count)?' (표본 적음)':''}`,
+            `${overLabel} ${r.over}건 · ${underLabel} ${r.under}건`
+          ];
+        }}}
+      },
+      scales:{y:{min:0,title:{display:true,text:valLabel+'(%)'},ticks:{callback:v=>v+'%'}}}
+    },
+    plugins:[baseline]
+  });
 }
 // 달성률(실적/목표)은 판매가 끝나야 확정되는 지표 — 진행중 건은 아직 판매 중이라 실적(qty)이
 // 목표에 못 미치는 게 당연한데, 이걸 매출 KPI와 같은 완료+진행중 기준(_dashRevScope)으로 섞으면
@@ -2458,6 +2994,9 @@ function renderDashAchievement(){
     distBody.innerHTML=`<tr><td colspan="3" class="dash-analytics-empty">${msg}</td></tr>`;
     crossBody.innerHTML='';
     if(_dashAchvChartInst){_dashAchvChartInst.destroy();_dashAchvChartInst=null;}
+    const tw=document.getElementById('dashAchvTierWrap');
+    if(tw)tw.style.display='none';
+    if(_dashAchvTierChartInst){_dashAchvTierChartInst.destroy();_dashAchvTierChartInst=null;}
   }
 
   if(!scope.length){empty('해당 기간에 완료된 공구건이 없습니다');return;}
@@ -2479,7 +3018,7 @@ function renderDashAchievement(){
     if(noQty)excludeParts.push(`판매수량 미기입 ${noQty}건`);
     stats.innerHTML=`평균 달성률 <b>${avg.toFixed(0)}%</b> · 초과달성 <b>${over}건</b> · 미달 <b>${under}건</b> · 대상 <b>${entries.length}건</b>${excludeParts.length?` · ${excludeParts.join(', ')} 제외`:''}`;
     const buckets=[{label:'~80%',test:v=>v<80},{label:'80~100%',test:v=>v>=80&&v<100},{label:'100~150%',test:v=>v>=100&&v<150},{label:'150%+',test:v=>v>=150}];
-    _dashAchvRenderCommon(entries,buckets,'평균 달성률');
+    _dashAchvRenderCommon(entries,buckets,'평균 달성률','달성','미달');
   } else {
     banner.style.display='block';
     banner.textContent='⚠ 이 기간의 완료 건에는 목표수량 데이터가 없어, 매출 기준 상대 성과(전체 평균 대비 %)로 대체해 보여줍니다.';
@@ -2491,7 +3030,7 @@ function renderDashAchievement(){
     const above=entries.filter(e=>e.val>=100).length,below=entries.length-above;
     stats.innerHTML=`평균 매출 대비 상회 <b>${above}건</b> · 하회 <b>${below}건</b> · 대상 <b>${entries.length}건</b>`;
     const buckets=[{label:'~50%',test:v=>v<50},{label:'50~100%',test:v=>v>=50&&v<100},{label:'100~200%',test:v=>v>=100&&v<200},{label:'200%+',test:v=>v>=200}];
-    _dashAchvRenderCommon(entries,buckets,'평균 상대 성과');
+    _dashAchvRenderCommon(entries,buckets,'평균 상대 성과','상회','하회');
   }
 }
 
