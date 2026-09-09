@@ -1266,7 +1266,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-influencer-tier-2026-09-09-01';
+const DASHBOARD_VERSION='dash-kpi-product-summary-2026-09-09-02';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1814,6 +1814,38 @@ document.addEventListener('click',ev=>{
   _closeAllYmDd();
 });
 
+/* ── 카드 하단 "제품 목록" 문구 (공용) ──
+   같은 제품이 여러 건이어도 한 번만 쓰고 뒤에 건수를 붙임. 예전엔 deals.map(d=>d.product)를
+   그대로 join해서 "더 플렌더 MAX · 더 플렌더 MAX · 더 플렌더 mini · 더 플렌더 mini"처럼
+   같은 이름이 반복돼 몇 종인지도, 어느 제품이 많은지도 안 보였음.
+   제품명은 시트 원본 표기가 아니라 productColorKey→PRODUCT_GROUP_LABELS를 거친 정규화 라벨을 씀 —
+   "더시프트"/"더 시프트"처럼 띄어쓰기만 다른 표기가 서로 다른 종으로 세어지는 걸 막고, 대시보드의
+   다른 표·배지와 같은 이름으로 보이게 하려는 것. 매핑에 없는 신제품은 productLineKey와 같은 규칙으로
+   제품명 자체를 라벨로 씀("기타"로 뭉개서 이름이 사라지지 않도록).
+   정렬은 건수 내림차순 → 동수면 PRODUCT_TAXONOMY 순서(더 플렌더→더 시프트→더 슬림→더 에어드라이).
+   건수는 1이어도 생략하지 않음 — 표시된 숫자를 더하면 카드의 건수와 맞아떨어져야 하기 때문.
+   반환 {text,title}: text=카드에 넣을 문구(maxItems 초과분은 "외 N종"으로 접힘),
+   title=접혔을 때만 채워지는 전체 목록(카드 hover 툴팁용 — 안 접혔으면 보이는 문구와 같아서 빈 값). */
+const PRODUCT_SUMMARY_MAX=4; // 이 종수를 넘으면 상위 N개만 쓰고 나머지는 "외 N종"으로 접음
+function formatProductSummary(deals,maxItems=PRODUCT_SUMMARY_MAX){
+  const order=Object.keys(PRODUCT_GROUP_LABELS); // PRODUCT_TAXONOMY에서 파생된 고정 순서(+맨 뒤 other)
+  const map=new Map();
+  (deals||[]).forEach(d=>{
+    const fine=productColorKey(d.product);
+    const key=fine==='other'?(String(d.product||'').trim()||'other'):fine;
+    if(!map.has(key))map.set(key,{key,label:PRODUCT_GROUP_LABELS[key]||key,n:0});
+    map.get(key).n++;
+  });
+  if(!map.size)return{text:'없음',title:''};
+  const rank=k=>{const i=order.indexOf(k);return i===-1?order.length:i;}; // 매핑에 없는 신제품은 맨 뒤
+  const rows=[...map.values()].sort((a,b)=>
+    (b.n-a.n)||(rank(a.key)-rank(b.key))||a.label.localeCompare(b.label));
+  const part=r=>`${r.label} ${r.n}`;
+  const full=rows.map(part).join(' · ');
+  if(rows.length<=maxItems)return{text:full,title:''};
+  return{text:rows.slice(0,maxItems).map(part).join(' · ')+` 외 ${rows.length-maxItems}종`,title:full};
+}
+
 /* KPI (기간 필터 기준) */
 function renderKPI(){
   const f=dashData(),done=f.filter(d=>_displayStatus(d)==='완료'),act=f.filter(d=>_displayStatus(d)==='진행중'),plan=f.filter(d=>_displayStatus(d)==='예정');
@@ -1828,10 +1860,11 @@ function renderKPI(){
   const tViews=done.reduce((s,d)=>s+(d.views||0),0),tQty=done.reduce((s,d)=>s+(d.qty||0),0);
   const avgV=done.length?tViews/done.length:0;
   const conv=tViews>0&&tQty>0?((tQty/(tViews*10000))*100).toFixed(2)+'%':'—';
+  const actProducts=formatProductSummary(act); // 접힌 경우에만 title이 채워져 카드 hover 툴팁이 붙음
   document.getElementById('kpiRow').innerHTML=`
     <div class="kpi"><div class="kpi-lbl">총 매출 (완료+진행중)</div><div class="kpi-val cm">${tRev?won(tRev):'—'}</div><div class="kpi-sub">완료 ${done.length}건 · 진행중 ${act.length}건</div></div>
     <div class="kpi"><div class="kpi-lbl">총 판매수량</div><div class="kpi-val cn">${tRevQty?num(tRevQty)+'<span class="kpi-unit">개</span>':'—'}</div><div class="kpi-sub">완료+진행중 기준</div></div>
-    <div class="kpi"><div class="kpi-lbl">진행 중</div><div class="kpi-val cw">${act.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">${act.map(d=>d.product).join(' · ')||'없음'}</div></div>
+    <div class="kpi"${actProducts.title?` title="${_escAttr(actProducts.title)}"`:''}><div class="kpi-lbl">진행 중</div><div class="kpi-val cw">${act.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">${actProducts.text}</div></div>
     <div class="kpi"><div class="kpi-lbl">예정</div><div class="kpi-val cn">${plan.length}<span class="kpi-unit">건</span></div><div class="kpi-sub">다가오는 공구</div></div>
     <div class="kpi"><div class="kpi-lbl">평균 릴스 조회수</div><div class="kpi-val cm">${avgV?avgV.toFixed(1)+'<span class="kpi-unit">만</span>':'—'}</div><div class="kpi-sub">완료 건 기준</div></div>
     <div class="kpi"><div class="kpi-lbl">조회→구매 전환율</div><div class="kpi-val cok">${conv}</div><div class="kpi-sub">릴스 조회수 기준</div></div>`;
