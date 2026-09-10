@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'tier-classification-2026-09-09-01';
+var SCRIPT_VERSION = 'tier-manual-column-2026-09-10-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -79,7 +79,7 @@ var COL = {
   firstComeQty: 50,  // AY: 선착순 수량
   note2:        51,  // AZ: 비고 (신규 자유입력 — 구 비고 내용은 마이그레이션 시 전부 여기로 이관됨)
   // 2026-09-09 신규 추가 — 인플루언서 등급. 기존 열 인덱스가 밀리지 않도록 반드시 맨 끝에만 추가할 것.
-  tier:         52,  // BA: 등급 (메가/매크로/마이크로/나노, 빈값=미분류)
+  tier:         52,  // BA: 등급(수동) — 자동 산정을 덮어쓸 때만 값을 넣음. 빈값이 기본(=자동 산정 사용)
 };
 
 // 릴스별 조회수/링크를 담는 열 범위: Z~AI (10칸). 셀 값=조회수(만 단위), 링크=해당 셀의 하이퍼링크.
@@ -94,7 +94,10 @@ var MAX_CODES = 10;
 // 프론트(index.html)의 TIER_TAXONOMY에서 파생되는 TIER_OPTIONS/TIER_MIN_SAMPLE과 값·순서가
 // 반드시 일치해야 함 — 여긴 시트 값 정규화(허용값 검증)용, 프론트는 드롭다운/정렬/집계용.
 // 색상은 화면 표시 전용이라 프론트에만 있음(GAS는 값 검증만 함).
-var TIER_OPTIONS = ['메가', '매크로', '마이크로', '나노']; // 팔로워 수 기준: 100만↑ / 10만~100만 / 1만~10만 / 1만↓
+var TIER_OPTIONS = ['메가', '매크로', '마이크로', '나노'];
+// 2026-09-10: 등급은 프론트가 채널의 과거 매출로 자동 산정함. 이 열은 그 결과를 덮어쓰는
+// "수동 지정" 전용이 됐고 비어 있는 게 정상 — 헤더 문구도 그 의미로 바꿈(구 '등급'은 자동 승격).
+var TIER_HEADER = '등급(수동)';
 var TIER_MIN_SAMPLE = 3; // 등급별 집계에서 "표본 적음"으로 표시하는 기준 건수(프론트 배지 판정과 동일)
 
 // 시트 셀의 등급 값을 허용값 4종 중 하나로 정규화 — 오타/공백/미분류는 전부 빈 문자열로.
@@ -955,12 +958,17 @@ function _ensureExtraHeaders(sheet) {
     [COL.giftQty3, '사은품 수량3'],
     [COL.firstComeQty, '선착순 수량'],
     [COL.note2, '비고'],
-    [COL.tier, '등급']
+    [COL.tier, TIER_HEADER]
   ];
   for (var i = 0; i < headers.length; i++) {
     var cell = sheet.getRange(2, headers[i][0] + 1);
     if (!cell.getValue()) cell.setValue(headers[i][1]);
   }
+  // 등급 열은 의미가 '수동 지정'으로 바뀌었으므로, 구 문구('등급')로 남아 있으면 한 번만 갱신함
+  try {
+    var tierHd = sheet.getRange(2, COL.tier + 1);
+    if (String(tierHd.getValue() || '').trim() === '등급') tierHd.setValue(TIER_HEADER);
+  } catch (e) { Logger.log('등급 헤더 갱신 실패 (무시): ' + e); }
   try { sheet.hideColumns(COL.dealId + 1); } catch (e) { Logger.log('dealId 열 숨기기 실패 (무시): ' + e); }
   try { sheet.hideColumns(COL.codeSeq + 1); } catch (e) { Logger.log('코드순번 열 숨기기 실패 (무시): ' + e); }
 }

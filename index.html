@@ -318,6 +318,14 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .tier-low-sample{opacity:.5}
 .tier-sample-badge{display:inline-block;margin-left:5px;font-size:9.5px;font-weight:700;color:var(--warn);background:var(--warn-bg);padding:1px 5px;border-radius:3px;white-space:nowrap;letter-spacing:0}
 .tier-help{cursor:help}
+/* 자동 산정 안내줄(모달/등록 폼)과 수동·잠정 플래그 배지 */
+.tier-auto-line{margin-top:10px;font-size:11.5px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:8px 11px;line-height:1.8}
+.tier-auto-line .bp{vertical-align:middle}
+.tier-flag{display:inline-block;margin-left:4px;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;vertical-align:middle;letter-spacing:0;white-space:nowrap}
+.tier-flag-manual{background:var(--minix-lt);color:var(--minix)}
+.tier-flag-prov{background:var(--warn-bg);color:var(--warn)}
+.tier-delta{margin-left:4px;font-size:10px}
+.hd-info{cursor:help;color:var(--text-3);font-weight:400;margin-left:3px}
 /* 등급별 성과 2차 분석 — 2×2 그리드(좁은 화면에선 1열로 접힘) */
 .tier2-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px 26px;margin-top:20px}
 @media(max-width:1240px){.tier2-grid{grid-template-columns:1fr}}
@@ -629,7 +637,9 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="card-hd"><span>등급별 성과</span><span class="card-hd-r" id="dashTierHdNote">완료+진행중 기준</span></div>
         <div class="tbl-wrap">
           <table><thead><tr>
-            <th>등급</th><th class="num-col">건수</th><th class="num-col">총매출</th><th class="num-col">건당 평균매출</th>
+            <th>등급</th><th class="num-col">건수</th>
+            <th class="num-col">총매출<span class="hd-info" title="등급이 매출 기준으로 산정되므로 매출 지표는 참고용입니다">ⓘ</span></th>
+            <th class="num-col">건당 평균매출<span class="hd-info" title="등급이 매출 기준으로 산정되므로 매출 지표는 참고용입니다">ⓘ</span></th>
             <th class="num-col">평균 판매수량</th><th class="num-col">평균 조회수</th><th class="num-col">전환율</th><th class="num-col">조회수 1만당 매출</th>
           </tr></thead><tbody id="dashTierBody"></tbody></table>
         </div>
@@ -910,7 +920,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <input class="f-inp" type="text" id="mInfluencer" list="chNameList" autocomplete="off" oninput="_onModalInfluencerInput()">
           </div>
           <div class="f-grp">
-            <label class="f-lbl">등급 <span class="f-badge tier-help" id="mTierHelp">기준 ?</span></label>
+            <label class="f-lbl">등급 수동 지정 <span class="f-badge tier-help" id="mTierHelp">기준 ?</span></label>
             <select class="f-inp f-sel" id="mTier" onchange="_onModalTierChange()"></select>
           </div>
           <div class="f-grp">
@@ -927,6 +937,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <input class="f-inp" type="text" id="mChannelId" placeholder="입력 시 링크 자동 생성" oninput="mOnChannelIdChange()">
           </div>
         </div>
+        <div class="tier-auto-line" id="mTierAuto"></div>
         <div class="fg fg-3" style="margin-top:10px">
           <div class="f-grp">
             <label class="f-lbl">벤더사</label>
@@ -1155,7 +1166,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <input class="f-inp" type="text" id="fInfluencer" placeholder="예: 민이" list="chNameList" autocomplete="off" oninput="_onFormInfluencerInput()">
       </div>
       <div class="f-grp">
-        <label class="f-lbl">등급 <span class="f-badge tier-help" id="fTierHelp">기준 ?</span></label>
+        <label class="f-lbl">등급 수동 지정 <span class="f-badge tier-help" id="fTierHelp">기준 ?</span></label>
         <select class="f-inp f-sel" id="fTier" onchange="_onFormTierChange()"></select>
       </div>
       <div class="f-grp">
@@ -1172,6 +1183,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <input class="f-inp" type="text" id="fChannelId" placeholder="플랫폼 먼저 선택" oninput="onChannelIdChange()">
       </div>
     </div>
+    <div class="tier-auto-line" id="fTierAuto"></div>
     <div class="fg fg-3" style="margin-top:10px">
       <div class="f-grp">
         <label class="f-lbl">벤더사</label>
@@ -1329,7 +1341,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tier-2nd-analytics-2026-09-09-03';
+const DASHBOARD_VERSION='dash-tier-auto-rating-2026-09-10-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1355,13 +1367,13 @@ const DEFAULT_GAS_URL='https://script.google.com/macros/s/AKfycbxz5VBbD1IDha4mLC
 // 하므로 openCfg()는 이 함수를 쓰지 않고 localStorage를 직접 읽음).
 function _getGasUrl(){return localStorage.getItem('gp_gas_url')||DEFAULT_GAS_URL;}
 const SAMPLE=[
-  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',tier:'매크로',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
+  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
   {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:19.8,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
-  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',tier:'매크로',platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:41.2,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
-  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',tier:'마이크로',platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:15.6,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
+  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:41.2,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
+  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:15.6,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
   {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'키친퀸',tier:'메가',platform:'인스타그램',chId:'kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:33.4,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
-  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',tier:'매크로',platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:27.8,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
-  {id:7,brand:'Minix',product:'더 플렌더 MAX',ch:'뷰티노트',tier:'나노',platform:'인스타그램',chId:'beauty.note',start:'2026-07-02',end:'2026-07-04',status:'예정',views:null,qty:null,rev:null,code:'MX-BLD-002',s:{retail:59900,sale:49900,comm:14,note:'신규 채널 기본 스킴'}},
+  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:27.8,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
+  {id:7,brand:'Minix',product:'더 플렌더 MAX',ch:'뷰티노트',platform:'인스타그램',chId:'beauty.note',start:'2026-07-02',end:'2026-07-04',status:'예정',views:null,qty:null,rev:null,code:'MX-BLD-002',s:{retail:59900,sale:49900,comm:14,note:'신규 채널 기본 스킴'}},
   {id:8,brand:'Minix',product:'더슬림',ch:'핏푸디',platform:'인스타그램',chId:'fit.foodie',start:'2026-07-08',end:'2026-07-10',status:'예정',views:null,qty:null,rev:null,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
 ];
 SAMPLE.forEach(d=>{d.link=buildChannelLink(d.platform,d.chId);});
@@ -1543,11 +1555,9 @@ const PRODUCT_LINE_OF=Object.assign({},...PRODUCT_TAXONOMY.map(t=>({[t.key]:t.li
 // 라인 자체의 표시 라벨(새 "라인"이 통째로 새로 생길 때만 여기 한 줄 추가 필요 — 기존 라인에 모델만
 // 추가되는 경우는 위 PRODUCT_TAXONOMY만 고치면 됨)
 const PRODUCT_LINE_LABELS={'더플렌더':'더 플렌더','더시프트':'더 시프트','더슬림':'더 슬림','더에어드라이':'더 에어드라이',other:'기타'};
-/* ── 인플루언서 등급 분류 규칙(한 곳에서 관리, 2026-09-09) ────────────────────
+/* ── 인플루언서 등급(한 곳에서 관리) ────────────────────────────────────────
    등급 목록·정렬 순서·배지 색을 이 배열 하나로 정의 — 위 PRODUCT_TAXONOMY와 같은 방식.
-   배열 순서가 곧 모든 테이블/차트/범례/정렬의 기준 순서라, 순서를 바꾸면 화면 전체가 따라 바뀜.
-   apps-script.js의 TIER_OPTIONS/TIER_MIN_SAMPLE과 값·순서가 반드시 일치해야 함(그쪽은 시트 값 검증용,
-   여긴 드롭다운/집계/표시용). 색상은 화면 전용이라 여기에만 있음. */
+   배열 순서가 곧 모든 테이블/차트/범례/정렬의 기준 순서라, 순서를 바꾸면 화면 전체가 따라 바뀜. */
 const TIER_TAXONOMY=[
   {key:'메가',     label:'메가',     color:{bg:'#EDE9FE',fg:'#6D28D9'}},
   {key:'매크로',   label:'매크로',   color:{bg:'#DBEAFE',fg:'#1D4ED8'}},
@@ -1555,20 +1565,158 @@ const TIER_TAXONOMY=[
   {key:'나노',     label:'나노',     color:{bg:'#FEF3C7',fg:'#B45309'}},
 ];
 const TIER_OPTIONS=TIER_TAXONOMY.map(t=>t.key);
-const TIER_UNCLASSIFIED='미분류'; // 시트 값이 비어 있는 기존 건의 표시 라벨(저장값은 계속 빈 문자열)
-const TIER_COLORS=Object.assign({},...TIER_TAXONOMY.map(t=>({[t.key]:t.color})),{[TIER_UNCLASSIFIED]:{bg:'#F3F4F6',fg:'#6B7280'}});
-const TIER_MIN_SAMPLE=3; // 이 건수 미만이면 등급별 성과 표에서 "표본 적음"으로 표시
-const TIER_CRITERIA='메가 100만 이상 · 매크로 10만~100만 · 마이크로 1만~10만 · 나노 1만 미만 (팔로워 수 기준)';
-// 공구건의 등급 — 허용값(TIER_OPTIONS) 밖이거나 비어 있으면 빈 문자열(=미분류). 등급별 집계
-// 제외 판정도 전부 이 함수 하나를 기준으로 하므로, 서버가 정규화를 놓쳐도 화면이 흔들리지 않음.
-function tierOf(d){const t=String((d&&d.tier)||'').trim();return TIER_OPTIONS.includes(t)?t:'';}
-function tierLabel(t){return t||TIER_UNCLASSIFIED;}
-function tierColor(t){return TIER_COLORS[tierLabel(t)]||TIER_COLORS[TIER_UNCLASSIFIED];}
-function tierBadge(t){const c=tierColor(t);return`<span class="bp bp-tier" style="background:${c.bg};color:${c.fg}">${tierLabel(t)}</span>`;}
-// 정렬용 순위 — TIER_OPTIONS 순서가 기준. 미분류는 null을 돌려 기존 "빈 값은 항상 맨 아래" 규칙을 그대로 탐.
-function tierRank(t){const i=TIER_OPTIONS.indexOf(t||'');return i===-1?null:i;}
-function _tierOptionsHtml(){return`<option value="">${TIER_UNCLASSIFIED}</option>`+TIER_OPTIONS.map(t=>`<option value="${t}">${t}</option>`).join('');}
+const TIER_UNRATED='미산정'; // 완료 실적이 없어 자동 산정이 불가능한 채널(+수동 지정도 없는 경우)
+const TIER_COLORS=Object.assign({},...TIER_TAXONOMY.map(t=>({[t.key]:t.color})),{[TIER_UNRATED]:{bg:'#F3F4F6',fg:'#6B7280'}});
+const TIER_MIN_SAMPLE=3; // 이 건수 미만이면 등급별 성과 표/차트에서 "표본 적음"으로 표시
 
+/* ── 등급 자동 산정 (2026-09-10 전환) ───────────────────────────────────────
+   등급은 더 이상 사람이 건별로 고르는 값이 아니라 "그 채널의 과거 실적"에서 계산함.
+   시트의 등급 열은 이제 '수동 지정'(예외 처리) 전용이고, 비어 있는 게 정상.
+   산정은 전부 프론트에서 함 — GAS는 수동 지정 값의 읽기/쓰기만 담당(집계를 서버에 두면 시트
+   파싱이 무거워지고, 임계값을 바꿀 때마다 Apps Script 재배포가 필요해짐).
+
+   기준: '완료' + 매출이 실제로 기록된 건만 놓고 평균/최대를 구한 뒤, 평균 기준 등급과 최대 기준
+   등급을 각각 판정해 "더 높은 쪽"을 채택 — 한 번 크게 터뜨린 채널이 평균에 묻히지 않게 하려는 것.
+   매출 미기입 완료 건을 0으로 세면 평균이 실제보다 낮게 나오므로 아예 대상에서 뺀다.
+   임계값을 바꾸려면 TIER_RULES만 고치면 됨(모달 기준표 툴팁도 여기서 자동 생성됨). */
+const TIER_RULES=[
+  {tier:'메가',     avg:100000000, max:1000000000},
+  {tier:'매크로',   avg: 50000000, max:  500000000},
+  {tier:'마이크로', avg: 20000000, max:  200000000},
+]; // 어느 기준에도 못 미치면 TIER_FALLBACK
+const TIER_FALLBACK='나노';
+
+// 금액을 "6,200만" / "3.1억"처럼 짧게 — 모달 한 줄 요약과 근거 툴팁 전용(표에는 won()을 그대로 씀)
+function wonShort(n){
+  if(n==null)return'—';
+  const a=Math.abs(n);
+  if(a>=100000000)return(Math.round(n/100000000*10)/10).toLocaleString('ko-KR')+'억';
+  if(a>=10000)return Math.round(n/10000).toLocaleString('ko-KR')+'만';
+  return won(n);
+}
+// 기준표 툴팁 — TIER_RULES에서 생성해 상수와 화면 문구가 어긋날 수 없게 함
+function tierCriteriaText(){
+  return['자동 산정 기준 (완료 + 매출 기록 건)']
+    .concat(TIER_RULES.map(r=>`${r.tier}: 평균 ${wonShort(r.avg)} 이상 또는 최대 ${wonShort(r.max)} 이상`))
+    .concat([`${TIER_FALLBACK}: 그 외`,'평균 기준과 최대 기준 중 더 높은 등급을 채택','수동 지정이 있으면 자동 산정보다 우선'])
+    .join('\n');
+}
+
+function _tierByRule(value,key){
+  if(value==null)return null;
+  for(let i=0;i<TIER_RULES.length;i++)if(value>=TIER_RULES[i][key])return TIER_RULES[i].tier;
+  return TIER_FALLBACK;
+}
+// 두 등급 중 더 높은(=TIER_OPTIONS에서 앞선) 쪽
+function _higherTier(a,b){
+  if(!a)return b||null;
+  if(!b)return a;
+  return TIER_OPTIONS.indexOf(a)<=TIER_OPTIONS.indexOf(b)?a:b;
+}
+function _autoTierFrom(revs){
+  if(!revs.length)return null;
+  const avg=revs.reduce((s,v)=>s+v,0)/revs.length;
+  const max=Math.max.apply(null,revs);
+  return{tier:_higherTier(_tierByRule(avg,'avg'),_tierByRule(max,'max')),avg,max};
+}
+
+// 채널명 → 산정 결과 캐시. DATA가 바뀔 때만 다시 계산하면 되므로 render()에서 무효화하고,
+// 필터만 바뀌는 재렌더(renderDashboard)에서는 그대로 재사용함.
+let _tierStatsCache=null;
+function invalidateTierStats(){_tierStatsCache=null;}
+function tierStats(){
+  if(!_tierStatsCache)_tierStatsCache=_computeTierStats(DATA);
+  return _tierStatsCache;
+}
+function _computeTierStats(deals){
+  const byCh=new Map();
+  (deals||[]).forEach(d=>{
+    const ch=(d.ch||d.influencer||'').trim();
+    if(!ch)return;
+    if(!byCh.has(ch))byCh.set(ch,[]);
+    byCh.get(ch).push(d);
+  });
+  const map=new Map();
+  byCh.forEach((items,ch)=>{
+    const done=items.filter(d=>_displayStatus(d)==='완료'&&d.rev!=null)
+                    .sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+    const revs=done.map(d=>d.rev);
+    const cur=_autoTierFrom(revs);
+    // 직전 완료 건 시점의 자동 등급 — 마지막 한 건을 빼고 다시 계산해 승격/강등(▲▼)을 판정
+    const prev=_autoTierFrom(revs.slice(0,-1));
+    // 수동 지정은 건별로 저장되지만 등급 자체는 채널 속성이라, 그 채널에서 "가장 최근에 값이
+    // 들어간 건"의 값을 채널 전체에 적용함. 해제하려면 그 값을 가진 건에서 '사용 안 함'으로 바꿔야 하며,
+    // 어느 건이 물고 있는지는 모달의 자동 산정 안내줄이 알려줌.
+    const manualSrc=items.filter(d=>manualTierOf(d))
+                         .sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')))[0];
+    const manual=manualSrc?manualTierOf(manualSrc):'';
+    const auto=cur?cur.tier:null;
+    map.set(ch,{
+      channel:ch,auto,manual,
+      effective:manual||auto||TIER_UNRATED,
+      avg:cur?cur.avg:null,max:cur?cur.max:null,count:done.length,
+      provisional:done.length===1,
+      prevAuto:prev?prev.tier:null,
+      manualDealId:manualSrc?manualSrc.dealId:''
+    });
+  });
+  return map;
+}
+
+// 채널명으로 산정 결과 조회 — 앞뒤 공백/대소문자만 다른 표기도 같은 채널로 찾아줌(모달 입력 대응)
+function tierStatOf(ch){
+  const key=String(ch||'').trim();
+  if(!key)return null;
+  const m=tierStats();
+  if(m.has(key))return m.get(key);
+  const norm=_dashInfluencerNorm(key);
+  for(const[k,v]of m)if(_dashInfluencerNorm(k)===norm)return v;
+  return null;
+}
+// 이 공구건 행에 저장된 "수동 지정" 값(허용값 밖/빈값이면 빈 문자열)
+function manualTierOf(d){const t=String((d&&d.tier)||'').trim();return TIER_OPTIONS.includes(t)?t:'';}
+// 화면·집계에서 쓰는 실효 등급 = 채널 단위(수동 지정 > 자동 산정 > 미산정). 건별 값이 아님에 유의.
+function effectiveTierOfChannel(ch){const s=tierStatOf(ch);return s?s.effective:TIER_UNRATED;}
+function effectiveTierOf(d){return effectiveTierOfChannel(d&&(d.ch||d.influencer));}
+// 등급별 집계 대상인지 — 미산정은 제외 대상
+function isRatedTier(t){return TIER_OPTIONS.indexOf(t)!==-1;}
+
+function tierLabel(t){return t||TIER_UNRATED;}
+function tierColor(t){return TIER_COLORS[tierLabel(t)]||TIER_COLORS[TIER_UNRATED];}
+function tierBadge(t){const c=tierColor(t);return`<span class="bp bp-tier" style="background:${c.bg};color:${c.fg}">${tierLabel(t)}</span>`;}
+// 정렬용 순위 — TIER_OPTIONS 순서가 기준. 미산정은 null을 돌려 "빈 값은 항상 맨 아래" 규칙을 그대로 탐.
+function tierRank(t){const i=TIER_OPTIONS.indexOf(t||'');return i===-1?null:i;}
+// 수동 지정 드롭다운(등록 폼/수정 모달 공용) — 빈 값이 기본
+function _tierManualOptionsHtml(){return'<option value="">사용 안 함</option>'+TIER_OPTIONS.map(t=>`<option value="${t}">${t}</option>`).join('');}
+
+const TIER_FLAG_MANUAL='<span class="tier-flag tier-flag-manual" title="수동 지정 — 자동 산정보다 우선 적용">수동</span>';
+const TIER_FLAG_PROV='<span class="tier-flag tier-flag-prov" title="완료 1건만으로 산정된 잠정 등급">잠정</span>';
+// 실효 등급 배지 + 수동/잠정 플래그(수동이면 자동 산정의 잠정 여부는 화면 등급과 무관하므로 생략)
+function tierBadgeWithFlags(stat){
+  if(!stat)return tierBadge('');
+  let html=tierBadge(isRatedTier(stat.effective)?stat.effective:'');
+  if(stat.manual)html+=TIER_FLAG_MANUAL;
+  else if(stat.provisional&&stat.auto)html+=TIER_FLAG_PROV;
+  return html;
+}
+// 등급 근거 툴팁 — 완료 건수·평균·최대가 핵심
+function tierEvidence(stat){
+  if(!stat)return'등급 산정 근거가 없습니다';
+  const parts=[];
+  if(!stat.count)parts.push('완료 실적 없음 — 자동 산정 불가');
+  else parts.push(`완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)}`,
+    `자동 산정: ${stat.auto}${stat.provisional?' (잠정 — 완료 1건)':''}`);
+  if(stat.manual)parts.push(`수동 지정: ${stat.manual} (자동보다 우선)`);
+  if(!stat.manual&&stat.prevAuto&&stat.auto&&stat.prevAuto!==stat.auto)parts.push(`직전 완료 건 시점: ${stat.prevAuto}`);
+  return parts.join('\n');
+}
+// 직전 완료 건 시점의 자동 등급 대비 승격(▲)/강등(▼). 수동 지정 채널은 화면 등급이 자동 등급을
+// 따라가지 않으므로 표시하지 않음(오해 방지).
+function tierDeltaHtml(stat){
+  if(!stat||stat.manual||!stat.auto||!stat.prevAuto||stat.auto===stat.prevAuto)return'';
+  const up=TIER_OPTIONS.indexOf(stat.auto)<TIER_OPTIONS.indexOf(stat.prevAuto);
+  return`<span class="tier-delta ${up?'trend-up':'trend-down'}" title="직전 완료 건 시점 ${stat.prevAuto} → 현재 ${stat.auto}">${up?'▲':'▼'}</span>`;
+}
 // 실적 표 "포맷" 열(유튜브/릴스/게시물 등) 배지 색 — 값이 늘어나면 여기에만 추가하면 됨.
 // 매핑에 없는 값(예상 못한 포맷)은 other로 폴백돼 깨지지 않고 중립색으로 표시됨.
 const FORMAT_COLORS={
@@ -1741,7 +1889,7 @@ function dashPeriodMatch(d,opts){
     }
   }
   if(DASH.channel&&(d.ch||d.influencer||'').trim()!==DASH.channel)return false;
-  if(!o.ignoreTier&&DASH.tier&&DASH.tier!=='all'&&tierOf(d)!==DASH.tier)return false;
+  if(!o.ignoreTier&&DASH.tier&&DASH.tier!=='all'&&effectiveTierOf(d)!==DASH.tier)return false;
   return true;
 }
 function dashData(){return DATA.filter(d=>d.start&&dashPeriodMatch(d));}
@@ -1947,6 +2095,9 @@ function renderKPI(){
 // renderDashList() 호출 "이전"에 끼워 넣기만 하면 화면에서도 항상 그 위에 위치가 보장됨
 // (HTML에서도 #dashSelBody 카드가 #page-dashboard의 마지막 자식으로 고정돼 있음).
 function renderDashboard(){
+  // 등급 산정 캐시는 여기서 비움 — DATA를 바꾼 뒤 render() 대신 renderDashboard()만 호출하는
+  // 경로가 하나라도 생기면 낡은 등급이 그대로 그려지기 때문. 한 번의 O(건수) 패스라 비용은 무시 가능.
+  invalidateTierStats();
   renderDashPeriodBar();
   renderKPI();
   renderDashCharts();
@@ -1983,9 +2134,9 @@ function renderDashCharts(){
   // 점 색을 등급별로 구분(미분류는 회색) — 등급마다 별도 데이터셋으로 나눠야 Chart.js 범례가
   // 자동으로 등급 범례가 됨. 데이터셋 순서는 TIER_OPTIONS 순서(+맨 뒤 미분류)로 고정해서
   // 범례 순서가 표/차트와 항상 같게 맞춤. 해당 등급의 점이 하나도 없으면 범례에서도 뺌.
-  const scDatasets=[...TIER_OPTIONS,''].map(t=>({
+  const scDatasets=[...TIER_OPTIONS,TIER_UNRATED].map(t=>({
     label:tierLabel(t),
-    data:scPts.filter(d=>tierOf(d)===t).map(d=>({x:d.views,y:d.rev||0,ch:d.ch,product:d.product,tier:tierLabel(t)})),
+    data:scPts.filter(d=>effectiveTierOf(d)===t).map(d=>({x:d.views,y:d.rev||0,ch:d.ch,product:d.product,tier:tierLabel(t)})),
     backgroundColor:tierColor(t).fg
   })).filter(ds=>ds.data.length);
   const scEl=document.getElementById('scChart');
@@ -2143,17 +2294,17 @@ function renderDashTierAnalytics(){
   const chartEl=document.getElementById('dashTierShareChart');
   const grid=document.getElementById('dashTier2Grid');
   const empty=document.getElementById('dashTier2Empty');
-  const classified=scope.filter(d=>tierOf(d));
+  const classified=scope.filter(d=>isRatedTier(effectiveTierOf(d)));
   const unclassified=scope.length-classified.length;
 
   // 미분류 안내는 카드 우측 상단으로(2차 차트까지 이 섹션 전체에 걸리는 조건이라 맨 위가 맞음)
-  hdNote.textContent='완료+진행중 기준'+(unclassified>0?` · 등급 미분류 ${unclassified}건 제외`:'');
+  hdNote.textContent='완료+진행중 기준'+(unclassified>0?` · 등급 미산정/미분류 ${unclassified}건 제외`:'');
   // 아래 note는 "왜 필터를 걸었는데 다른 등급도 보이나"를 설명하는 자리로 씀
   note.textContent=(DASH.tier&&DASH.tier!=='all')
     ?`등급 필터: ${DASH.tier} 강조 — 비교를 위해 나머지 등급도 흐리게 함께 표시합니다`:'';
 
   if(!classified.length){
-    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${scope.length?'해당 조건의 공구건에 등급이 기입되지 않았습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
+    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${scope.length?'해당 조건의 채널은 아직 등급이 산정되지 않았습니다(완료 실적 필요)':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     if(_dashTierShareChartInst){_dashTierShareChartInst.destroy();_dashTierShareChartInst=null;}
     // 2차 영역은 통째로 빈 상태 카드로 대체
     grid.style.display='none';
@@ -2169,7 +2320,7 @@ function renderDashTierAnalytics(){
   const totalCount=classified.length;
   const totalRev=classified.reduce((s,d)=>s+(d.rev||0),0);
   const rows=TIER_OPTIONS.map(key=>{
-    const items=classified.filter(d=>tierOf(d)===key);
+    const items=classified.filter(d=>effectiveTierOf(d)===key);
     const m=_tierMetrics(items);
     return Object.assign({key},m,{
       countShare:_safeDiv(m.count,totalCount),
@@ -2238,7 +2389,7 @@ function renderDashTierHeatmap(){
   if(!host)return;
   const sel=document.getElementById('dashTierHeatMetric');
   if(sel)sel.value=_dashTierHeatMetric;
-  const classified=_dashTierScope().filter(d=>tierOf(d));
+  const classified=_dashTierScope().filter(d=>isRatedTier(effectiveTierOf(d)));
   if(!classified.length){host.innerHTML='';return;}
 
   const present=new Set(classified.map(d=>productLineKey(d.product)));
@@ -2247,7 +2398,7 @@ function renderDashTierHeatmap(){
   const lines=known.concat(unknown);
   if(!lines.length){host.innerHTML='<div class="dash-analytics-empty">제품군 정보를 읽을 수 있는 건이 없습니다</div>';return;}
 
-  const cell=(tier,line)=>_tierMetrics(classified.filter(d=>tierOf(d)===tier&&productLineKey(d.product)===line));
+  const cell=(tier,line)=>_tierMetrics(classified.filter(d=>effectiveTierOf(d)===tier&&productLineKey(d.product)===line));
   const matrix=TIER_OPTIONS.map(t=>lines.map(l=>cell(t,l)));
 
   const pick=m=>m.count?(_dashTierHeatMetric==='revSum'?m.revSum:_dashTierHeatMetric==='conv'?m.conv:m.avgRev):null;
@@ -2297,9 +2448,9 @@ function renderDashTierHeatmap(){
    표본이 TIER_MIN_SAMPLE 미만인 등급은 범위 바를 그리지 않고 평균 점만 찍음(범위를 그리면
    2건짜리 두 점 사이가 마치 분포처럼 보여서 과대 해석됨). */
 function _tierStabilityRows(){
-  const classified=_dashTierScope().filter(d=>tierOf(d)&&d.rev!=null);
+  const classified=_dashTierScope().filter(d=>isRatedTier(effectiveTierOf(d))&&d.rev!=null);
   return TIER_OPTIONS.map(key=>{
-    const items=classified.filter(d=>tierOf(d)===key);
+    const items=classified.filter(d=>effectiveTierOf(d)===key);
     if(!items.length)return{key,count:0};
     const vals=items.map(d=>d.rev);
     const n=vals.length;
@@ -2393,7 +2544,7 @@ function renderDashTierStability(){
 }
 
 /* 2-3) 등급별 재협업률 — (2회 이상 진행한 채널 ÷ 그 등급 채널 수) × 100.
-   채널의 등급은 "가장 최근 공구건" 기준(채널별 성과 표와 같은 규칙).
+   채널의 등급은 실효 등급(수동 지정 > 자동 산정)을 그대로 사용.
    기간 필터를 일부러 무시함 — 한 달만 잘라 보면 재협업이 원리상 0으로 보이기 때문. */
 function _tierRepeatRows(){
   const scope=_dashTierScopeAllTime();
@@ -2406,9 +2557,10 @@ function _tierRepeatRows(){
   });
   const chans=[];
   byCh.forEach((items,ch)=>{
-    const withTier=items.filter(d=>tierOf(d)).sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')));
-    if(!withTier.length)return; // 등급이 한 번도 기입된 적 없는 채널은 등급별 집계 대상 아님
-    chans.push({ch,tier:tierOf(withTier[0]),n:items.length});
+    // 채널의 실효 등급(수동 지정 > 자동 산정)을 그대로 씀 — 예전의 "최근 건 기준" 규칙은 폐기됨
+    const tier=effectiveTierOfChannel(ch);
+    if(!isRatedTier(tier))return; // 미산정 채널은 등급별 집계 대상 아님
+    chans.push({ch,tier,n:items.length});
   });
   return TIER_OPTIONS.map(key=>{
     const mine=chans.filter(c=>c.tier===key);
@@ -2495,7 +2647,7 @@ function renderDashTierMix(){
   if(sel)sel.value=_dashTierMixMode;
   if(!el||typeof Chart==='undefined')return;
 
-  const classified=_dashTierScopeYear().filter(d=>tierOf(d));
+  const classified=_dashTierScopeYear().filter(d=>isRatedTier(effectiveTierOf(d)));
   const hlMonths=_dashActive(DASH.months)?DASH.months:null;
   const isPct=_dashTierMixMode==='pct';
   const useRev=_dashTierMixMode==='rev';
@@ -2505,7 +2657,7 @@ function renderDashTierMix(){
   const cnt=TIER_OPTIONS.map(t=>Array.from({length:12},()=>0));
   classified.forEach(d=>{
     const m=monthOf(d.start); if(!m)return;
-    const ti=TIER_OPTIONS.indexOf(tierOf(d)); if(ti<0)return;
+    const ti=TIER_OPTIONS.indexOf(effectiveTierOf(d)); if(ti<0)return;
     cnt[ti][m-1]+=1;
     raw[ti][m-1]+=useRev?(d.rev||0):1;
   });
@@ -2655,11 +2807,10 @@ function renderDashChannelAnalytics(){
         else trend={dir:'flat',pct:0};
       }
     }
-    // 채널 등급은 "최근 건 기준" — 등급이 기입된 건만 놓고 시작일 내림차순 첫 건을 씀.
-    // (최근 건이 미분류라고 해서 과거에 확인된 등급까지 버리면 표가 이유 없이 비어 보임)
-    const tierItems=items.filter(d=>tierOf(d)).sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')));
-    const tier=tierItems.length?tierOf(tierItems[0]):'';
-    return{ch:g.ch,tier,count:items.length,revSum,avgQty,avgViews,conv,trend};
+    // 등급은 채널 단위 실효 등급(수동 지정 > 자동 산정 > 미산정) — 산정 근거/플래그도 같이 들고 감
+    const tierStat=tierStatOf(g.ch);
+    const tier=tierStat&&isRatedTier(tierStat.effective)?tierStat.effective:'';
+    return{ch:g.ch,tier,tierStat,count:items.length,revSum,avgQty,avgViews,conv,trend};
   });
 
   // 차트는 표 정렬 기준과 무관하게 항상 "매출 상위 10개"를 보여줌(차트 자체가 "누적 매출" 기준으로
@@ -2674,7 +2825,7 @@ function renderDashChannelAnalytics(){
   body.innerHTML=rows.map(r=>`
     <tr>
       <td>${r.ch}</td>
-      <td>${tierBadge(r.tier)}</td>
+      <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat))}">${tierBadgeWithFlags(r.tierStat)}${tierDeltaHtml(r.tierStat)}</td>
       <td class="num-col">${r.count}</td>
       <td class="num-col"><strong>${won(r.revSum)}</strong></td>
       <td class="num-col">${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
@@ -2831,7 +2982,7 @@ const DASH_ACHV_CROSS_DIMS={
   '채널':d=>d.ch||d.influencer,
   '제품군':d=>PRODUCT_GROUP_LABELS[productColorKey(d.product)]||productColorKey(d.product),
   // 미분류 건은 빈 문자열을 돌려 아래 집계 루프에서 자동으로 빠짐(다른 차원의 빈 값 처리와 동일)
-  '등급':d=>tierOf(d)
+  '등급':d=>{const t=effectiveTierOf(d);return isRatedTier(t)?t:'';}
 };
 let _dashAchvCrossDim='채널'; // 기본값: 채널별
 // 헤더 클릭 전까지는 "신뢰도 우선" 기본 정렬(건수 2건 이상을 먼저, 그 안에서 평균 내림차순)을 씀 —
@@ -3672,8 +3823,9 @@ function _openRegisteredModal(d){
   // 보고 링크를 안 건드림 — 링크를 실제 값으로 설정한 다음에 마지막으로 ID만 대입(이벤트 안 태움).
   document.getElementById('mInfluencer').value=d.ch||d.influencer||'';
   _refreshChannelNameList();
-  _modalTierTouched=false;
-  document.getElementById('mTier').value=tierOf(d); // 허용값 밖/빈값이면 '' = 미분류 옵션이 선택됨
+  // 드롭다운에는 '이 행에 저장된 수동 지정' 값만 들어감(비어 있는 게 정상) — 아래 안내줄이 자동 산정을 보여줌
+  document.getElementById('mTier').value=manualTierOf(d);
+  _refreshTierAutoLine('mInfluencer','mTier','mTierAuto');
   document.getElementById('mPlatform').value=d.platform||'';
   document.getElementById('mChannelId').value='';
   mOnPlatformChange(); // 라벨/placeholder만 갱신(채널ID가 비어있어 링크는 안 건드림)
@@ -4085,7 +4237,7 @@ function _collectModalChanges(d){
     giftItem1:d.giftItem1||'',giftQty1:d.giftQty1!=null?String(d.giftQty1):'',
     giftItem2:d.giftItem2||'',giftQty2:d.giftQty2!=null?String(d.giftQty2):'',
     giftItem3:d.giftItem3||'',giftQty3:d.giftQty3!=null?String(d.giftQty3):'',
-    extraQty:d.extraQty!=null?d.extraQty:null,note2:s.note!=null?s.note:'',tier:tierOf(d)
+    extraQty:d.extraQty!=null?d.extraQty:null,note2:s.note!=null?s.note:'',tier:manualTierOf(d)
   };
   const next={
     product,channel:influencer,platform,vendor,link,marketingLink,start,end,sale,comm,format,composition,targetQty,qty,
@@ -4742,7 +4894,8 @@ function navSales(el,prod){
   if(hashKey){_currentPageHash=hashKey;_setHash(hashKey);}
 }
 
-function render(){renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();}
+// DATA가 바뀔 수 있는 모든 경로가 render()를 거치므로 여기서 등급 산정 캐시를 비움
+function render(){invalidateTierStats();renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();}
 document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.getMonth()+1)+'월 '+_NOW.getDate()+'일';
 
 /* ── 사은품/오픈시간/선착순/적립금 공용 상수 + 구성 자동생성 (공구건 모달 드롭다운 개편, 2026-08-18) ──
@@ -4814,42 +4967,51 @@ function _rebuildModelOptions(selectEl,line){
 ['mFirstComeItem','fFirstComeItem'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_giftItemOptionsHtml();});
 ['mFirstComeQty','fFirstComeQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_firstComeQtyOptionsHtml();});
 ['mPoints','fPoints'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_pointsOptionsHtml();});
-// 등급 드롭다운 + 기준 툴팁 — 기준 문구를 HTML에 중복해 쓰지 않도록 TIER_CRITERIA에서 주입
-['mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_tierOptionsHtml();});
-['mTierHelp','fTierHelp'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=TIER_CRITERIA;});
-['mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=TIER_CRITERIA;});
+// 등급 '수동 지정' 드롭다운 + 기준표 툴팁 — 기준 문구는 TIER_RULES에서 생성해 상수와 어긋나지 않게 함
+['mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_tierManualOptionsHtml();});
+['mTierHelp','fTierHelp','mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=tierCriteriaText();});
 // 등급 전역 필터 옵션(전체 + 4등급) — 미분류는 선택지로 두지 않음(등급별 집계 대상이 아니므로)
-(()=>{const el=document.getElementById('dashTierFilter');if(el)el.innerHTML='<option value="all">전체</option>'+TIER_OPTIONS.map(t=>`<option value="${t}">${t}</option>`).join('');})();
+// 신규 인플루언서만 골라 보기 위해 '미산정'도 선택지에 둠
+(()=>{const el=document.getElementById('dashTierFilter');if(el)el.innerHTML='<option value="all">전체</option>'+TIER_OPTIONS.concat([TIER_UNRATED]).map(t=>`<option value="${t}">${t}</option>`).join('');})();
 
-/* ── 채널명 자동완성(datalist) + 등급 자동 채움 ──
+/* ── 채널명 자동완성(datalist) + 등급 자동 산정 안내줄 ──
    후보는 하드코딩하지 않고 매번 현재 DATA에서 다시 뽑음(대시보드 인플루언서 필터와 동일한 방식).
-   기존 채널을 고르면 그 채널의 "가장 최근(시작일 기준) 등급이 기입된 건"의 등급을 제안값으로 채움 —
-   등급은 채널에 붙는 속성이라 매번 다시 고르게 하는 건 낭비이고, 등급이 바뀌었으면 최신 건이 정답이기 때문.
-   사용자가 드롭다운을 직접 건드린 뒤에는(_xTierTouched) 덮어쓰지 않음 — 어디까지나 제안값. */
-let _formTierTouched=false,_modalTierTouched=false;
+   등급은 이제 자동 산정이라 드롭다운을 대신 채워주지 않음 — 대신 채널명을 입력/선택하는 즉시
+   그 채널의 산정 결과(등급·완료 건수·평균·최대)를 읽기 전용 안내줄로 보여줌. 드롭다운은
+   "자동 산정을 덮어쓸 때만" 쓰는 예외 장치이므로 기본값은 항상 '사용 안 함'. */
 function _refreshChannelNameList(){
   const el=document.getElementById('chNameList');
   if(el)el.innerHTML=_dashInfluencerAvailable().map(ch=>`<option value="${_escAttr(ch)}"></option>`).join('');
 }
-function _latestTierOfChannel(ch){
-  const key=_dashInfluencerNorm(ch);
-  if(!key)return'';
-  const items=DATA.filter(d=>_dashInfluencerNorm(d.ch||d.influencer||'')===key&&tierOf(d));
-  if(!items.length)return'';
-  items.sort((a,b)=>String(b.start||'').localeCompare(String(a.start||''))); // 시작일 내림차순 = 최근 건이 앞
-  return tierOf(items[0]);
+function _refreshTierAutoLine(inputId,selectId,hostId){
+  const host=document.getElementById(hostId);
+  if(!host)return;
+  const chEl=document.getElementById(inputId),selEl=document.getElementById(selectId);
+  const ch=chEl?chEl.value:'';
+  if(!String(ch).trim()){
+    host.innerHTML='<span style="color:var(--text-3)">채널명을 입력하면 과거 실적 기준 자동 산정 결과가 표시됩니다</span>';
+    return;
+  }
+  const stat=tierStatOf(ch);
+  const own=selEl?selEl.value:'';
+  const lines=[];
+  if(!stat||!stat.count){
+    lines.push(`자동 산정: ${tierBadge('')} <span style="color:var(--text-3)">완료된 공구 실적이 없어 아직 산정할 수 없습니다(신규 채널)</span>`);
+  }else{
+    lines.push(`자동 산정: ${tierBadge(stat.auto)}${stat.provisional?TIER_FLAG_PROV:''} · 완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)}`);
+  }
+  if(own){
+    lines.push(`이 건의 수동 지정 <b>${own}</b>${TIER_FLAG_MANUAL} — 이 채널의 등급을 자동 산정 대신 이 값으로 씁니다`);
+  }else if(stat&&stat.manual){
+    // 수동 지정은 건별로 저장되므로, 다른 건이 물고 있으면 여기서 알려줘야 해제 지점을 찾을 수 있음
+    lines.push(`이 채널은 <b>다른 공구건</b>에서 지정한 수동 등급 <b>${stat.manual}</b>${TIER_FLAG_MANUAL}이 적용 중입니다 — 해제하려면 그 건에서 '사용 안 함'으로 바꾸세요`);
+  }
+  host.innerHTML=lines.join('<br>');
 }
-// value를 코드로 대입할 땐 input 이벤트가 안 뜨므로(모달 오픈 등) 여기가 호출되지 않음 —
-// 즉 저장된 등급이 자동 채움으로 조용히 덮이는 일은 없음.
-function _autofillTierFrom(inputId,selectId,touched){
-  if(touched)return;
-  const t=_latestTierOfChannel(document.getElementById(inputId).value);
-  if(t)document.getElementById(selectId).value=t;
-}
-function _onFormTierChange(){_formTierTouched=true;}
-function _onModalTierChange(){_modalTierTouched=true;}
-function _onFormInfluencerInput(){_autofillTierFrom('fInfluencer','fTier',_formTierTouched);}
-function _onModalInfluencerInput(){_autofillTierFrom('mInfluencer','mTier',_modalTierTouched);}
+function _onFormTierChange(){_refreshTierAutoLine('fInfluencer','fTier','fTierAuto');}
+function _onModalTierChange(){_refreshTierAutoLine('mInfluencer','mTier','mTierAuto');}
+function _onFormInfluencerInput(){_refreshTierAutoLine('fInfluencer','fTier','fTierAuto');}
+function _onModalInfluencerInput(){_refreshTierAutoLine('mInfluencer','mTier','mTierAuto');}
 
 let _formCodes=['']; // 새 공구건 등록 폼의 상품코드 목록(모달의 _modalCodes와 별개 인스턴스)
 function renderFormCodeList(){
@@ -4930,9 +5092,9 @@ function openDealForm(){
   document.getElementById('fFirstComeItem').value='';
   document.getElementById('fFirstComeQty').value='';
   document.getElementById('fPoints').value='';
-  document.getElementById('fTier').value='';
-  _formTierTouched=false;
+  document.getElementById('fTier').value=''; // 수동 지정은 항상 '사용 안 함'에서 시작
   _refreshChannelNameList();
+  _refreshTierAutoLine('fInfluencer','fTier','fTierAuto');
   fRecalcComposition();
   document.getElementById('fCopyNotice').style.display='none';
   document.getElementById('dealOv').classList.add('open');
@@ -4981,7 +5143,7 @@ function copyDealToNew(){
   onPlatformChange(); // 라벨/placeholder 갱신용 — fChannelId가 아직 비어있어 fLink를 건드리지만 바로 아래서 원본 값으로 덮어씀
   document.getElementById('fChannelId').value=_extractChannelIdFromLink(d.platform,d.link);
   document.getElementById('fVendor').value=d.vendor||'';
-  document.getElementById('fTier').value=tierOf(d); // 복사한 건의 등급을 그대로 이어받음(같은 채널이므로)
+  document.getElementById('fTier').value=manualTierOf(d); // 복사한 건의 수동 지정을 그대로 이어받음(같은 채널이므로)
   document.getElementById('fLink').value=d.link||'';
   document.getElementById('fMarketingLink').value=d.marketingLink||'';
 
@@ -5017,6 +5179,7 @@ function copyDealToNew(){
   document.getElementById('fNote').value=s.note||'';
   fRecalcComposition();
 
+  _refreshTierAutoLine('fInfluencer','fTier','fTierAuto');
   const notice=document.getElementById('fCopyNotice');
   notice.textContent=`📋 "${d.ch||d.influencer||'?'}" 건에서 복사됨 — 시작일/마감일을 새로 지정해주세요.`;
   notice.style.display='block';
