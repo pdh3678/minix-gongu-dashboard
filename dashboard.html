@@ -352,6 +352,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .heat-val{font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)}
 .heat-n{font-size:9.5px;color:var(--text-2)}
 .heat-cell.heat-low{opacity:.45}
+.heat-cell.heat-coldim{opacity:.35} /* 품목 필터로 선택되지 않은 제품군 열 */
 .heat-cell.heat-empty{background:var(--surface-2)}
 .heat-cell.heat-empty .heat-val{color:var(--text-3);font-weight:400}
 
@@ -480,6 +481,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
    그 링이 계속 떠 있었음. 기본 링을 없애고 :focus-visible(키보드 이동)에만 얇은 링을
    box-shadow로 한 겹 그림 — 마우스로 고르고 빠져나오면 테두리가 한 겹만 남음.
    (.f-inp:focus와 같은 명시도라 반드시 그 뒤에 와야 이김) */
+/* 상단 필터 바 전용 — 연도/월/주차 pill(.ym-dd-btn)과 완전히 같아 보이게 좌측 패딩(12px)과
+   캐럿 모양(▾ 채워진 삼각형)까지 맞춘 변형. 카드 헤더 토글은 기존 chevron 그대로 둠. */
+.dash-pill-select{padding-left:12px;padding-right:26px;
+  background-image:url("data:image/svg+xml,%3Csvg width='7' height='4' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%235B6375'/%3E%3C/svg%3E");
+  background-position:right 11px center}
 .dash-filter-select:focus{outline:none;border-color:var(--border)}
 .dash-filter-select:focus-visible{outline:none;border-color:var(--minix);box-shadow:0 0 0 2px rgba(59,86,229,.18)}
 .form-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
@@ -635,7 +641,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <span class="dash-filter-chip" id="dashInfluencerChip" style="display:none"></span>
           <label style="display:flex;align-items:center;gap:8px">
             <span style="font-size:11px;font-weight:700;color:var(--text-2)">등급</span>
-            <select class="f-inp f-sel dash-filter-select" id="dashTierFilter" onchange="_onDashTierFilterChange()"></select>
+            <select class="f-inp f-sel dash-filter-select dash-pill-select" id="dashTierFilter" onchange="_onDashTierFilterChange()"></select>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;font-weight:700;color:var(--text-2)">품목</span>
+            <select class="f-inp f-sel dash-filter-select dash-pill-select" id="dashProductFilter" onchange="_onDashProductFilterChange()"></select>
           </label>
           <div class="ym-dd-pop" id="dashInfluencerPop"></div>
         </div>
@@ -678,7 +688,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
                 <option value="conv">전환율</option>
               </select>
             </div>
-            <div class="tier2-sub">색 진하기는 같은 제품군(열) 안에서의 상대값 · 셀에 마우스를 올리면 상세</div>
+            <div class="tier2-sub" id="dashTierHeatSub">색 진하기는 같은 제품군(열) 안에서의 상대값 · 셀에 마우스를 올리면 상세</div>
             <div class="heat" id="dashTierHeatmap"></div>
           </div>
 
@@ -711,12 +721,6 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
       <div class="card">
         <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료+진행중 기준</span></div>
-        <div class="dash-stat-line" style="margin-bottom:14px">
-          <label style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:11px;font-weight:700;color:var(--text-2)">제품</span>
-            <select class="f-inp f-sel dash-filter-select" id="dashChannelProductFilter" onchange="_onDashChannelProductFilterChange()"></select>
-          </label>
-        </div>
         <div class="analytics-split">
           <div class="tbl-wrap">
             <table><thead><tr>
@@ -1360,7 +1364,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-dropdown-focus-2026-09-10-03';
+const DASHBOARD_VERSION='dash-product-filter-2026-09-10-04';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1409,7 +1413,8 @@ const ST={prod:'all',model:'all'};
 const DASH_PERIOD_LS_KEY='gp_dash_period';
 // channel: null=전체, 문자열=해당 인플루언서(채널명)만 / tier: 'all'=전체, 그 외는 해당 등급만
 // (기간 3종만 localStorage에 저장 — channel/tier는 세션 내 임시 필터라 새로고침 시 전체로 돌아감)
-const DASH={years:null,months:null,weeks:null,channel:null,tier:'all'};
+// product: 'all' | 'line:<라인키>' | 'fine:<모델키>' — 기간과 함께 localStorage에 저장됨
+const DASH={years:null,months:null,weeks:null,channel:null,tier:'all',product:'all'};
 function dashPLoad(){
   try{
     const raw=localStorage.getItem(DASH_PERIOD_LS_KEY);
@@ -1418,6 +1423,7 @@ function dashPLoad(){
     DASH.years=(o.years==null)?null:new Set(o.years);
     DASH.months=(o.months==null)?null:new Set(o.months);
     DASH.weeks=(o.weeks==null)?null:new Set(o.weeks);
+    if(typeof o.product==='string')DASH.product=o.product;
   }catch(e){}
 }
 function dashPSave(){
@@ -1425,7 +1431,8 @@ function dashPSave(){
     localStorage.setItem(DASH_PERIOD_LS_KEY,JSON.stringify({
       years:DASH.years===null?null:[...DASH.years],
       months:DASH.months===null?null:[...DASH.months],
-      weeks:DASH.weeks===null?null:[...DASH.weeks]
+      weeks:DASH.weeks===null?null:[...DASH.weeks],
+      product:DASH.product
     }));
   }catch(e){}
 }
@@ -1841,7 +1848,9 @@ function dashPSummary(){
   if(_dashActive(DASH.years))parts.push([...DASH.years].sort((a,b)=>a-b).join('·')+'년');
   if(_dashActive(DASH.months))parts.push(_dashCompressRange([...DASH.months].sort((a,b)=>a-b))+'월');
   if(_dashActive(DASH.weeks))parts.push([...DASH.weeks].length+'개 주차');
-  return parts.length?parts.join(' · '):'전체 기간';
+  const periodText=parts.length?parts.join(' · '):'전체 기간';
+  const prod=_dashProductLabel();
+  return prod?`${periodText} · ${prod}`:periodText; // 예: "2026년 · 더 플렌더 MAX"
 }
 function dashPNormalizeChildren(changedKind){
   if(changedKind==='years'&&DASH.months instanceof Set){
@@ -1870,6 +1879,7 @@ function renderDashPeriodBar(){
   _renderDashInfluencerChip();
   const tierSel=document.getElementById('dashTierFilter');
   if(tierSel)tierSel.value=DASH.tier||'all';
+  _renderDashProductOptions();
   const years=dashPAvailableYears(),months=dashPAvailableMonths(),weeks=dashPAvailableWeeks();
   document.getElementById('dashPYearBtn').textContent=dashPLabel('years');
   document.getElementById('dashPYearPop').innerHTML=`
@@ -1896,6 +1906,7 @@ function renderDashPeriodBar(){
 //   ignoreTier      — 등급 비교 차트(한 등급만 남기면 비교 대상이 사라짐 → 대신 강조로 표현)
 //   ignorePeriod    — 재협업률(기간을 자르면 재협업이 원리상 안 보임)
 //   ignoreMonthWeek — 월별 믹스/시즌성(월을 자르면 월별 추이 자체가 없어짐)
+//   ignoreProduct   — 등급×제품군 히트맵(열을 지우면 제품군 비교가 사라짐 → 강조로 표현)
 function dashPeriodMatch(d,opts){
   const o=opts||{};
   if(!d.start)return false;
@@ -1909,6 +1920,7 @@ function dashPeriodMatch(d,opts){
   }
   if(DASH.channel&&(d.ch||d.influencer||'').trim()!==DASH.channel)return false;
   if(!o.ignoreTier&&DASH.tier&&DASH.tier!=='all'&&effectiveTierOf(d)!==DASH.tier)return false;
+  if(!o.ignoreProduct&&!_dashProductMatch(d))return false;
   return true;
 }
 function dashData(){return DATA.filter(d=>d.start&&dashPeriodMatch(d));}
@@ -1986,6 +1998,75 @@ function _selectDashInfluencer(ch){
   _renderDashInfluencerChip();
   renderDashboard();
 }
+/* ── 전역 품목 필터 ──────────────────────────────────────────────────────────
+   값 형식: 'all' | 'line:<라인키>'(제품 라인 전체) | 'fine:<모델키>'(세부 모델).
+   옵션은 PRODUCT_TAXONOMY/PRODUCT_LINE_LABELS 순서를 따르되 실제 데이터에 있는 것만 노출하고,
+   기간 필터로 좁혀도 선택지가 사라지지 않도록 후보는 항상 전체 DATA에서 뽑음
+   (인플루언서 자동완성 후보와 같은 방식). */
+function _dashProductMatch(d){
+  const v=DASH.product;
+  if(!v||v==='all')return true;
+  if(v.indexOf('fine:')===0)return productColorKey(d.product)===v.slice(5);
+  if(v.indexOf('line:')===0)return productLineKey(d.product)===v.slice(5);
+  return true;
+}
+// 선택된 품목이 속한 제품 라인(히트맵 열 강조용). 미선택이면 null.
+function _dashSelectedProductLine(){
+  const v=DASH.product;
+  if(!v||v==='all')return null;
+  if(v.indexOf('line:')===0)return v.slice(5);
+  const fine=v.slice(5);
+  return PRODUCT_LINE_OF[fine]||fine;
+}
+// 데이터에 존재하는 라인 → 그 라인의 세부 모델 집합
+function _dashProductTree(){
+  const tree=new Map();
+  DATA.filter(d=>d.start).forEach(d=>{
+    const line=productLineKey(d.product),fine=productColorKey(d.product);
+    if(!tree.has(line))tree.set(line,new Set());
+    if(fine!=='other')tree.get(line).add(fine);
+  });
+  return tree;
+}
+function _dashProductLabel(value){
+  const v=value===undefined?DASH.product:value;
+  if(!v||v==='all')return'';
+  if(v.indexOf('fine:')===0){const k=v.slice(5);return PRODUCT_GROUP_LABELS[k]||k;}
+  const k=v.slice(5),label=PRODUCT_LINE_LABELS[k]||k;
+  const fines=_dashProductTree().get(k);
+  return(fines&&fines.size>1)?`${label}(전체)`:label; // 모델이 여러 개면 "(전체)"를 붙여 구분
+}
+function _renderDashProductOptions(){
+  const el=document.getElementById('dashProductFilter');
+  if(!el)return;
+  const tree=_dashProductTree();
+  const known=Object.keys(PRODUCT_LINE_LABELS).filter(k=>k!=='other'&&tree.has(k));
+  const unknown=[...tree.keys()].filter(k=>!(k in PRODUCT_LINE_LABELS)).sort();
+  let html='<option value="all">전체</option>';
+  known.concat(unknown).forEach(line=>{
+    const label=PRODUCT_LINE_LABELS[line]||line;
+    // 세부 모델은 PRODUCT_GROUP_LABELS(=PRODUCT_TAXONOMY) 순서로 고정
+    const fines=Object.keys(PRODUCT_GROUP_LABELS).filter(k=>tree.get(line).has(k));
+    if(fines.length>1){
+      html+=`<optgroup label="${_escAttr(label)}">`+
+        `<option value="line:${_escAttr(line)}">${label}(전체)</option>`+
+        fines.map(f=>`<option value="fine:${_escAttr(f)}">${PRODUCT_GROUP_LABELS[f]}</option>`).join('')+
+        '</optgroup>';
+    }else{
+      html+=`<option value="line:${_escAttr(line)}">${label}</option>`;
+    }
+  });
+  el.innerHTML=html;
+  // 데이터가 바뀌어 선택지가 사라졌으면 전체로 되돌림(빈 화면으로 굳는 것 방지)
+  if(DASH.product!=='all'&&!el.querySelector(`option[value="${DASH.product.replace(/"/g,'')}"]`))DASH.product='all';
+  el.value=DASH.product;
+}
+function _onDashProductFilterChange(){
+  DASH.product=document.getElementById('dashProductFilter').value;
+  dashPSave();
+  renderDashboard();
+}
+
 // 등급 전역 필터 — 기간/인플루언서 필터와 AND로 조합됨(판정은 dashPeriodMatch 한 곳에서)
 function _onDashTierFilterChange(){
   DASH.tier=document.getElementById('dashTierFilter').value;
@@ -2270,6 +2351,9 @@ function _dashTierScope(){return DATA.filter(d=>d.start&&dashPeriodMatch(d,{igno
 function _dashTierScopeAllTime(){return DATA.filter(d=>d.start&&dashPeriodMatch(d,{ignoreTier:true,ignorePeriod:true})&&_isRevStatus(d));}
 // 월별 믹스 전용 — 시즌성 분석과 같은 규칙(연도만 적용, 월/주차는 무시하고 선택 월을 강조).
 function _dashTierScopeYear(){return DATA.filter(d=>d.start&&dashPeriodMatch(d,{ignoreTier:true,ignoreMonthWeek:true})&&_isRevStatus(d));}
+// 히트맵 전용 — 품목 필터까지 무시. 열(제품군)을 지워버리면 "등급 × 제품군" 비교 자체가
+// 성립하지 않으므로, 등급 필터와 같은 방식으로 선택 열만 진하게 하고 나머지는 흐리게 함.
+function _dashTierScopeAllProducts(){return DATA.filter(d=>d.start&&dashPeriodMatch(d,{ignoreTier:true,ignoreProduct:true})&&_isRevStatus(d));}
 
 // 등급 필터가 특정 등급일 때, 그 등급이 아닌 것들을 흐리게 하기 위한 판정/색 계산
 const TIER_DIM_ALPHA=0.22;
@@ -2426,7 +2510,13 @@ function renderDashTierHeatmap(){
   if(!host)return;
   const sel=document.getElementById('dashTierHeatMetric');
   if(sel)sel.value=_dashTierHeatMetric;
-  const classified=_dashTierScope().filter(d=>isRatedTier(effectiveTierOf(d)));
+  const subEl=document.getElementById('dashTierHeatSub');
+  if(subEl){
+    const pl=_dashProductLabel();
+    subEl.textContent='색 진하기는 같은 제품군(열) 안에서의 상대값 · 셀에 마우스를 올리면 상세'+
+      (pl?` · 품목 필터: ${pl} 열 강조(비교를 위해 다른 제품군도 함께 표시)`:'');
+  }
+  const classified=_dashTierScopeAllProducts().filter(d=>isRatedTier(effectiveTierOf(d)));
   if(!classified.length){host.innerHTML='';return;}
 
   const present=new Set(classified.map(d=>productLineKey(d.product)));
@@ -2448,18 +2538,20 @@ function renderDashTierHeatmap(){
   });
 
   host.style.gridTemplateColumns=`74px repeat(${lines.length},minmax(0,1fr))`;
-  const head=['<div></div>'].concat(lines.map(l=>`<div class="heat-h" title="${_escAttr(PRODUCT_LINE_LABELS[l]||l)}">${PRODUCT_LINE_LABELS[l]||l}</div>`));
+  const selLine=_dashSelectedProductLine();
+  const colDim=l=>!!(selLine&&selLine!==l);
+  const head=['<div></div>'].concat(lines.map(l=>`<div class="heat-h"${colDim(l)?' style="opacity:.35"':''} title="${_escAttr(PRODUCT_LINE_LABELS[l]||l)}">${PRODUCT_LINE_LABELS[l]||l}</div>`));
   const bodyCells=TIER_OPTIONS.map((t,ri)=>{
     const rowDim=_tierDimmed(t);
     const lbl=`<div class="heat-rowlbl"${rowDim?' style="opacity:.35"':''}>${tierBadge(t)}</div>`;
     const cells=lines.map((l,ci)=>{
       const m=matrix[ri][ci];
       const v=pick(m);
-      if(!m.count)return`<div class="heat-cell heat-empty"><span class="heat-val">—</span></div>`;
+      if(!m.count)return`<div class="heat-cell heat-empty${colDim(l)?' heat-coldim':''}"><span class="heat-val">—</span></div>`;
       const r=colRange[ci];
       const rel=(r&&r.max>r.min&&v!=null)?(v-r.min)/(r.max-r.min):1;
       // 0.10~0.55 범위로만 칠함 — 더 진해지면 흰 글씨가 필요해져 표 전체 대비가 흐트러짐
-      const alpha=(0.10+0.45*rel)*(rowDim?0.3:1);
+      const alpha=(0.10+0.45*rel)*(rowDim?0.3:1)*(colDim(l)?0.3:1);
       const low=_tierLowSample(m.count);
       const tip=[
         `${t} × ${PRODUCT_LINE_LABELS[l]||l}`,
@@ -2469,7 +2561,7 @@ function renderDashTierHeatmap(){
         `평균 조회수: ${m.avgViews!=null?m.avgViews.toFixed(1)+'만':'—'}`,
         `전환율: ${_pct1(m.conv!=null?m.conv*100:null)}`
       ].join('\n');
-      return`<div class="heat-cell${low?' heat-low':''}" style="background:${_hexAlpha(tierColor(t).fg,alpha)}" title="${_escAttr(tip)}">
+      return`<div class="heat-cell${low?' heat-low':''}${colDim(l)?' heat-coldim':''}" style="background:${_hexAlpha(tierColor(t).fg,alpha)}" title="${_escAttr(tip)}">
         <span class="heat-val">${fmt(v)}</span>
         <span class="heat-n">${m.count}건${low?' · 표본 적음':''}</span>
       </div>`;
@@ -2767,17 +2859,8 @@ function renderDashTierMix(){
    시트에 있으면 서로 다른 키로 쪼개져 한 채널의 공구가 여러 행으로 흩어져 보이는 문제가 있었음
    (제품코드 병합 로직 _mergeDuplicateCodeRows는 이미 채널 키에 trim을 적용하고 있었어서, 여기도
    동일하게 맞춤). */
-let _dashChannelProductFilter='all'; // 'all' 또는 productColorKey() 값 — 채널별 성과 섹션 전용 제품 필터
-function _dashChannelProductOptions(scope){
-  const present=new Set(scope.map(d=>productColorKey(d.product)));
-  // Object.keys(PRODUCT_GROUP_LABELS) 순서(플렌더PRO→MAX→mini→NEXT→시프트→슬림→에어드라이→기타)로
-  // 고정 정렬 — Set 순회 순서(데이터 등장 순)에 맡기면 매 렌더마다 옵션 순서가 흔들릴 수 있음.
-  return Object.keys(PRODUCT_GROUP_LABELS).filter(k=>present.has(k));
-}
-function _onDashChannelProductFilterChange(){
-  _dashChannelProductFilter=document.getElementById('dashChannelProductFilter').value;
-  renderDashChannelAnalytics();
-}
+// 2026-09-10: 섹션 전용 제품 필터는 상단 전역 '품목' 필터로 일원화하며 제거함
+// (같은 성격의 필터가 두 곳에 있으면 어느 쪽이 적용된 결과인지 알 수 없었음).
 
 // 채널별 성과 표 컬럼 정렬(2026-08-18) — sortSales(실적 상세 표)와 같은 헤더 클릭·화살표 패턴을
 // 재사용. 기본값은 기존 동작 그대로 누적 매출 내림차순. 제품 필터를 바꿔도 이 값은 그대로 유지되고
@@ -2816,21 +2899,13 @@ function _renderDashChannelSortIcons(){
   });
 }
 function renderDashChannelAnalytics(){
-  const fullScope=_dashRevScope();
-
-  const selectEl=document.getElementById('dashChannelProductFilter');
-  const availableKeys=_dashChannelProductOptions(fullScope);
-  if(_dashChannelProductFilter!=='all'&&!availableKeys.includes(_dashChannelProductFilter))_dashChannelProductFilter='all';
-  selectEl.innerHTML='<option value="all">전체</option>'+availableKeys.map(k=>`<option value="${k}">${PRODUCT_GROUP_LABELS[k]||k}</option>`).join('');
-  selectEl.value=_dashChannelProductFilter;
-
-  const scope=_dashChannelProductFilter==='all'?fullScope:fullScope.filter(d=>productColorKey(d.product)===_dashChannelProductFilter);
+  const scope=_dashRevScope(); // 품목 조건은 상단 전역 필터가 이미 반영해 줌
 
   const body=document.getElementById('dashChannelBody');
   const note=document.getElementById('dashChannelNote');
   const chartEl=document.getElementById('dashChannelChart');
   if(!scope.length){
-    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${_dashChannelProductFilter==='all'?'해당 기간에 완료·진행중인 공구건이 없습니다':'해당 기간·제품 조건에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
+    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${_dashProductLabel()?'해당 기간·품목 조건에 완료·진행중인 공구건이 없습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     note.textContent='';
     if(_dashChannelChartInst){_dashChannelChartInst.destroy();_dashChannelChartInst=null;}
     return;
