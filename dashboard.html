@@ -334,8 +334,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .tier2-grid{display:grid;grid-template-columns:minmax(0,45fr) minmax(0,55fr);gap:22px 26px;margin-top:20px}
 .tier2-grid>div{min-width:0;overflow:hidden}
 @media(max-width:1240px){.tier2-grid{grid-template-columns:minmax(0,1fr)}}
-.tier2-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;min-width:0}
-.tier2-hd>.f-sec{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 제목과 드롭다운을 같은 줄 높이에 맞춤 — align-items:center면 제목(밑줄 포함 23px)과
+   드롭다운(25px) 높이가 달라 드롭다운이 제목과 부제 사이에 걸쳐 보였음. flex-start로 위를
+   맞추고 제목 line-height를 드롭다운 높이에 맞춰 밑줄과 드롭다운 아래선이 같은 위치에 오게 함. */
+.tier2-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:2px;min-width:0}
+.tier2-hd>.f-sec{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:17px}
 .tier2-hd>select{flex-shrink:0}
 .tier2-sub{font-size:11px;color:var(--text-3);margin:0 0 10px;line-height:1.5}
 /* 차트 래퍼: 폭은 부모를 100% 따르고 높이만 고정(Chart.js는 responsive+maintainAspectRatio:false) */
@@ -472,6 +475,13 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
   cursor:pointer;
 }
 .dash-filter-select:hover{background-color:var(--border)}
+/* 포커스 링 정리(2026-09-10) — .f-inp:focus의 outline(2px)+outline-offset(1px)이 1px 회색
+   테두리와 겹쳐 "파란 테두리 두 겹"으로 보였고, select는 옵션을 고른 뒤에도 포커스가 남아
+   그 링이 계속 떠 있었음. 기본 링을 없애고 :focus-visible(키보드 이동)에만 얇은 링을
+   box-shadow로 한 겹 그림 — 마우스로 고르고 빠져나오면 테두리가 한 겹만 남음.
+   (.f-inp:focus와 같은 명시도라 반드시 그 뒤에 와야 이김) */
+.dash-filter-select:focus{outline:none;border-color:var(--border)}
+.dash-filter-select:focus-visible{outline:none;border-color:var(--minix);box-shadow:0 0 0 2px rgba(59,86,229,.18)}
 .form-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
 .btn-cancel{padding:8px 18px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .btn-cancel:hover{background:var(--border)}
@@ -1350,7 +1360,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tier2-layout-fix-2026-09-10-02';
+const DASHBOARD_VERSION='dash-dropdown-focus-2026-09-10-03';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
