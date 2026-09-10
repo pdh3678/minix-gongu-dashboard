@@ -327,10 +327,19 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .tier-delta{margin-left:4px;font-size:10px}
 .hd-info{cursor:help;color:var(--text-3);font-weight:400;margin-left:3px}
 /* 등급별 성과 2차 분석 — 2×2 그리드(좁은 화면에선 1열로 접힘) */
-.tier2-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px 26px;margin-top:20px}
-@media(max-width:1240px){.tier2-grid{grid-template-columns:1fr}}
-.tier2-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px}
+/* 좌(히트맵·재협업률) 45 : 우(안정성·믹스) 55 — 우측 차트가 축 눈금·범례 때문에 폭을 더 먹음.
+   minmax(0,...)가 없으면 그리드 열이 "내용물 최소 폭"까지 부풀어 옆 열을 밀어내고, 결국 캔버스가
+   카드를 넘어감(1fr의 기본 min-width는 auto라서 생기는 문제). 자식에도 min-width:0을 걸어야
+   canvas가 부모보다 커지지 않음. */
+.tier2-grid{display:grid;grid-template-columns:minmax(0,45fr) minmax(0,55fr);gap:22px 26px;margin-top:20px}
+.tier2-grid>div{min-width:0;overflow:hidden}
+@media(max-width:1240px){.tier2-grid{grid-template-columns:minmax(0,1fr)}}
+.tier2-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;min-width:0}
+.tier2-hd>.f-sec{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tier2-hd>select{flex-shrink:0}
 .tier2-sub{font-size:11px;color:var(--text-3);margin:0 0 10px;line-height:1.5}
+/* 차트 래퍼: 폭은 부모를 100% 따르고 높이만 고정(Chart.js는 responsive+maintainAspectRatio:false) */
+.tier2-chart{position:relative;width:100%;height:216px}
 .tier2-empty{padding:44px 10px;text-align:center;color:var(--text-3);font-size:12px;border:1px dashed var(--border-s);border-radius:var(--r);margin-top:20px}
 /* 등급×제품군 히트맵 — Chart.js에 히트맵 타입이 없어 CSS grid로 직접 그림 */
 .heat{display:grid;gap:4px}
@@ -665,14 +674,14 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
           <div>
             <div class="tier2-hd"><div class="f-sec" style="margin:0">등급별 매출 안정성</div></div>
-            <div class="tier2-sub">건당 매출의 최소~최대 범위와 평균(●) · 우측 변동계수(표준편차÷평균)가 낮을수록 회차별 매출이 안정적입니다</div>
-            <div style="height:210px"><canvas id="dashTierStabilityChart"></canvas></div>
+            <div class="tier2-sub" title="변동계수(CV) = 표준편차 ÷ 평균. 값이 낮을수록 회차별 매출이 고르게 나옵니다.">최소~최대 범위와 평균(●) · 우측 CV가 낮을수록 회차별 매출이 안정적</div>
+            <div class="tier2-chart"><canvas id="dashTierStabilityChart"></canvas></div>
           </div>
 
           <div>
             <div class="tier2-hd"><div class="f-sec" style="margin:0">등급별 재협업률</div></div>
             <div class="tier2-sub">전체 기간 기준 · 2회 이상 진행한 채널 ÷ 해당 등급 채널 수 (기간을 자르면 재협업이 보이지 않아 기간 필터를 적용하지 않음)</div>
-            <div style="height:210px"><canvas id="dashTierRepeatChart"></canvas></div>
+            <div class="tier2-chart"><canvas id="dashTierRepeatChart"></canvas></div>
           </div>
 
           <div>
@@ -685,7 +694,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
               </select>
             </div>
             <div class="tier2-sub" id="dashTierMixSub"></div>
-            <div style="height:210px"><canvas id="dashTierMixChart"></canvas></div>
+            <div class="tier2-chart"><canvas id="dashTierMixChart"></canvas></div>
           </div>
         </div>
       </div>
@@ -1341,7 +1350,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tier-auto-rating-2026-09-10-01';
+const DASHBOARD_VERSION='dash-tier2-layout-fix-2026-09-10-02';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -2214,6 +2223,24 @@ function _dashRevScope(){return dashData().filter(_isRevStatus);}
 function _safeDiv(n,d){return(d&&d>0)?n/d:null;} // 분모가 0/없음이면 null → 호출부에서 '—'로 표시
 function _pct1(n){return n==null?'—':n.toFixed(1)+'%';}
 function _wonPerView(rev,viewsManwon){return _safeDiv(rev,viewsManwon*10000);} // views는 "만" 단위 저장값
+// 축 눈금용 금액 축약 — 축 최대값을 보고 단위를 한 번만 정해 모든 눈금에 같은 단위를 씀.
+// 눈금마다 단위가 갈리면("8,000만 · 1.2억") 읽기 어렵고, 원 단위 그대로면 ₩1,800,000,000처럼
+// 길어져 눈금끼리 겹치거나 축이 차트 폭을 잡아먹음(툴팁은 계속 원 단위 전체 표기를 씀).
+function _niceAxisScale(raw,targetSteps){
+  if(!(raw>0))return null;
+  const n=targetSteps||4;
+  const rough=raw/n;
+  const mag=Math.pow(10,Math.floor(Math.log10(rough)));
+  const norm=rough/mag;
+  const step=(norm<=1?1:norm<=2?2:norm<=2.5?2.5:norm<=5?5:10)*mag;
+  return{max:Math.ceil(raw/step)*step,step};
+}
+function _axisMoneyFmt(maxVal){
+  const m=Math.abs(maxVal||0);
+  if(m>=100000000)return v=>v?(Math.round(v/100000000*10)/10).toLocaleString('ko-KR')+'억':'₩0';
+  if(m>=10000)return v=>v?Math.round(v/10000).toLocaleString('ko-KR')+'만':'₩0';
+  return v=>won(v);
+}
 
 let _dashChannelChartInst=null,_dashProductChartInst=null,_dashPlatformChartInst=null;
 function renderDashAnalytics(){
@@ -2468,30 +2495,39 @@ function renderDashTierStability(){
   const rows=_tierStabilityRows();
   if(_dashTierStabilityChartInst)_dashTierStabilityChartInst.destroy();
 
-  // 우측 변동계수 라벨은 Chart.js 기본 기능으로 못 그려서 인라인 플러그인으로 직접 그림
+  // CV 라벨은 막대 끝이 아니라 플롯 오른쪽의 고정 폭 컬럼에 세로로 정렬해서 그림 —
+  // 막대 끝에 붙이면 막대가 길수록 라벨이 캔버스 밖으로 밀려 잘렸음(2026-09-10 수정).
+  // layout.padding.right로 그 컬럼만큼 플롯을 좁혀두고, 그 여백 안에 항상 같은 x에 그린다.
+  const CV_FONT='700 10px system-ui,sans-serif';
+  const cvText=r=>(r.cv!=null?`CV ${r.cv.toFixed(0)}%`:'CV —')+(_tierLowSample(r.count)?' · 표본 적음':'');
+  const CV_COL_W=(()=>{
+    const c=el.getContext('2d');
+    c.save();c.font=CV_FONT;
+    const w=rows.filter(r=>r.count).reduce((m,r)=>Math.max(m,c.measureText(cvText(r)).width),0);
+    c.restore();
+    return Math.min(130,Math.max(70,Math.ceil(w)+16));
+  })();
   const cvLabels={
     id:'tierCvLabels',
     afterDatasetsDraw(chart){
-      const{ctx,scales:{x,y}}=chart;
+      const{ctx,scales:{y},chartArea}=chart;
       ctx.save();
-      ctx.font='700 10px system-ui,sans-serif';
+      ctx.font=CV_FONT;
       ctx.textBaseline='middle';
+      ctx.textAlign='left';
+      const px=chartArea.right+8;
       rows.forEach((r,i)=>{
         if(!r.count)return;
-        const py=y.getPixelForValue(i);
-        const anchor=Math.max(x.getPixelForValue(r.max||r.mean),x.getPixelForValue(r.mean));
-        const txt=(r.cv!=null?`CV ${r.cv.toFixed(0)}%`:'CV —')+(_tierLowSample(r.count)?' · 표본 적음':'');
         ctx.fillStyle=_tierDimmed(r.key)?'#B9BEC9':'#5B6375';
-        ctx.textAlign='left';
-        let px=anchor+8;
-        if(px+ctx.measureText(txt).width>chart.chartArea.right){ // 오른쪽 공간이 없으면 바 안쪽에 그림
-          ctx.textAlign='right';px=anchor-8;
-        }
-        ctx.fillText(txt,px,py);
+        ctx.fillText(cvText(r),px,y.getPixelForValue(i));
       });
       ctx.restore();
     }
   };
+  // 축 최대값은 데이터 최대의 1.1배로 고정 — 막대 끝이 축 끝에 딱 붙어 답답해 보이지 않게
+  const stabMax=rows.reduce((m,r)=>r.count?Math.max(m,r.max||0,r.mean||0):m,0);
+  const stabScale=_niceAxisScale(stabMax*1.1,4); // 눈금 5개(0 포함)가 되도록
+  const stabFmt=_axisMoneyFmt(stabScale?stabScale.max:stabMax);
 
   _dashTierStabilityChartInst=new Chart(el.getContext('2d'),{
     data:{
@@ -2534,8 +2570,11 @@ function renderDashTierStability(){
           }
         }}
       },
+      layout:{padding:{right:CV_COL_W}}, // CV 라벨 전용 고정 컬럼
       scales:{
-        x:{min:0,title:{display:true,text:'건당 매출(원)'},ticks:{callback:v=>won(v)}},
+        x:{min:0,max:stabScale?stabScale.max:undefined,
+           title:{display:true,text:'건당 매출(원)'},
+           ticks:Object.assign({maxTicksLimit:6,maxRotation:0,autoSkip:true,callback:stabFmt},stabScale?{stepSize:stabScale.step}:{})},
         y:{type:'category',labels:TIER_OPTIONS,offset:true}
       }
     },
@@ -2593,8 +2632,9 @@ function renderDashTierRepeat(){
         const bar=meta.data[i];
         if(!bar||!r.total)return;
         ctx.fillStyle=_tierDimmed(r.key)?'#B9BEC9':'#5B6375';
-        const txt=`${r.repeat}/${r.total} 채널`+(_tierLowSample(r.total)?' · 표본 적음':'');
-        ctx.fillText(txt,bar.x,bar.y-4);
+        const low=_tierLowSample(r.total);
+        ctx.fillText(`${r.repeat}/${r.total} 채널`,bar.x,bar.y-(low?16:4));
+        if(low)ctx.fillText('표본 적음',bar.x,bar.y-4);
       });
       ctx.restore();
     }
@@ -2617,7 +2657,7 @@ function renderDashTierRepeat(){
     },
     options:{
       responsive:true,maintainAspectRatio:false,
-      layout:{padding:{top:18}}, // 막대 위 라벨이 잘리지 않게
+      layout:{padding:{top:rows.some(r=>r.total&&_tierLowSample(r.total))?32:18}}, // 막대 위 라벨(최대 2줄)이 잘리지 않게
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{label:ctx=>{
@@ -2662,6 +2702,9 @@ function renderDashTierMix(){
     raw[ti][m-1]+=useRev?(d.rev||0):1;
   });
   const monthTotals=Array.from({length:12},(_,mi)=>TIER_OPTIONS.reduce((s,_t,ti)=>s+raw[ti][mi],0));
+  // 매출 모드의 Y축은 누적 합계 최대값 기준으로 억/만 단위 축약 — 원 단위(₩2,000,000,000)면
+  // 좌측 축 라벨이 넓어져 12월 막대가 밀려 잘림
+  const mixFmt=_axisMoneyFmt(Math.max.apply(null,monthTotals.concat([0])));
 
   if(sub){
     const parts=[isPct?'월별 구성비(100%)':useRev?'매출 기준':'건수 기준','연도 전체 표시'];
@@ -2688,7 +2731,7 @@ function renderDashTierMix(){
     options:{
       responsive:true,maintainAspectRatio:false,
       plugins:{
-        legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}, // 범례 클릭으로 등급 on/off(Chart.js 기본)
+        legend:{position:'bottom',labels:{boxWidth:10,font:{size:11},padding:12,boxHeight:8}}, // 범례 클릭으로 등급 on/off(Chart.js 기본)
         tooltip:{callbacks:{label:ctx=>{
           const n=ctx.dataset._counts?ctx.dataset._counts[ctx.dataIndex]:null;
           if(isPct)return`${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%${n!=null?` (${n}건)`:''}`;
@@ -2698,7 +2741,7 @@ function renderDashTierMix(){
       },
       scales:{
         x:{stacked:true},
-        y:{stacked:true,min:0,...(isPct?{max:100,ticks:{callback:v=>v+'%'}}:useRev?{ticks:{callback:v=>won(v)}}:{ticks:{stepSize:1,precision:0}})}
+        y:{stacked:true,min:0,...(isPct?{max:100,ticks:{callback:v=>v+'%'}}:useRev?{ticks:{maxTicksLimit:6,callback:mixFmt}}:{ticks:{stepSize:1,precision:0}})}
       }
     }
   });
