@@ -847,7 +847,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <span>해당 기간에 포함된 개별 공구 건 <span class="card-hd-r" id="dashSelCnt"></span></span>
         </div>
         <div class="tbl-wrap">
-          <table><thead><tr><th>제품</th><th>채널</th><th>기간</th><th>조회수</th><th>매출</th></tr></thead><tbody id="dashSelBody"></tbody></table>
+          <table><thead><tr id="dashSelHead"></tr></thead><tbody id="dashSelBody"></tbody></table>
         </div>
       </div>
     </div>
@@ -1384,7 +1384,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tier-scope-note-2026-09-11-03';
+const DASHBOARD_VERSION='dash-sel-sort-2026-09-11-04';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -2335,9 +2335,51 @@ function renderDashboard(){
   renderDashSeasonality();
   renderDashList();
 }
+/* ── 개별 공구건 목록 정렬 ──────────────────────────────────────────────────
+   헤더 UI·토글 규칙은 실적 상세 표(SALES_COLS/SALES_SORT/sortSales)와 같은 방식 — 컬럼명 옆 ⇕,
+   클릭하면 오름차순부터 시작, 같은 컬럼 재클릭 시 방향 반전, 활성 컬럼만 ▲/▼.
+   기본값은 기간(시작일) 오름차순. 상태를 모듈 변수로만 들고 있어 필터를 바꿔도 유지되고
+   새로고침하면 기본값으로 돌아감(정렬은 "지금 보는 방식"이지 저장해 둘 설정이 아니라고 봄). */
+const DASH_SEL_COLS=[
+  {key:'product',lb:'제품'},{key:'ch',lb:'채널'},{key:'period',lb:'기간'},
+  {key:'views',lb:'조회수'},{key:'rev',lb:'매출'},
+];
+let DASH_SEL_SORT={key:'period',dir:1};
+function sortDashSel(key){
+  if(DASH_SEL_SORT.key===key)DASH_SEL_SORT.dir*=-1;else DASH_SEL_SORT={key,dir:1};
+  renderDashList();
+}
+// 제품 정렬 순위 — PRODUCT_TAXONOMY 배열 순서를 그대로 씀(더 플렌더→더 시프트→더 슬림→
+// 더 에어드라이, 같은 라인 안에서는 세부 모델 순). 매핑에 없는 신제품은 맨 뒤.
+const _PRODUCT_RANK=Object.assign({},...PRODUCT_TAXONOMY.map((t,i)=>({[t.key]:i})));
+function _productRank(p){const r=_PRODUCT_RANK[productColorKey(p)];return r==null?PRODUCT_TAXONOMY.length:r;}
+// 기본 정렬이자 모든 컬럼의 동점 처리 — 시작일 → 종료일 → 채널명 순
+function _dashSelPeriodCmp(a,b){
+  return String(a.start||'').localeCompare(String(b.start||''))
+    ||String(a.end||'').localeCompare(String(b.end||''))
+    ||String(a.ch||'').localeCompare(String(b.ch||''));
+}
+function _dashSelCompare(a,b){
+  const key=DASH_SEL_SORT.key,dir=DASH_SEL_SORT.dir;
+  if(key==='period')return _dashSelPeriodCmp(a,b)*dir;
+  if(key==='product')return (_productRank(a.product)-_productRank(b.product)
+    ||String(a.product||'').localeCompare(String(b.product||'')))*dir||_dashSelPeriodCmp(a,b);
+  if(key==='ch')return String(a.ch||'').localeCompare(String(b.ch||''))*dir||_dashSelPeriodCmp(a,b);
+  // 숫자 컬럼 — 미기입("—")은 정렬 방향과 무관하게 항상 맨 아래(채널별 성과 표와 같은 규칙)
+  const va=a[key],vb=b[key];
+  if(va==null&&vb==null)return _dashSelPeriodCmp(a,b);
+  if(va==null)return 1;
+  if(vb==null)return -1;
+  return (va-vb)*dir||_dashSelPeriodCmp(a,b);
+}
 /* 목록: 상단 기간 필터로 걸러진 공구건 전체를 조회 전용으로 표시 (선택/체크박스 없음) */
 function renderDashList(){
-  const list=dashData();
+  const list=dashData().sort(_dashSelCompare);
+  document.getElementById('dashSelHead').innerHTML=DASH_SEL_COLS.map(c=>{
+    const sorted=DASH_SEL_SORT.key===c.key;
+    const arrow=sorted?(DASH_SEL_SORT.dir>0?'▲':'▼'):'⇕';
+    return`<th class="sortable${sorted?' sorted':''}" onclick="sortDashSel('${c.key}')">${c.lb}<span class="sort-ic">${arrow}</span></th>`;
+  }).join('');
   document.getElementById('dashSelBody').innerHTML=list.length?list.map(d=>`
     <tr>
       <td>${productBadge(d.product)}</td>
