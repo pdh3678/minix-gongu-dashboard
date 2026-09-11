@@ -1384,7 +1384,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tier-scope-note-2026-09-11-02';
+const DASHBOARD_VERSION='dash-tier-scope-note-2026-09-11-03';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -5268,7 +5268,7 @@ function _refreshTierAutoLine(inputId,selectId,hostId){
     lines.push(`자동 산정: ${tierBadge('')} <span style="color:var(--text-3)">완료된 공구 실적이 없어 아직 산정할 수 없습니다(신규 채널)</span>`);
   }else{
     lines.push(`자동 산정: ${tierBadge(stat.auto)}${stat.provisional?TIER_FLAG_PROV:''} · 완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)}`+
-      ` <span style="color:var(--text-3)">${tierPeriodNote(stat)}</span>`);
+      ` <span style="color:var(--text-3)">· ${tierPeriodNote(stat)}</span>`);
   }
   if(own){
     lines.push(`이 건의 수동 지정 <b>${own}</b>${TIER_FLAG_MANUAL} — 이 채널의 등급을 자동 산정 대신 이 값으로 씁니다`);
