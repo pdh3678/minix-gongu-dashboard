@@ -742,8 +742,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <div class="tbl-wrap">
             <table><thead><tr>
               <th class="sortable" id="dashChHdCh" onclick="_sortDashChannelTable('ch')">채널<span class="sort-ic">⇕</span></th>
-              <th class="sortable" id="dashChHdTier" onclick="_sortDashChannelTable('tier')">등급<span class="sort-ic">⇕</span></th>
-              <th class="num-col sortable" id="dashChHdCount" onclick="_sortDashChannelTable('count')">공구 횟수<span class="sort-ic">⇕</span></th>
+              <th class="sortable" id="dashChHdTier" onclick="_sortDashChannelTable('tier')">등급<span class="hd-info" title="등급은 필터와 무관하게 채널의 전체 기간 실적으로 산정됩니다" onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
+              <th class="num-col sortable" id="dashChHdCount" onclick="_sortDashChannelTable('count')">공구 횟수 (기간 내)<span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdRev" onclick="_sortDashChannelTable('revSum')">누적 매출<span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdQty" onclick="_sortDashChannelTable('avgQty')">평균 판매수량<span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdViews" onclick="_sortDashChannelTable('avgViews')">평균 조회수<span class="sort-ic">⇕</span></th>
@@ -1384,7 +1384,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tier-revert-2026-09-11-01';
+const DASHBOARD_VERSION='dash-tier-scope-note-2026-09-11-02';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1674,6 +1674,8 @@ function tierStats(){
   if(!_tierStatsCache)_tierStatsCache=_computeTierStats(DATA);
   return _tierStatsCache;
 }
+// 등급 산정에 들어가는 건인지 — 툴팁의 "기간 내 완료 N건"도 같은 기준을 써야 누적 건수와 비교가 됨
+function _isTierCountable(d){return _displayStatus(d)==='완료'&&d.rev!=null;}
 function _computeTierStats(deals){
   const byCh=new Map();
   (deals||[]).forEach(d=>{
@@ -1684,7 +1686,7 @@ function _computeTierStats(deals){
   });
   const map=new Map();
   byCh.forEach((items,ch)=>{
-    const done=items.filter(d=>_displayStatus(d)==='완료'&&d.rev!=null)
+    const done=items.filter(_isTierCountable)
                     .sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
     const revs=done.map(d=>d.rev);
     const cur=_autoTierFrom(revs);
@@ -1709,7 +1711,9 @@ function _computeTierStats(deals){
       provisional:done.length===1,
       prevAuto:prev?prev.tier:null,
       manualDealId:manualSrc?manualSrc.dealId:'',
-      manualCount:manualItems.length // 수동 값이 들어 있는 건 수(모달 안내·되돌리기 문구용)
+      manualCount:manualItems.length, // 수동 값이 들어 있는 건 수(모달 안내·되돌리기 문구용)
+      // 산정에 실제로 들어간 완료 건의 최초/최근 시작일 — 툴팁의 "전체 기간 누적 기준 (…~…)" 표기용
+      firstDone:done.length?done[0].start:'',lastDone:done.length?done[done.length-1].start:''
     });
   });
   return map;
@@ -1757,15 +1761,32 @@ function tierBadgeWithFlags(stat,revertable){
   else if(stat.provisional&&stat.auto)html+=TIER_FLAG_PROV;
   return html;
 }
-// 등급 근거 툴팁 — 완료 건수·평균·최대가 핵심
-function tierEvidence(stat){
+/* 등급이 "필터 기간"이 아니라 "전체 기간 누적"으로 산정된다는 걸 밝히는 문구.
+   구간은 고정 문구가 아니라 산정에 실제로 들어간 완료 건의 최초~최근 시작일에서 뽑음 — 데이터가
+   늘어나도 화면 문구가 따로 놀지 않게 하려는 것. */
+function tierPeriodNote(stat){
+  const ym=v=>String(v||'').slice(0,7).replace('-','.');
+  const a=ym(stat&&stat.firstDone),b=ym(stat&&stat.lastDone);
+  if(!a||!b)return'전체 기간 누적 기준';
+  return a===b?`전체 기간 누적 기준 (${a})`:`전체 기간 누적 기준 (${a} ~ ${b})`;
+}
+// 툴팁에서 "현재 필터 구간"을 가리킬 때 쓰는 라벨 — 상단 기간 요약(dashPSummary)과 같은 문구를 재사용
+function _dashFilterScopeLabel(){
+  const t=dashPSummary();
+  return t==='전체 기간'?'현재 필터(전체 기간) 내':`현재 필터(${t}) 기간 내`;
+}
+/* 등급 근거 툴팁 — 완료 건수·평균·최대가 핵심.
+   scopedCount를 주면 "필터 기간 내 완료 건수"를 마지막 줄에 덧붙임 — 표의 '공구 횟수 (기간 내)'와
+   누적 완료 건수가 달라 보이는 이유(등급은 전체 기간 기준)를 툴팁 안에서 바로 설명하기 위한 것. */
+function tierEvidence(stat,scopedCount){
   if(!stat)return'등급 산정 근거가 없습니다';
-  const parts=[];
+  const parts=[tierPeriodNote(stat)];
   if(!stat.count)parts.push('완료 실적 없음 — 자동 산정 불가');
   else parts.push(`완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)}`,
     `자동 산정: ${stat.auto}${stat.provisional?' (잠정 — 완료 1건)':''}`);
   if(stat.manual)parts.push(`수동 지정: ${stat.manual} (자동보다 우선)`);
   if(!stat.manual&&stat.prevAuto&&stat.auto&&stat.prevAuto!==stat.auto)parts.push(`직전 완료 건 시점: ${stat.prevAuto}`);
+  if(scopedCount!=null)parts.push(`${_dashFilterScopeLabel()}: 완료 ${scopedCount}건`);
   return parts.join('\n');
 }
 /* ── 수동 등급 → 자동 산정 되돌리기 ──────────────────────────────────────────
@@ -3046,7 +3067,9 @@ function renderDashChannelAnalytics(){
     // 등급은 채널 단위 실효 등급(수동 지정 > 자동 산정 > 미산정) — 산정 근거/플래그도 같이 들고 감
     const tierStat=tierStatOf(g.ch);
     const tier=tierStat&&isRatedTier(tierStat.effective)?tierStat.effective:'';
-    return{ch:g.ch,tier,tierStat,count:items.length,revSum,avgQty,avgViews,conv,trend};
+    // 등급 툴팁용 — 필터가 걸린 이 스코프 안에서 등급 산정 대상이 되는 완료 건이 몇 건인지
+    const scopedDone=items.filter(_isTierCountable).length;
+    return{ch:g.ch,tier,tierStat,scopedDone,count:items.length,revSum,avgQty,avgViews,conv,trend};
   });
 
   // 차트는 표 정렬 기준과 무관하게 항상 "매출 상위 10개"를 보여줌(차트 자체가 "누적 매출" 기준으로
@@ -3061,7 +3084,7 @@ function renderDashChannelAnalytics(){
   body.innerHTML=rows.map(r=>`
     <tr>
       <td>${r.ch}</td>
-      <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat))}">${tierBadgeWithFlags(r.tierStat,true)}${tierDeltaHtml(r.tierStat)}</td>
+      <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat,r.scopedDone))}">${tierBadgeWithFlags(r.tierStat,true)}${tierDeltaHtml(r.tierStat)}</td>
       <td class="num-col">${r.count}</td>
       <td class="num-col"><strong>${won(r.revSum)}</strong></td>
       <td class="num-col">${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
@@ -5244,7 +5267,8 @@ function _refreshTierAutoLine(inputId,selectId,hostId){
   if(!stat||!stat.count){
     lines.push(`자동 산정: ${tierBadge('')} <span style="color:var(--text-3)">완료된 공구 실적이 없어 아직 산정할 수 없습니다(신규 채널)</span>`);
   }else{
-    lines.push(`자동 산정: ${tierBadge(stat.auto)}${stat.provisional?TIER_FLAG_PROV:''} · 완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)}`);
+    lines.push(`자동 산정: ${tierBadge(stat.auto)}${stat.provisional?TIER_FLAG_PROV:''} · 완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)}`+
+      ` <span style="color:var(--text-3)">${tierPeriodNote(stat)}</span>`);
   }
   if(own){
     lines.push(`이 건의 수동 지정 <b>${own}</b>${TIER_FLAG_MANUAL} — 이 채널의 등급을 자동 산정 대신 이 값으로 씁니다`);
