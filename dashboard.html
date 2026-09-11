@@ -354,11 +354,21 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .axis-toggle button.on{background:var(--minix);color:#fff}
 /* 갭 배지 — 채널별 성과 표/교차 분석 공용 */
 .bp-gap{white-space:nowrap}
+/* 팔로워 수 입력 — 값은 명 단위로 저장하지만 입력·표시는 전부 만 단위라 "만" 접미사를 칸 안에
+   고정으로 붙이고, 바로 아래에 명 단위 환산값을 보여준다(입력 확인용 — 표시 경로가 아님) */
+.fol-inwrap{position:relative}
+.fol-inwrap .f-inp{padding-right:28px}
+.fol-unit{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11.5px;
+  font-weight:700;color:var(--text-3);pointer-events:none}
+.fol-conv{font-size:10.5px;color:var(--text-3);margin-top:3px;min-height:13px;line-height:13px}
 /* 팔로워 수 인라인 편집 셀 */
 .fol-cell{cursor:text}
 .fol-cell:hover{background:var(--minix-lt)}
+.fol-edit{position:relative;display:block}
+.fol-edit .fol-unit{right:6px;font-size:10.5px}
 .fol-inp{width:100%;box-sizing:border-box;font:inherit;font-size:11.5px;text-align:right;
-  border:1px solid var(--minix);border-radius:4px;padding:2px 5px;background:var(--surface)}
+  border:1px solid var(--minix);border-radius:4px;padding:2px 20px 2px 5px;background:var(--surface)}
+.fol-cell .fol-conv{text-align:right;white-space:nowrap}
 .fol-missing-btn{border:none;background:var(--warn-bg);color:var(--warn);font-family:inherit;font-size:10.5px;
   font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;margin-left:8px;letter-spacing:0}
 .fol-missing-btn.on{background:var(--warn);color:#fff}
@@ -1105,7 +1115,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           </div>
           <div class="f-grp">
             <label class="f-lbl">팔로워 수 <span class="f-badge tier-help" id="mFollowerHelp">기준 ?</span></label>
-            <input class="f-inp" type="text" id="mFollowers" inputmode="numeric" placeholder="예: 1,520,000" oninput="_onFollowerInput(this)">
+            <div class="fol-inwrap"><input class="f-inp" type="text" id="mFollowers" inputmode="decimal" placeholder="예: 44.3" oninput="_onFollowerInput(this)"><span class="fol-unit">만</span></div>
+            <div class="fol-conv" id="mFollowersConv"></div>
           </div>
         </div>
         <div class="tier-auto-line" id="mTierAuto"></div>
@@ -1359,7 +1370,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
       <div class="f-grp">
         <label class="f-lbl">팔로워 수 <span class="f-badge tier-help" id="fFollowerHelp">기준 ?</span></label>
-        <input class="f-inp" type="text" id="fFollowers" inputmode="numeric" placeholder="예: 1,520,000" oninput="_onFollowerInput(this)">
+        <div class="fol-inwrap"><input class="f-inp" type="text" id="fFollowers" inputmode="decimal" placeholder="예: 44.3" oninput="_onFollowerInput(this)"><span class="fol-unit">만</span></div>
+        <div class="fol-conv" id="fFollowersConv"></div>
       </div>
     </div>
     <div class="tier-auto-line" id="fTierAuto"></div>
@@ -1520,7 +1532,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-follower-tier-2026-09-11-05';
+const DASHBOARD_VERSION='dash-follower-man-2026-09-11-06';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1809,17 +1821,26 @@ function gapBadge(g){
   const sign=g>0?` +${g}`:g<0?` −${Math.abs(g)}`:'';
   return`<span class="bp bp-gap" style="background:${c.bg};color:${c.fg}">${k==='high'?'▲':k==='low'?'▼':'●'}${sign} ${gapLabelOf(g)}</span>`;
 }
-// 팔로워 수 표기 — "152만 명"/"8,200명"처럼 짧게(표·툴팁 공용)
-function followerShort(n){
+/* ── 만 단위 공용 포맷터 (2026-09-11) ──────────────────────────────────────
+   팔로워 수는 저장은 명 단위 숫자 그대로지만 화면에는 어디서나 만 단위로만 보여준다.
+   수동 입력값이라 "443,000"처럼 명 단위 정수를 그대로 노출하면 실제로 센 숫자처럼 읽혀
+   오해를 부르기 때문 — 그래서 툴팁·상세를 포함해 표시 경로에는 명 단위를 쓰지 않는다.
+   (조회수는 시트에 이미 만 단위로 저장돼 있어 재사용할 포맷터가 없었고, 이 함수가 그 역할을 겸함.)
+     100만 이상    → 정수 만 (152만, 1,230만)
+     1만~100만 미만 → 소수 1자리 (8.5만, 44.3만)
+     1만 미만      → 천 단위 콤마 (8,500) */
+function formatMan(n){
   if(n==null)return'—';
-  if(n>=10000)return(Math.round(n/10000*10)/10).toLocaleString('ko-KR')+'만 명';
-  return n.toLocaleString('ko-KR')+'명';
+  if(n>=1000000)return Math.round(n/10000).toLocaleString('ko-KR')+'만';
+  if(n>=10000)return(n/10000).toFixed(1)+'만';
+  return Math.round(n).toLocaleString('ko-KR');
 }
 // 팔로워등급 기준표 툴팁 — FOLLOWER_RULES에서 생성(매출등급의 tierCriteriaText와 같은 방식)
 function followerCriteriaText(){
   return['팔로워등급 기준 (채널의 가장 최근 팔로워 수)']
-    .concat(FOLLOWER_RULES.map(r=>`${r.tier}: ${followerShort(r.min)} 이상`))
-    .concat([`${FOLLOWER_FALLBACK}: 그 외`,`${TIER_FOLLOWER_UNSET}: 팔로워 수가 입력되지 않은 채널`])
+    .concat(FOLLOWER_RULES.map(r=>`${r.tier}: ${formatMan(r.min)} 이상`))
+    .concat([`${FOLLOWER_FALLBACK}: 그 외`,`${TIER_FOLLOWER_UNSET}: 팔로워 수가 입력되지 않은 채널`,
+      '입력·표시는 모두 만 단위(수동 입력값)'])
     .join('\n');
 }
 
@@ -3349,6 +3370,18 @@ function _rhoWord(r){const a=Math.abs(r);return a>=0.7?'강함':a>=0.4?'보통':
 // log 축 눈금 라벨용 — Chart.js가 10의 거듭제곱 사이에 중간 눈금까지 만들어 라벨이 겹치므로
 // 거듭제곱 자리에만 글자를 남김(눈금선 자체는 그대로 둬서 격자는 촘촘하게 유지)
 function _isPow10(v){const l=Math.log10(v);return Math.abs(l-Math.round(l))<1e-9;}
+/* 산점도 X축(팔로워, log) 눈금 — 기본은 1천·1만·10만·100만·1,000만 고정.
+   데이터가 이 범위를 벗어나면 그 방향으로만 10의 거듭제곱을 덧붙여 점이 잘리지 않게 한다. */
+const FOL_AXIS_MIN=1000,FOL_AXIS_MAX=10000000;
+const FOL_AXIS_LABELS={1000:'1천',10000:'1만',100000:'10만',1000000:'100만',10000000:'1,000만'};
+function _folAxisLabel(v){return FOL_AXIS_LABELS[v]||(_isPow10(v)?formatMan(v):'');}
+function _folAxisRange(xs){
+  const lo=Math.min(FOL_AXIS_MIN,...xs.map(v=>Math.pow(10,Math.floor(Math.log10(v)))));
+  const hi=Math.max(FOL_AXIS_MAX,...xs.map(v=>Math.pow(10,Math.ceil(Math.log10(v)))));
+  const ticks=[];
+  for(let p=Math.round(Math.log10(lo));p<=Math.round(Math.log10(hi));p++)ticks.push(Math.pow(10,p));
+  return{min:lo,max:hi,ticks};
+}
 
 function renderDashGapAnalytics(){
   const{rows,excluded,total}=_dashGapRows();
@@ -3440,7 +3473,7 @@ function openGapCellPop(ev,followerTier,revTier){
   pop.innerHTML=`<div class="gcp-hd">팔로워 ${followerTier} × 매출 ${revTier} · ${list.length}개 채널 ${gapBadge(gap)}</div>
     <table><tbody>${sorted.map(r=>`<tr>
       <td><span class="gap-ch-link" onclick="_gapPickChannel('${_escAttr(r.ch)}')">${r.ch}</span></td>
-      <td class="num-col">${followerShort(r.followerCount)}</td>
+      <td class="num-col">${formatMan(r.followerCount)}</td>
       <td class="num-col">${wonShort(r.avgRev)}</td>
       <td class="num-col">${r.gap>0?'+':r.gap<0?'−':''}${Math.abs(r.gap)}</td>
     </tr>`).join('')}</tbody></table>`;
@@ -3477,6 +3510,7 @@ function _renderGapScatter(rows){
   if(!el||typeof Chart==='undefined')return;
   if(_dashGapScatterInst)_dashGapScatterInst.destroy();
   if(!pts.length){_dashGapScatterInst=null;return;}
+  const xRange=_folAxisRange(pts.map(p=>p.followerCount)); // pts는 아직 {x,y}가 아니라 채널 행 객체
 
   // 등급 임계값 점선 — x는 FOLLOWER_RULES, y는 TIER_RULES의 평균 기준(매출등급 판정의 주 기준)
   const guides={
@@ -3519,15 +3553,20 @@ function _renderGapScatter(rows){
         tooltip:{callbacks:{label:ctx=>{
           const r=ctx.raw._r;
           return[r.ch,
-            `팔로워: ${followerShort(r.followerCount)}`,
+            `팔로워: ${formatMan(r.followerCount)}`,
             `완료 ${r.count}건 · 평균 매출 ${wonShort(r.avgRev)}`,
             `팔로워등급 ${r.followerTier} → 매출등급 ${r.revTier}`,
             `갭 ${r.gap>0?'+':r.gap<0?'−':''}${Math.abs(r.gap)} ${r.stat.gapLabel}`];
         }}}
       },
       scales:{
+        // X축 눈금은 1천·1만·10만·100만·1,000만 고정 — 자동 눈금이면 데이터 범위에 따라 라벨이
+        // 매번 달라져서 "이 채널이 어느 구간인지"를 눈으로 익힐 수가 없음. 데이터가 이 범위를
+        // 벗어나면 그 방향으로만 10의 거듭제곱을 더 붙인다(점이 축 밖으로 잘리지 않게).
         x:{type:'logarithmic',title:{display:true,text:'팔로워 수(log)'},
-          ticks:{maxRotation:0,autoSkip:false,callback:v=>_isPow10(v)?followerShort(v):''}},
+          min:xRange.min,max:xRange.max,
+          afterBuildTicks:a=>{a.ticks=xRange.ticks.map(v=>({value:v}));},
+          ticks:{maxRotation:0,autoSkip:false,includeBounds:true,callback:v=>_folAxisLabel(v)}},
         y:{type:'logarithmic',title:{display:true,text:'건당 평균 매출(log)'},
           ticks:{maxRotation:0,autoSkip:false,callback:v=>_isPow10(v)?wonShort(v):''}}
       }
@@ -3622,7 +3661,7 @@ function _renderGapTop(rows){
       <td><span class="gap-ch-link" onclick="_gapPickChannel('${_escAttr(r.ch)}')">${r.ch}</span></td>
       <td>${tierBadge(r.followerTier)} <span style="color:var(--text-3)">→</span> ${tierBadge(r.revTier)}</td>
       <td>${gapBadge(r.gap)}</td>
-      <td class="num-col">${num(r.followerCount)}</td>
+      <td class="num-col">${formatMan(r.followerCount)}</td>
       <td class="num-col">${wonShort(r.avgRev)}</td>
       <td class="num-col">${r.count}</td>
     </tr>`).join(''):'<tr><td colspan="6" class="dash-analytics-empty">표시할 채널이 없습니다</td></tr>';
@@ -3657,7 +3696,7 @@ function followerEvidence(stat){
     return'팔로워 수 미입력 — 표의 팔로워 수 칸을 클릭해 입력할 수 있습니다';
   const when=stat.followerAt?`${String(stat.followerAt).slice(0,7).replace('-','.')} 공구건 기준`:'기록 시점 미상';
   const parts=[`채널 단위 · 가장 최근 입력값 (${when})`,
-    `${followerShort(stat.followerCount)} (${num(stat.followerCount)})`,
+    `팔로워 ${formatMan(stat.followerCount)}`,
     `팔로워등급: ${stat.followerTier}`];
   if(stat.gap!=null)parts.push(`갭: ${stat.gap>0?'+':stat.gap<0?'−':''}${Math.abs(stat.gap)} ${stat.gapLabel} (매출등급 ${stat.effective} − 팔로워등급 ${stat.followerTier})`);
   else parts.push('매출등급이 미산정이라 갭은 계산되지 않습니다');
@@ -3775,7 +3814,7 @@ function renderDashChannelAnalytics(){
       <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat,r.scopedDone))}">${tierBadgeWithFlags(r.tierStat,true)}${tierDeltaHtml(r.tierStat)}</td>
       <td class="tier-help" title="${_escAttr(followerEvidence(r.tierStat))}">${tierBadge(r.followerTier)}</td>
       <td>${gapBadge(r.gap)}</td>
-      <td class="num-col fol-cell" data-ch="${_escAttr(r.ch)}" onclick="_startFollowerEdit(this)" title="클릭하면 수정">${r.followerCount!=null?num(r.followerCount):'<span style="color:var(--text-3)">—</span>'}</td>
+      <td class="num-col fol-cell" data-ch="${_escAttr(r.ch)}" onclick="_startFollowerEdit(this)" title="클릭하면 수정(만 단위)">${r.followerCount!=null?formatMan(r.followerCount):'<span style="color:var(--text-3)">—</span>'}</td>
       <td class="num-col">${r.count}</td>
       <td class="num-col"><strong>${won(r.revSum)}</strong></td>
       <td class="num-col">${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
@@ -3811,11 +3850,20 @@ function _startFollowerEdit(td){
   const stat=tierStatOf(ch);
   const cur=stat?stat.followerCount:null;
   _folEditing=ch;
-  td.innerHTML=`<input class="fol-inp" type="text" inputmode="numeric" value="${cur!=null?num(cur):''}" placeholder="예: 1,520,000">`;
+  // 입력 단위는 모달/등록 폼과 똑같이 만 단위 — "만" 접미사와 명 단위 환산줄까지 같은 구성
+  td.innerHTML=`<span class="fol-edit"><input class="fol-inp" type="text" inputmode="decimal"`+
+    ` value="${_escAttr(countToMan(cur))}" placeholder="예: 44.3"><span class="fol-unit">만</span></span>`+
+    `<div class="fol-conv">${_folConvText(cur)}</div>`;
   const inp=td.querySelector('input');
+  const conv=td.querySelector('.fol-conv');
   inp.oninput=()=>{
-    const digits=inp.value.replace(/[^\d]/g,'');
-    inp.value=digits?Number(digits).toLocaleString('ko-KR'):'';
+    const clean=_sanitizeManInput(inp.value);
+    if(clean!==inp.value){
+      const pos=Math.max(0,(inp.selectionStart||0)-(inp.value.length-clean.length));
+      inp.value=clean;
+      try{inp.setSelectionRange(pos,pos);}catch(e){}
+    }
+    conv.textContent=_folConvText(manToCount(inp.value));
   };
   inp.onkeydown=e=>{
     if(e.key==='Enter'){e.preventDefault();inp.blur();}
@@ -3823,8 +3871,7 @@ function _startFollowerEdit(td){
   };
   inp.onblur=()=>{
     if(_folEditing!==ch)return; // Escape로 이미 빠져나온 경우
-    const digits=String(inp.value||'').replace(/[^\d]/g,'');
-    const next=digits===''?null:Number(digits);
+    const next=manToCount(inp.value);
     _folEditing=null;
     if(next===cur){renderDashChannelAnalytics();return;} // 안 바뀌었으면 저장하지 않음
     _saveChannelFollowers(ch,next);
@@ -3849,7 +3896,7 @@ async function _saveChannelFollowers(ch,followers){
     const stat=tierStatOf(ch);
     showToast(followers==null
       ?`${ch} 팔로워 수를 비웠습니다`
-      :`${ch} 팔로워 ${followerShort(followers)} → 팔로워등급 ${stat?stat.followerTier:followerTierOf(followers)}`,{type:'success'});
+      :`${ch} 팔로워 ${formatMan(followers)} → 팔로워등급 ${stat?stat.followerTier:followerTierOf(followers)}`,{type:'success'});
     if(url)fetchLive();
   }catch(e){
     console.error('[팔로워 수 저장 실패]',e);
@@ -6049,7 +6096,7 @@ function _refreshTierAutoLine(inputId,selectId,hostId){
   }else{
     const revTier=stat?stat.effective:TIER_UNRATED;
     const gap=tierGapOf(revTier,fTier);
-    lines.push(`팔로워등급: ${tierBadge(fTier)} <span style="color:var(--text-3)">(${followerShort(fCount)}${fWhen})</span>`+
+    lines.push(`팔로워등급: ${tierBadge(fTier)} <span style="color:var(--text-3)">(${formatMan(fCount)}${fWhen})</span>`+
       (gap!=null?` → 갭 ${gapBadge(gap)}`:''));
   }
   if(own){
@@ -6060,30 +6107,54 @@ function _refreshTierAutoLine(inputId,selectId,hostId){
   }
   host.innerHTML=lines.join('<br>');
 }
-/* ── 팔로워 수 입력 (등록 폼/수정 모달 공용) ──
-   화면에는 천 단위 콤마로 보여주고 저장은 숫자로 — 입력 도중에도 즉시 포맷해서 "152만인지 15만인지"를
-   자릿수로 헷갈리지 않게 함. 커서는 항상 끝으로 보내지 않고, 숫자만 세어 원래 자리로 되돌린다. */
+/* ── 팔로워 수 입력 (등록 폼/수정 모달/표 인라인 편집 공용) ──────────────────
+   입력은 만 단위, 저장은 명 단위 숫자. 칸 안의 "만" 접미사가 단위를 고정으로 알려주고,
+   칸 아래 "= 443,000명" 환산값이 실제로 저장될 숫자를 확인시켜 준다(이 환산줄이 명 단위를
+   보여주는 유일한 자리 — 표·툴팁 등 표시 경로에는 formatMan만 쓴다).
+   소수 자릿수를 1자리로 자르지 않는 이유: 1만 미만을 0.85(=8,500)처럼 적어야 해서 2자리가
+   필요하고, 어차피 명 단위로 반올림하므로 자릿수를 제한할 실익이 없음. */
+function _sanitizeManInput(v){
+  let s=String(v==null?'':v).replace(/[^\d.]/g,'');
+  const i=s.indexOf('.');
+  if(i!==-1)s=s.slice(0,i+1)+s.slice(i+1).replace(/\./g,''); // 소수점은 하나만
+  return s;
+}
+// "44.3"(만) → 443000(명). 빈값/점만 있으면 null
+function manToCount(v){
+  const s=_sanitizeManInput(v);
+  if(s===''||s==='.')return null;
+  const n=parseFloat(s);
+  return isFinite(n)?Math.round(n*10000):null;
+}
+// 443000(명) → "44.3"(만). 명 단위 정수를 되돌린 값이라 소수 4자리면 부동소수 잡음이 사라짐
+function countToMan(n){return n==null?'':String(parseFloat((Math.round(n)/10000).toFixed(4)));}
+// 입력칸 아래 환산줄 문구 — 저장될 명 단위 숫자를 그대로 보여줌
+function _folConvText(count){return count==null?'':`= ${count.toLocaleString('ko-KR')}명`;}
 function _onFollowerInput(el){
-  const before=el.value.slice(0,el.selectionStart||0).replace(/[^\d]/g,'').length;
-  const digits=el.value.replace(/[^\d]/g,'');
-  el.value=digits?Number(digits).toLocaleString('ko-KR'):'';
-  let pos=0,seen=0;
-  while(pos<el.value.length&&seen<before){if(/\d/.test(el.value[pos]))seen++;pos++;}
-  try{el.setSelectionRange(pos,pos);}catch(e){}
+  const clean=_sanitizeManInput(el.value);
+  if(clean!==el.value){
+    // 허용 문자만 남기고 커서는 지운 글자 수만큼만 뒤로 — 항상 끝으로 튀지 않게
+    const pos=Math.max(0,(el.selectionStart||0)-(el.value.length-clean.length));
+    el.value=clean;
+    try{el.setSelectionRange(pos,pos);}catch(e){}
+  }
+  const conv=document.getElementById(el.id+'Conv');
+  if(conv)conv.textContent=_folConvText(manToCount(el.value));
   // 채널 정보 안내줄의 팔로워등급/갭을 입력 즉시 갱신
   _refreshTierAutoLine(el.id==='mFollowers'?'mInfluencer':'fInfluencer',
     el.id==='mFollowers'?'mTier':'fTier',el.id==='mFollowers'?'mTierAuto':'fTierAuto');
 }
-// 입력 필드의 현재 값 → 숫자(빈값이면 null). 저장·안내줄이 같은 함수를 씀
+// 입력 필드의 현재 값 → 명 단위 숫자(빈값이면 null). 저장·안내줄이 같은 함수를 씀
 function _followerInputValue(id){
   const el=document.getElementById(id);
-  if(!el)return null;
-  const digits=String(el.value||'').replace(/[^\d]/g,'');
-  return digits===''?null:Number(digits);
+  return el?manToCount(el.value):null;
 }
 function _setFollowerInput(id,n){
   const el=document.getElementById(id);
-  if(el)el.value=n==null?'':Number(n).toLocaleString('ko-KR');
+  if(!el)return;
+  el.value=countToMan(n);
+  const conv=document.getElementById(id+'Conv');
+  if(conv)conv.textContent=_folConvText(n);
 }
 function _onFormTierChange(){_refreshTierAutoLine('fInfluencer','fTier','fTierAuto');}
 function _onModalTierChange(){_refreshTierAutoLine('mInfluencer','mTier','mTierAuto');}
