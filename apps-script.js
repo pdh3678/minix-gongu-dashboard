@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'tier-manual-column-2026-09-10-01';
+var SCRIPT_VERSION = 'tier-manual-clear-2026-09-11-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1368,6 +1368,7 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'saveReels') resp = _saveReels(ss, data);
     else if (action === 'updateDeal') resp = _updateDeal(ss, data);
     else if (action === 'deleteDeal') resp = _deleteDeal(ss, data);
+    else if (action === 'clearChannelTier') resp = _clearChannelTier(ss, data);
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
@@ -1804,6 +1805,40 @@ function _backupMainSheetForRevenueFix(ss, sheet) {
   try { copy.hideSheet(); } catch (e) { Logger.log('백업 시트 숨기기 실패 (무시): ' + e); }
   Logger.log('[매출수식보정 백업] 완료 — 시트명: ' + REVENUE_FIX_BACKUP_NAME);
   return copy;
+}
+
+// 채널 단위 '등급(수동)' 일괄 초기화 — 수동 지정은 행별로 저장되지만 의미는 채널 속성이라,
+// 되돌릴 때도 그 채널의 모든 행을 한 번에 비워야 함. 한 행만 지우면 남아 있는 다른 행의 값이
+// 다시 그 채널의 수동 등급으로 승격돼(프론트는 "가장 최근 값"을 채널 등급으로 씀) 사용자
+// 입장에선 "되돌리기가 안 먹은" 것처럼 보임.
+// 열 하나를 통째로 읽어 메모리에서 지운 뒤 한 번의 setValues로 되쓴다(행마다 setValue를 부르면
+// 행 수만큼 시트 왕복이 생겨 느림).
+function _clearChannelTier(ss, data) {
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+  var channel = String((data && data.channel) || '').trim();
+  if (!channel) return _json({ error: '채널명이 비어 있습니다.' });
+  _ensureExtraHeaders(sheet);
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastRow <= DATA_START_ROW) return _json({ success: true, cleared: 0, channel: channel });
+
+  var n = lastRow - DATA_START_ROW;
+  var chVals = sheet.getRange(DATA_START_ROW + 1, COL.channel + 1, n, 1).getValues();
+  var brandVals = sheet.getRange(DATA_START_ROW + 1, COL.brand + 1, n, 1).getValues();
+  var tierRange = sheet.getRange(DATA_START_ROW + 1, COL.tier + 1, n, 1);
+  var tierVals = tierRange.getValues();
+  var cleared = 0;
+  for (var i = 0; i < n; i++) {
+    if (String(chVals[i][0] || '').trim() !== channel) continue;
+    if (!MINIX_ALIASES[String(brandVals[i][0] || '').trim()]) continue; // Minix 외 행은 건드리지 않음
+    if (String(tierVals[i][0] || '').trim() === '') continue;
+    tierVals[i][0] = '';
+    cleared++;
+  }
+  if (cleared) tierRange.setValues(tierVals);
+  Logger.log('[등급 수동 초기화] 채널=' + channel + ' / 비운 행 수=' + cleared);
+  return _json({ success: true, cleared: cleared, channel: channel });
 }
 
 // 공구건 삭제 — dealId 그룹의 모든 행을 하드 삭제(릴스 데이터도 대표 행에 같이 있어 함께 삭제됨)

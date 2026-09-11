@@ -325,6 +325,23 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .tier-flag-manual{background:var(--minix-lt);color:var(--minix)}
 .tier-flag-prov{background:var(--warn-bg);color:var(--warn)}
 .tier-delta{margin-left:4px;font-size:10px}
+.tier-flag-btn{border:none;cursor:pointer;font-family:inherit}
+.tier-flag-btn:hover{filter:brightness(.93)}
+/* 되돌리기 확인 팝오버 — .card{isolation:isolate}에 갇히지 않도록 body 직속으로 렌더링함
+   (기간 필터 팝오버에서 겪은 것과 같은 문제) */
+.tier-revert-pop{position:fixed;z-index:200;display:none;width:290px;background:var(--surface);
+  border:1px solid var(--border-s);border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,.16);
+  padding:12px 14px;font-size:12px;color:var(--text-2);line-height:1.6}
+.tier-revert-pop.open{display:block}
+.tier-revert-hd{font-size:12.5px;color:var(--text);font-weight:700;margin-bottom:3px}
+.tier-revert-ev{font-size:11px;color:var(--text-3);margin-bottom:10px}
+.tier-revert-btns{display:flex;gap:8px;justify-content:flex-end}
+.tier-revert-btns button{font-size:11.5px;padding:5px 11px;border-radius:6px;font-family:inherit;font-weight:700;cursor:pointer}
+.tier-revert-cancel{border:1px solid var(--border);background:var(--surface-2);color:var(--text-2)}
+.tier-revert-go{border:none;background:var(--minix);color:#fff}
+.tier-revert-go:disabled{opacity:.55;cursor:default}
+.tier-manual-warn{display:inline-block;margin-left:4px;font-size:9px;font-weight:800;padding:1px 5px;
+  border-radius:3px;background:var(--warn-bg);color:var(--warn);cursor:help;letter-spacing:0;white-space:nowrap}
 .hd-info{cursor:help;color:var(--text-3);font-weight:400;margin-left:3px}
 /* 등급별 성과 2차 분석 — 2×2 그리드(좁은 화면에선 1열로 접힘) */
 /* 좌(히트맵·재협업률) 45 : 우(안정성·믹스) 55 — 우측 차트가 축 눈금·범례 때문에 폭을 더 먹음.
@@ -943,7 +960,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <input class="f-inp" type="text" id="mInfluencer" list="chNameList" autocomplete="off" oninput="_onModalInfluencerInput()">
           </div>
           <div class="f-grp">
-            <label class="f-lbl">등급 수동 지정 <span class="f-badge tier-help" id="mTierHelp">기준 ?</span></label>
+            <label class="f-lbl">등급 수동 지정 <span class="f-badge tier-help" id="mTierHelp">기준 ?</span><span class="tier-manual-warn" id="mTierOtherWarn" style="display:none"></span></label>
             <select class="f-inp f-sel" id="mTier" onchange="_onModalTierChange()"></select>
           </div>
           <div class="f-grp">
@@ -1091,6 +1108,9 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
   </div>
 </div>
 
+<!-- 수동 등급 되돌리기 확인 팝오버 (body 직속 — 카드의 stacking context에 갇히지 않게) -->
+<div class="tier-revert-pop" id="tierRevertPop"></div>
+
 <!-- 디버그 모달 -->
 <div class="ov" id="debugOv">
   <div class="modal" style="width:640px;max-height:80vh;overflow-y:auto">
@@ -1189,7 +1209,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <input class="f-inp" type="text" id="fInfluencer" placeholder="예: 민이" list="chNameList" autocomplete="off" oninput="_onFormInfluencerInput()">
       </div>
       <div class="f-grp">
-        <label class="f-lbl">등급 수동 지정 <span class="f-badge tier-help" id="fTierHelp">기준 ?</span></label>
+        <label class="f-lbl">등급 수동 지정 <span class="f-badge tier-help" id="fTierHelp">기준 ?</span><span class="tier-manual-warn" id="fTierOtherWarn" style="display:none"></span></label>
         <select class="f-inp f-sel" id="fTier" onchange="_onFormTierChange()"></select>
       </div>
       <div class="f-grp">
@@ -1364,7 +1384,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-product-filter-2026-09-10-04';
+const DASHBOARD_VERSION='dash-tier-revert-2026-09-11-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1373,7 +1393,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='tier-classification-2026-09-09-01';
+const REQUIRED_SCRIPT_VERSION='tier-manual-clear-2026-09-11-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -1670,11 +1690,16 @@ function _computeTierStats(deals){
     const cur=_autoTierFrom(revs);
     // 직전 완료 건 시점의 자동 등급 — 마지막 한 건을 빼고 다시 계산해 승격/강등(▲▼)을 판정
     const prev=_autoTierFrom(revs.slice(0,-1));
-    // 수동 지정은 건별로 저장되지만 등급 자체는 채널 속성이라, 그 채널에서 "가장 최근에 값이
-    // 들어간 건"의 값을 채널 전체에 적용함. 해제하려면 그 값을 가진 건에서 '사용 안 함'으로 바꿔야 하며,
-    // 어느 건이 물고 있는지는 모달의 자동 산정 안내줄이 알려줌.
-    const manualSrc=items.filter(d=>manualTierOf(d))
-                         .sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')))[0];
+    /* 수동 지정 우선순위 규칙 — 값은 건별로 저장되지만 등급의 의미는 채널 단위라, 한 채널의
+       여러 건에 서로 다른 수동 값이 있을 수 있다. 이때는 **가장 최근 공구건(시작일 기준)의 값**을
+       그 채널의 수동 등급으로 채택한다 — 등급이 바뀌었다면 최신 판단이 정답이기 때문.
+       시작일이 같으면 시트에서 아래쪽(=나중에 추가된) 행이 이기도록 id로 한 번 더 정렬해
+       결과가 매 렌더마다 흔들리지 않게 고정한다.
+       해제는 채널별 성과 표의 '수동' 배지 → 되돌리기(clearChannelTier)로 그 채널의 모든 행을
+       한 번에 비우는 것이 정규 경로다. 한 건만 비우면 남은 건의 값이 다시 승격돼 안 지워진 것처럼 보인다. */
+    const manualItems=items.filter(d=>manualTierOf(d))
+      .sort((a,b)=>String(b.start||'').localeCompare(String(a.start||''))||((b.id||0)-(a.id||0)));
+    const manualSrc=manualItems[0];
     const manual=manualSrc?manualTierOf(manualSrc):'';
     const auto=cur?cur.tier:null;
     map.set(ch,{
@@ -1683,7 +1708,8 @@ function _computeTierStats(deals){
       avg:cur?cur.avg:null,max:cur?cur.max:null,count:done.length,
       provisional:done.length===1,
       prevAuto:prev?prev.tier:null,
-      manualDealId:manualSrc?manualSrc.dealId:''
+      manualDealId:manualSrc?manualSrc.dealId:'',
+      manualCount:manualItems.length // 수동 값이 들어 있는 건 수(모달 안내·되돌리기 문구용)
     });
   });
   return map;
@@ -1716,12 +1742,18 @@ function tierRank(t){const i=TIER_OPTIONS.indexOf(t||'');return i===-1?null:i;}
 function _tierManualOptionsHtml(){return'<option value="">사용 안 함</option>'+TIER_OPTIONS.map(t=>`<option value="${t}">${t}</option>`).join('');}
 
 const TIER_FLAG_MANUAL='<span class="tier-flag tier-flag-manual" title="수동 지정 — 자동 산정보다 우선 적용">수동</span>';
+// 채널별 성과 표에서는 같은 배지를 버튼으로 — 눌러서 자동 산정으로 되돌릴 수 있게 함
+function _tierFlagManualBtn(ch){
+  return`<button type="button" class="tier-flag tier-flag-manual tier-flag-btn" data-ch="${_escAttr(ch)}"`+
+    ` title="수동 지정 — 클릭하면 자동 산정으로 되돌리기" onclick="openTierRevertPop(event,this.dataset.ch)">수동</button>`;
+}
 const TIER_FLAG_PROV='<span class="tier-flag tier-flag-prov" title="완료 1건만으로 산정된 잠정 등급">잠정</span>';
 // 실효 등급 배지 + 수동/잠정 플래그(수동이면 자동 산정의 잠정 여부는 화면 등급과 무관하므로 생략)
-function tierBadgeWithFlags(stat){
+// revertable=true면 '수동' 배지를 되돌리기 버튼으로 렌더(채널별 성과 표 전용)
+function tierBadgeWithFlags(stat,revertable){
   if(!stat)return tierBadge('');
   let html=tierBadge(isRatedTier(stat.effective)?stat.effective:'');
-  if(stat.manual)html+=TIER_FLAG_MANUAL;
+  if(stat.manual)html+=revertable?_tierFlagManualBtn(stat.channel):TIER_FLAG_MANUAL;
   else if(stat.provisional&&stat.auto)html+=TIER_FLAG_PROV;
   return html;
 }
@@ -1736,6 +1768,82 @@ function tierEvidence(stat){
   if(!stat.manual&&stat.prevAuto&&stat.auto&&stat.prevAuto!==stat.auto)parts.push(`직전 완료 건 시점: ${stat.prevAuto}`);
   return parts.join('\n');
 }
+/* ── 수동 등급 → 자동 산정 되돌리기 ──────────────────────────────────────────
+   채널별 성과 표의 '수동' 배지를 누르면 확인 팝오버가 뜨고, 확인하면 그 채널의 모든 공구건에서
+   '등급(수동)' 값을 비운다(GAS clearChannelTier). 한 건만 비우면 남은 건의 값이 다시 채널
+   등급으로 승격돼 되돌리기가 안 먹은 것처럼 보이므로 반드시 채널 단위로 처리한다. */
+let _tierRevertCh='';
+function openTierRevertPop(ev,ch){
+  if(ev){ev.stopPropagation();ev.preventDefault();}
+  const stat=tierStatOf(ch);
+  const pop=document.getElementById('tierRevertPop');
+  if(!stat||!stat.manual||!pop)return;
+  _tierRevertCh=stat.channel;
+  const autoLabel=stat.auto?stat.auto:TIER_UNRATED;
+  const evidence=stat.count
+    ?`완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)}`
+    :'완료 실적이 없어 자동 산정 불가 — 되돌리면 미산정이 됩니다';
+  const extra=stat.manualCount>1?`<div class="tier-revert-ev">이 채널의 공구건 ${stat.manualCount}개에 수동 값이 있으며 모두 비워집니다</div>`:'';
+  pop.innerHTML=`
+    <div class="tier-revert-hd">${_escAttr(stat.channel)}</div>
+    <div>수동 <b>${stat.manual}</b> → 자동 <b>${autoLabel}</b></div>
+    <div class="tier-revert-ev">${evidence}</div>
+    ${extra}
+    <div class="tier-revert-btns">
+      <button type="button" class="tier-revert-cancel" onclick="closeTierRevertPop()">취소</button>
+      <button type="button" class="tier-revert-go" id="tierRevertGo" onclick="confirmTierRevert()">자동 산정으로 되돌리기</button>
+    </div>`;
+  pop.classList.add('open');
+  // 배지 바로 아래에 띄우되 화면 밖으로 나가면 위로 뒤집고 좌우로 물림(기간 필터 팝오버와 같은 방식)
+  const r=(ev&&ev.currentTarget?ev.currentTarget:document.body).getBoundingClientRect();
+  const vw=window.innerWidth,vh=window.innerHeight,m=6;
+  const pw=pop.offsetWidth,ph=pop.offsetHeight;
+  let top=r.bottom+m;
+  if(top+ph>vh-8&&r.top-m-ph>=8)top=r.top-m-ph;
+  pop.style.top=Math.max(8,Math.min(top,vh-8-ph))+'px';
+  pop.style.left=Math.max(8,Math.min(r.left,vw-8-pw))+'px';
+}
+function closeTierRevertPop(){
+  const pop=document.getElementById('tierRevertPop');
+  if(pop){pop.classList.remove('open');pop.innerHTML='';}
+  _tierRevertCh='';
+}
+document.addEventListener('click',ev=>{
+  if(ev.target.closest('#tierRevertPop')||ev.target.closest('.tier-flag-btn'))return;
+  closeTierRevertPop();
+});
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape')closeTierRevertPop();});
+
+async function confirmTierRevert(){
+  const ch=_tierRevertCh;
+  if(!ch)return;
+  const stat=tierStatOf(ch);
+  const btn=document.getElementById('tierRevertGo');
+  if(btn){btn.disabled=true;btn.textContent='되돌리는 중...';}
+  const url=_getGasUrl();
+  try{
+    if(url){
+      const j=await _gasWrite(url,'clearChannelTier',{channel:ch});
+      if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'clearChannelTier 응답에 success:true가 없습니다');
+    }
+    // fetchLive가 끝나기 전에도 화면이 바로 바뀌도록 로컬 DATA에서도 같은 채널 값을 비움
+    const key=_dashInfluencerNorm(ch);
+    DATA.forEach(d=>{if(_dashInfluencerNorm(d.ch||d.influencer||'')===key)d.tier='';});
+    closeTierRevertPop();
+    render(); // 등급 캐시가 무효화되며 표·차트가 자동 등급으로 재집계됨
+    const after=tierStatOf(ch);
+    const label=after&&after.auto?after.auto:TIER_UNRATED;
+    showToast(after&&after.auto
+      ?`${ch} 등급이 자동 산정(${label})으로 전환됐습니다`
+      :`${ch} 수동 등급을 해제했습니다 — 완료 실적이 없어 미산정입니다`,{type:'success'});
+    if(url)fetchLive();
+  }catch(e){
+    console.error('[등급 되돌리기 실패]',e);
+    if(btn){btn.disabled=false;btn.textContent='자동 산정으로 되돌리기';}
+    showToast('되돌리기 실패: '+_friendlySaveError(e.message),{type:'error'});
+  }
+}
+
 // 직전 완료 건 시점의 자동 등급 대비 승격(▲)/강등(▼). 수동 지정 채널은 화면 등급이 자동 등급을
 // 따라가지 않으므로 표시하지 않음(오해 방지).
 function tierDeltaHtml(stat){
@@ -2953,7 +3061,7 @@ function renderDashChannelAnalytics(){
   body.innerHTML=rows.map(r=>`
     <tr>
       <td>${r.ch}</td>
-      <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat))}">${tierBadgeWithFlags(r.tierStat)}${tierDeltaHtml(r.tierStat)}</td>
+      <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat))}">${tierBadgeWithFlags(r.tierStat,true)}${tierDeltaHtml(r.tierStat)}</td>
       <td class="num-col">${r.count}</td>
       <td class="num-col"><strong>${won(r.revSum)}</strong></td>
       <td class="num-col">${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
@@ -5123,6 +5231,16 @@ function _refreshTierAutoLine(inputId,selectId,hostId){
   const stat=tierStatOf(ch);
   const own=selEl?selEl.value:'';
   const lines=[];
+  // 이 채널의 '다른' 공구건 중 수동 값을 가진 건 수 — 수동 값이 채널 전체에 걸린다는 점을 알려줌
+  const otherManual=Math.max(0,(stat?stat.manualCount||0:0)-(own?1:0));
+  const warnEl=document.getElementById(hostId==='mTierAuto'?'mTierOtherWarn':'fTierOtherWarn');
+  if(warnEl){
+    const msg=`수동 값은 채널 전체에 적용되며, 이 채널의 다른 공구건 ${otherManual}개에도 수동 값이 있습니다`;
+    warnEl.style.display=otherManual>0?'':'none';
+    warnEl.textContent=otherManual>0?`⚠ 다른 건 ${otherManual}개`:'';
+    warnEl.title=otherManual>0?msg:'';
+    if(otherManual>0)lines.push(msg);
+  }
   if(!stat||!stat.count){
     lines.push(`자동 산정: ${tierBadge('')} <span style="color:var(--text-3)">완료된 공구 실적이 없어 아직 산정할 수 없습니다(신규 채널)</span>`);
   }else{
