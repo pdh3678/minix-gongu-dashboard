@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'tier-manual-clear-2026-09-11-01';
+var SCRIPT_VERSION = 'followers-2026-09-11-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -80,6 +80,8 @@ var COL = {
   note2:        51,  // AZ: 비고 (신규 자유입력 — 구 비고 내용은 마이그레이션 시 전부 여기로 이관됨)
   // 2026-09-09 신규 추가 — 인플루언서 등급. 기존 열 인덱스가 밀리지 않도록 반드시 맨 끝에만 추가할 것.
   tier:         52,  // BA: 등급(수동) — 자동 산정을 덮어쓸 때만 값을 넣음. 빈값이 기본(=자동 산정 사용)
+  // 2026-09-11 신규 추가 — 팔로워 수(공구 진행 당시 값). 등급을 매출/팔로워 두 축으로 나누면서 추가됨.
+  followers:    53,  // BB: 팔로워 수 — 숫자만. 대표 행(코드순번=1)에만 기록하는 건별 스냅샷 값
 };
 
 // 릴스별 조회수/링크를 담는 열 범위: Z~AI (10칸). 셀 값=조회수(만 단위), 링크=해당 셀의 하이퍼링크.
@@ -105,6 +107,19 @@ var TIER_MIN_SAMPLE = 3; // 등급별 집계에서 "표본 적음"으로 표시�
 function _normalizeTier(v) {
   var t = String(v || '').trim();
   return TIER_OPTIONS.indexOf(t) !== -1 ? t : '';
+}
+
+// ── 팔로워 수 (2026-09-11) ──
+// 등급을 매출 축과 팔로워 축 두 개로 나누면서 추가된 열. 산정은 프론트가 하고(FOLLOWER_RULES),
+// GAS는 이 열의 읽기/쓰기와 값 정규화만 담당함 — 등급 열과 같은 역할 분담.
+var FOLLOWERS_HEADER = '팔로워 수';
+// 시트/프론트에서 온 값을 숫자로 — 콤마·공백이 섞여 있어도 받아주고, 음수/비수치/빈값은 null.
+// null은 "미입력"이고 0과 다름(0은 '팔로워 0명'이라는 실제 값으로 취급).
+function _normalizeFollowers(v) {
+  if (v === null || v === undefined || v === '') return null;
+  var n = (typeof v === 'number') ? v : Number(String(v).replace(/[,\s]/g, ''));
+  if (!isFinite(n) || n < 0) return null;
+  return Math.round(n);
 }
 
 // ── 사은품/선착순/오픈시간/적립금 드롭다운 공용 상수 (2026-08-18 모달 개편) ──
@@ -826,6 +841,7 @@ function parseMainSheet(sheet) {
     var firstComeQty = String(pRow[COL.firstComeQty] || '').trim();
     var note2      = String(pRow[COL.note2]     || '').trim();
     var tier       = _normalizeTier(pRow[COL.tier]); // 허용값(TIER_OPTIONS) 밖이면 빈값=미분류
+    var followers  = _normalizeFollowers(pRow[COL.followers]); // 공구 당시 팔로워 수(없으면 null=미입력)
 
     // 인플루언서 링크: 별도 링크 열(COL.link)에 값이 있으면 그걸 우선하고, 없으면 채널명 셀에
     // 걸린 하이퍼링크로 채움(둘 다 없으면 빈 값). 채널명 셀에 링크가 없는 행도 있을 수 있음.
@@ -933,6 +949,7 @@ function parseMainSheet(sheet) {
       firstComeQty: firstComeQty,
       note2: note2,
       tier: tier,
+      followers: followers,
       rowCount:    members.length // 이 그룹(dealId)이 시트에서 실제로 몇 개 물리 행을 차지하는지 — 프론트가 "N행" 안내에 사용
     });
   }
@@ -943,7 +960,7 @@ function parseMainSheet(sheet) {
 
 // 대시보드에서 쓰는 dealId/codeSeq 열에 헤더가 없으면 채워줌(원본 시트 열이 부족하면 확장도 함)
 function _ensureExtraHeaders(sheet) {
-  var maxColNeeded = COL.tier + 1;
+  var maxColNeeded = COL.followers + 1;
   if (sheet.getMaxColumns() < maxColNeeded) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), maxColNeeded - sheet.getMaxColumns());
   }
@@ -958,7 +975,8 @@ function _ensureExtraHeaders(sheet) {
     [COL.giftQty3, '사은품 수량3'],
     [COL.firstComeQty, '선착순 수량'],
     [COL.note2, '비고'],
-    [COL.tier, TIER_HEADER]
+    [COL.tier, TIER_HEADER],
+    [COL.followers, FOLLOWERS_HEADER]
   ];
   for (var i = 0; i < headers.length; i++) {
     var cell = sheet.getRange(2, headers[i][0] + 1);
@@ -1249,7 +1267,9 @@ var PRIMARY_ONLY_COLS = {
   giftItem1: COL.giftItem1, giftQty1: COL.giftQty1,
   giftItem2: COL.giftItem2, giftQty2: COL.giftQty2,
   giftItem3: COL.giftItem3, giftQty3: COL.giftQty3,
-  firstComeQty: COL.firstComeQty, note2: COL.note2
+  firstComeQty: COL.firstComeQty, note2: COL.note2,
+  // 팔로워 수는 "공구 진행 당시" 스냅샷이라 채널이 아니라 건에 속하는 값 — 대표 행에만 기록함
+  followers: COL.followers
 };
 
 // 채널명(E열) 셀의 텍스트는 그대로 두고 하이퍼링크만 걸거나 제거함 — 별도 링크 열(COL.link)과
@@ -1369,6 +1389,7 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'updateDeal') resp = _updateDeal(ss, data);
     else if (action === 'deleteDeal') resp = _deleteDeal(ss, data);
     else if (action === 'clearChannelTier') resp = _clearChannelTier(ss, data);
+    else if (action === 'updateChannelFollowers') resp = _updateChannelFollowers(ss, data);
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
@@ -1565,6 +1586,8 @@ function _addDeal(ss, data) {
       // 총매출 칸이 계속 빈 채로 남는 버그가 있었음 — 2026-08-21 확인).
       if (data.qty != null) row[COL.qty] = data.qty;
       if (data.views != null) row[COL.views] = data.views;
+      var addFollowers = _normalizeFollowers(data.followers);
+      if (addFollowers != null) row[COL.followers] = addFollowers;
     }
     for (var c = 0; c < numCols; c++) if (row[c] === undefined) row[c] = '';
     rows.push(row);
@@ -1639,6 +1662,11 @@ function _updateDeal(ss, data) {
   var c = data.changes || {};
   // 등급은 허용값 4종(TIER_OPTIONS) 밖이면 시트에 남기지 않음 — 저장 경로에서도 읽기와 같은 기준을 적용
   if (c.tier !== undefined) c.tier = _normalizeTier(c.tier);
+  // 팔로워 수도 읽기와 같은 기준으로 정규화 — 콤마 섞인 문자열이 와도 숫자로, 빈값은 ''(셀 비움)
+  if (c.followers !== undefined) {
+    var nf = _normalizeFollowers(c.followers);
+    c.followers = nf == null ? '' : nf;
+  }
 
   // 공통 필드 — 그룹의 모든 행에 동일 반영
   for (var k in GROUP_MIRROR_COLS) {
@@ -1839,6 +1867,47 @@ function _clearChannelTier(ss, data) {
   if (cleared) tierRange.setValues(tierVals);
   Logger.log('[등급 수동 초기화] 채널=' + channel + ' / 비운 행 수=' + cleared);
   return _json({ success: true, cleared: cleared, channel: channel });
+}
+
+/* 채널 단위 '팔로워 수' 갱신 (2026-09-11) — 채널별 성과 표의 인라인 편집에서 호출.
+   팔로워 수 자체는 건별 스냅샷이지만, 표에서 고치는 값의 의미는 "이 채널의 현재 팔로워 수"라
+   그 채널의 **가장 최근 공구건 대표 행**에만 쓴다(과거 건의 당시 값을 소급해 덮어쓰면 시점별
+   스냅샷이라는 성격이 깨짐). 프론트의 followerCount도 같은 규칙("가장 최근 값")으로 읽는다.
+   _clearChannelTier와 같이 열을 통째로 읽어 메모리에서 판단한 뒤 셀 하나만 쓴다. */
+function _updateChannelFollowers(ss, data) {
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+  var channel = String((data && data.channel) || '').trim();
+  if (!channel) return _json({ error: '채널명이 비어 있습니다.' });
+  var followers = _normalizeFollowers(data && data.followers); // null이면 값 지우기
+  _ensureExtraHeaders(sheet);
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastRow <= DATA_START_ROW) return _json({ error: '해당 채널의 공구건을 찾을 수 없습니다.' });
+
+  var n = lastRow - DATA_START_ROW;
+  var first = DATA_START_ROW + 1;
+  var chVals    = sheet.getRange(first, COL.channel + 1, n, 1).getValues();
+  var brandVals = sheet.getRange(first, COL.brand + 1, n, 1).getValues();
+  var seqVals   = sheet.getRange(first, COL.codeSeq + 1, n, 1).getValues();
+  var yearVals  = sheet.getRange(first, COL.year + 1, n, 1).getValues();
+  var startVals = sheet.getRange(first, COL.startMD + 1, n, 1).getValues();
+
+  var bestRow = 0, bestKey = '';
+  for (var i = 0; i < n; i++) {
+    if (String(chVals[i][0] || '').trim() !== channel) continue;
+    if (!MINIX_ALIASES[String(brandVals[i][0] || '').trim()]) continue; // Minix 외 행은 건드리지 않음
+    var seq = _numOrNull(seqVals[i][0]);
+    if (seq != null && seq !== 1) continue; // 같은 공구건의 보조 행(코드순번 2~)은 건너뜀
+    // 날짜를 못 읽는 행도 후보에서 빼지 않음 — 빈 키('')는 어떤 날짜보다 작아 자연히 뒤로 밀림
+    var ymd = _parseDate(startVals[i][0], _numOrNull(yearVals[i][0])) || '';
+    if (bestRow === 0 || ymd >= bestKey) { bestRow = first + i; bestKey = ymd; }
+  }
+  if (!bestRow) return _json({ error: '해당 채널의 공구건을 찾을 수 없습니다.' });
+
+  sheet.getRange(bestRow, COL.followers + 1).setValue(followers == null ? '' : followers);
+  Logger.log('[팔로워 수 갱신] 채널=' + channel + ' / 행=' + bestRow + ' / 값=' + followers);
+  return _json({ success: true, channel: channel, row: bestRow, followers: followers, start: bestKey });
 }
 
 // 공구건 삭제 — dealId 그룹의 모든 행을 하드 삭제(릴스 데이터도 대표 행에 같이 있어 함께 삭제됨)

@@ -282,7 +282,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
    minmax(0,...)는 900px 초과(2단 유지 구간)에서 캔버스 고정폭이 트랙을 밀어붙이는 것을
    방지하는 동일한 안전장치(.chart-row/.kpi-row와 같은 이유 — 위 주석 참고). */
 .analytics-split{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
-@media(max-width:900px){.analytics-split{grid-template-columns:minmax(0,1fr)}}
+/* 채널별 성과 표만 컬럼이 11개로 늘어(등급 2종+갭+팔로워 수) 표 쪽을 더 넓게 — 다른 세 섹션의
+   기본 비율은 그대로 두려고 별도 클래스로 분리함 */
+.analytics-split-wide{grid-template-columns:minmax(0,2.1fr) minmax(0,1fr)}
+@media(max-width:900px){.analytics-split,.analytics-split-wide{grid-template-columns:minmax(0,1fr)}}
 
 /* KPI 카드·상단 차트(산점도/추이) 반응형 — .kpi-row/#salesKpiRow/.chart-row의 기본(넓은
    화면용) 정의는 이 파일 위쪽에 있어서, 여기서 나중에(소스 순서상 뒤에) 덮어써야 좁은
@@ -343,6 +346,54 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .tier-manual-warn{display:inline-block;margin-left:4px;font-size:9px;font-weight:800;padding:1px 5px;
   border-radius:3px;background:var(--warn-bg);color:var(--warn);cursor:help;letter-spacing:0;white-space:nowrap}
 .hd-info{cursor:help;color:var(--text-3);font-weight:400;margin-left:3px}
+/* 등급 축 토글 — [매출등급 | 팔로워등급]. 카드 제목 옆에 붙는 작은 세그먼트 컨트롤 */
+.axis-toggle{display:inline-flex;margin-left:10px;border:1px solid var(--border);border-radius:6px;overflow:hidden;vertical-align:middle}
+.axis-toggle button{border:none;background:var(--surface-2);color:var(--text-2);font-family:inherit;
+  font-size:11px;font-weight:700;padding:3px 10px;cursor:pointer;letter-spacing:0}
+.axis-toggle button+button{border-left:1px solid var(--border)}
+.axis-toggle button.on{background:var(--minix);color:#fff}
+/* 갭 배지 — 채널별 성과 표/교차 분석 공용 */
+.bp-gap{white-space:nowrap}
+/* 팔로워 수 인라인 편집 셀 */
+.fol-cell{cursor:text}
+.fol-cell:hover{background:var(--minix-lt)}
+.fol-inp{width:100%;box-sizing:border-box;font:inherit;font-size:11.5px;text-align:right;
+  border:1px solid var(--minix);border-radius:4px;padding:2px 5px;background:var(--surface)}
+.fol-missing-btn{border:none;background:var(--warn-bg);color:var(--warn);font-family:inherit;font-size:10.5px;
+  font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;margin-left:8px;letter-spacing:0}
+.fol-missing-btn.on{background:var(--warn);color:#fff}
+/* 등급 교차 분석 — 매트릭스 */
+.gap-matrix{display:grid;gap:4px;font-size:11px}
+.gap-matrix .gm-h{font-size:10px;color:var(--text-3);font-weight:700;text-align:center;padding:2px 0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gap-matrix .gm-rowlbl{display:flex;align-items:center;justify-content:flex-end;padding-right:4px}
+.gap-matrix .gm-cell{border-radius:5px;padding:8px 4px;text-align:center;line-height:1.35;cursor:pointer;
+  border:1px solid transparent}
+.gap-matrix .gm-cell:hover{border-color:var(--minix)}
+.gap-matrix .gm-cell.gm-zero{cursor:default;color:var(--text-3)}
+.gap-matrix .gm-cell.gm-zero:hover{border-color:transparent}
+.gap-matrix .gm-v{display:block;font-weight:800;font-size:12.5px;color:var(--text)}
+.gap-matrix .gm-sub{display:block;font-size:9.5px;color:var(--text-3)}
+.gap-matrix-sum{margin-top:9px;font-size:11.5px;color:var(--text-2)}
+.gap-matrix-sum b{color:var(--text)}
+.gap-axis-lbl{font-size:10px;color:var(--text-3);margin-top:5px;text-align:center}
+.gap-rho{font-size:11.5px;font-weight:700;color:var(--text-2);white-space:nowrap;flex-shrink:0}
+.gap-tabs{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex-shrink:0}
+.gap-tabs button{border:none;background:var(--surface-2);color:var(--text-2);font-family:inherit;
+  font-size:10.5px;font-weight:700;padding:3px 9px;cursor:pointer;letter-spacing:0}
+.gap-tabs button+button{border-left:1px solid var(--border)}
+.gap-tabs button.on{background:var(--minix);color:#fff}
+.gap-ch-link{color:var(--minix);cursor:pointer;font-weight:700}
+.gap-ch-link:hover{text-decoration:underline}
+/* 매트릭스 셀 클릭 팝오버 — 되돌리기 팝오버와 같은 이유로 body 직속 */
+.gap-cell-pop{position:fixed;z-index:200;display:none;width:320px;max-height:60vh;overflow:auto;
+  background:var(--surface);border:1px solid var(--border-s);border-radius:8px;
+  box-shadow:0 8px 24px rgba(17,24,39,.16);padding:11px 13px;font-size:11.5px;color:var(--text-2)}
+.gap-cell-pop.open{display:block}
+.gap-cell-pop .gcp-hd{font-size:12px;font-weight:700;color:var(--text);margin-bottom:7px}
+.gap-cell-pop table{width:100%;border-collapse:collapse}
+.gap-cell-pop td{padding:3px 4px;border-bottom:1px solid var(--border);white-space:nowrap}
+.gap-cell-pop td:first-child{white-space:normal}
 /* 등급별 성과 2차 분석 — 2×2 그리드(좁은 화면에선 1열로 접힘) */
 /* 좌(히트맵·재협업률) 45 : 우(안정성·믹스) 55 — 우측 차트가 축 눈금·범례 때문에 폭을 더 먹음.
    minmax(0,...)가 없으면 그리드 열이 "내용물 최소 폭"까지 부풀어 옆 열을 밀어내고, 결국 캔버스가
@@ -468,6 +519,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .fg-2{grid-template-columns:1fr 1fr}
 .fg-3{grid-template-columns:1fr 1fr 1fr}
 .fg-4{grid-template-columns:repeat(4,1fr)}
+.fg-5{grid-template-columns:repeat(5,1fr)}
 .fg .full{grid-column:1/-1}
 .fg+.fg,.fg+.f-sec{margin-top:10px}
 .f-grp{display:flex;flex-direction:column;gap:4px}
@@ -657,8 +709,12 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           </label>
           <span class="dash-filter-chip" id="dashInfluencerChip" style="display:none"></span>
           <label style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:11px;font-weight:700;color:var(--text-2)">등급</span>
+            <span style="font-size:11px;font-weight:700;color:var(--text-2)">매출등급</span>
             <select class="f-inp f-sel dash-filter-select dash-pill-select" id="dashTierFilter" onchange="_onDashTierFilterChange()"></select>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;font-weight:700;color:var(--text-2)">팔로워등급</span>
+            <select class="f-inp f-sel dash-filter-select dash-pill-select" id="dashFollowerTierFilter" onchange="_onDashFollowerTierFilterChange()"></select>
           </label>
           <label style="display:flex;align-items:center;gap:8px">
             <span style="font-size:11px;font-weight:700;color:var(--text-2)">품목</span>
@@ -680,12 +736,20 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         </div>
       </div>
       <div class="card">
-        <div class="card-hd"><span>등급별 성과</span><span class="card-hd-r" id="dashTierHdNote">완료+진행중 기준</span></div>
+        <div class="card-hd">
+          <span>등급별 성과
+            <span class="axis-toggle" id="dashTierAxisToggle">
+              <button type="button" data-axis="rev" onclick="_setDashTierAxis('rev')">매출등급</button>
+              <button type="button" data-axis="follower" onclick="_setDashTierAxis('follower')">팔로워등급</button>
+            </span>
+          </span>
+          <span class="card-hd-r" id="dashTierHdNote">완료+진행중 기준</span>
+        </div>
         <div class="tbl-wrap">
           <table><thead><tr>
-            <th>등급</th><th class="num-col">건수</th>
-            <th class="num-col">총매출<span class="hd-info" title="등급이 매출 기준으로 산정되므로 매출 지표는 참고용입니다">ⓘ</span></th>
-            <th class="num-col">건당 평균매출<span class="hd-info" title="등급이 매출 기준으로 산정되므로 매출 지표는 참고용입니다">ⓘ</span></th>
+            <th id="dashTierHdAxis">등급</th><th class="num-col">건수</th>
+            <th class="num-col">총매출<span class="hd-info tier-selfref" title="등급이 매출 기준으로 산정되므로 매출 지표는 참고용입니다">ⓘ</span></th>
+            <th class="num-col">건당 평균매출<span class="hd-info tier-selfref" title="등급이 매출 기준으로 산정되므로 매출 지표는 참고용입니다">ⓘ</span></th>
             <th class="num-col">평균 판매수량</th><th class="num-col">평균 조회수</th><th class="num-col">전환율</th><th class="num-col">조회수 1만당 매출</th>
           </tr></thead><tbody id="dashTierBody"></tbody></table>
         </div>
@@ -736,13 +800,76 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         </div>
       </div>
 
+      <!-- 등급 교차 분석 — 매출등급과 팔로워등급의 관계(갭)를 네 각도에서 봄. 대상은 채널 단위이고
+           "완료 건 1건 이상 + 팔로워 입력"을 만족하는 채널만(둘 중 하나라도 없으면 갭이 정의되지 않음). -->
       <div class="card">
-        <div class="card-hd"><span>채널(인플루언서)별 성과</span><span class="card-hd-r">완료+진행중 기준</span></div>
-        <div class="analytics-split">
+        <div class="card-hd"><span>등급 교차 분석</span><span class="card-hd-r" id="dashGapHdNote"></span></div>
+        <div class="dash-analytics-empty" id="dashGapEmpty" style="display:none"></div>
+        <div class="tier2-grid" id="dashGapGrid">
+          <div>
+            <div class="tier2-hd">
+              <div class="f-sec" style="margin:0">팔로워 × 매출 등급 매트릭스</div>
+              <select class="f-inp f-sel dash-filter-select" id="dashGapMatrixMetric" onchange="_onDashGapMatrixMetricChange()">
+                <option value="count">채널 수</option>
+                <option value="rev">총매출 합계</option>
+              </select>
+            </div>
+            <div class="tier2-sub">행=팔로워등급(위가 메가) · 열=매출등급(오른쪽이 메가) · 우상향 대각선이 '적정' · 셀을 클릭하면 채널 목록</div>
+            <div class="gap-matrix" id="dashGapMatrix"></div>
+            <div class="gap-axis-lbl">→ 매출등급</div>
+            <div class="gap-matrix-sum" id="dashGapMatrixSum"></div>
+          </div>
+
+          <div>
+            <div class="tier2-hd">
+              <div class="f-sec" style="margin:0">팔로워 수 × 평균 매출</div>
+              <span class="gap-rho" id="dashGapRho"></span>
+            </div>
+            <div class="tier2-sub">두 축 모두 log 스케일 · 점선은 등급 임계값(4×4 격자) · 점 색은 갭 라벨</div>
+            <div class="tier2-chart"><canvas id="dashGapScatter"></canvas></div>
+          </div>
+
+          <div>
+            <div class="tier2-hd">
+              <div class="f-sec" style="margin:0">팔로워등급별 효율</div>
+              <select class="f-inp f-sel dash-filter-select" id="dashGapEffMetric" onchange="_onDashGapEffMetricChange()">
+                <option value="revPerFol">팔로워 1만 명당 평균 매출</option>
+                <option value="conv">조회→구매 전환율</option>
+              </select>
+            </div>
+            <div class="tier2-sub" id="dashGapEffSub"></div>
+            <div class="tier2-chart"><canvas id="dashGapEffChart"></canvas></div>
+          </div>
+
+          <div>
+            <div class="tier2-hd">
+              <div class="f-sec" style="margin:0">고효율 / 저효율 채널 TOP 10</div>
+              <div class="gap-tabs" id="dashGapTopTabs">
+                <button type="button" data-dir="high" onclick="_setDashGapTopDir('high')">갭 높은 순</button>
+                <button type="button" data-dir="low" onclick="_setDashGapTopDir('low')">갭 낮은 순</button>
+              </div>
+            </div>
+            <div class="tier2-sub">갭이 같으면 팔로워 1만 명당 매출 순 · 채널명을 클릭하면 인플루언서 필터가 걸립니다</div>
+            <div class="tbl-wrap">
+              <table><thead><tr>
+                <th>채널</th><th>팔로워등급 → 매출등급</th><th>갭</th>
+                <th class="num-col">팔로워 수</th><th class="num-col">평균 매출</th><th class="num-col">완료</th>
+              </tr></thead><tbody id="dashGapTopBody"></tbody></table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><span>채널(인플루언서)별 성과<button type="button" class="fol-missing-btn" id="dashChFolMissing" onclick="_toggleDashChFollowerMissing()" style="display:none"></button></span><span class="card-hd-r">완료+진행중 기준</span></div>
+        <div class="analytics-split analytics-split-wide">
           <div class="tbl-wrap">
             <table><thead><tr>
               <th class="sortable" id="dashChHdCh" onclick="_sortDashChannelTable('ch')">채널<span class="sort-ic">⇕</span></th>
-              <th class="sortable" id="dashChHdTier" onclick="_sortDashChannelTable('tier')">등급<span class="hd-info" title="등급은 필터와 무관하게 채널의 전체 기간 실적으로 산정됩니다" onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
+              <th class="sortable" id="dashChHdTier" onclick="_sortDashChannelTable('tier')">매출등급<span class="hd-info" title="등급은 필터와 무관하게 채널의 전체 기간 실적으로 산정됩니다" onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
+              <th class="sortable" id="dashChHdFTier" onclick="_sortDashChannelTable('followerTier')">팔로워등급<span class="hd-info" id="dashChHdFTierInfo" onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
+              <th class="sortable" id="dashChHdGap" onclick="_sortDashChannelTable('gap')">갭<span class="hd-info" title="매출등급 순위 − 팔로워등급 순위 (나노=0 … 메가=3). +면 팔로워 규모 대비 잘 파는 채널(고효율), −면 그 반대(저효율)." onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
+              <th class="num-col sortable" id="dashChHdFol" onclick="_sortDashChannelTable('followerCount')">팔로워 수<span class="hd-info" title="셀을 클릭하면 바로 수정할 수 있습니다 — 저장하면 그 채널의 가장 최근 공구건 행에 기록됩니다" onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdCount" onclick="_sortDashChannelTable('count')">공구 횟수 (기간 내)<span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdRev" onclick="_sortDashChannelTable('revSum')">누적 매출<span class="sort-ic">⇕</span></th>
               <th class="num-col sortable" id="dashChHdQty" onclick="_sortDashChannelTable('avgQty')">평균 판매수량<span class="sort-ic">⇕</span></th>
@@ -954,7 +1081,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         </div>
 
         <div class="f-sec">채널 정보</div>
-        <div class="fg fg-4">
+        <div class="fg fg-5">
           <div class="f-grp">
             <label class="f-lbl">채널명 <span class="f-req">*</span></label>
             <input class="f-inp" type="text" id="mInfluencer" list="chNameList" autocomplete="off" oninput="_onModalInfluencerInput()">
@@ -975,6 +1102,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <div class="f-grp">
             <label class="f-lbl" id="mChIdLbl">채널 ID</label>
             <input class="f-inp" type="text" id="mChannelId" placeholder="입력 시 링크 자동 생성" oninput="mOnChannelIdChange()">
+          </div>
+          <div class="f-grp">
+            <label class="f-lbl">팔로워 수 <span class="f-badge tier-help" id="mFollowerHelp">기준 ?</span></label>
+            <input class="f-inp" type="text" id="mFollowers" inputmode="numeric" placeholder="예: 1,520,000" oninput="_onFollowerInput(this)">
           </div>
         </div>
         <div class="tier-auto-line" id="mTierAuto"></div>
@@ -1110,6 +1241,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
 <!-- 수동 등급 되돌리기 확인 팝오버 (body 직속 — 카드의 stacking context에 갇히지 않게) -->
 <div class="tier-revert-pop" id="tierRevertPop"></div>
+<div class="gap-cell-pop" id="dashGapCellPop"></div>
 
 <!-- 디버그 모달 -->
 <div class="ov" id="debugOv">
@@ -1203,7 +1335,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     <!-- 채널명 자동완성 후보 — 등록 폼/수정 모달의 채널명 입력이 같이 참조(내용은 _refreshChannelNameList가 채움) -->
     <datalist id="chNameList"></datalist>
     <div class="f-sec">채널 정보</div>
-    <div class="fg fg-4">
+    <div class="fg fg-5">
       <div class="f-grp">
         <label class="f-lbl">채널명 <span class="f-req">*</span></label>
         <input class="f-inp" type="text" id="fInfluencer" placeholder="예: 민이" list="chNameList" autocomplete="off" oninput="_onFormInfluencerInput()">
@@ -1224,6 +1356,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div class="f-grp">
         <label class="f-lbl" id="fChIdLbl">채널 ID</label>
         <input class="f-inp" type="text" id="fChannelId" placeholder="플랫폼 먼저 선택" oninput="onChannelIdChange()">
+      </div>
+      <div class="f-grp">
+        <label class="f-lbl">팔로워 수 <span class="f-badge tier-help" id="fFollowerHelp">기준 ?</span></label>
+        <input class="f-inp" type="text" id="fFollowers" inputmode="numeric" placeholder="예: 1,520,000" oninput="_onFollowerInput(this)">
       </div>
     </div>
     <div class="tier-auto-line" id="fTierAuto"></div>
@@ -1384,7 +1520,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-sel-sort-2026-09-11-04';
+const DASHBOARD_VERSION='dash-follower-tier-2026-09-11-05';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1393,7 +1529,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='tier-manual-clear-2026-09-11-01';
+const REQUIRED_SCRIPT_VERSION='followers-2026-09-11-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -1410,12 +1546,12 @@ const DEFAULT_GAS_URL='https://script.google.com/macros/s/AKfycbxz5VBbD1IDha4mLC
 // 하므로 openCfg()는 이 함수를 쓰지 않고 localStorage를 직접 읽음).
 function _getGasUrl(){return localStorage.getItem('gp_gas_url')||DEFAULT_GAS_URL;}
 const SAMPLE=[
-  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
-  {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:19.8,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
-  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:41.2,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
-  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:15.6,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
-  {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'키친퀸',tier:'메가',platform:'인스타그램',chId:'kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:33.4,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
-  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:27.8,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
+  {id:1,brand:'Minix',product:'더 플렌더 PRO',ch:'민이',followers:128000,platform:'인스타그램',chId:'minnie.life',link:'https://www.instagram.com/minnie.life',start:'2026-05-05',end:'2026-05-07',status:'완료',views:28.6,qty:234,rev:6997800,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'},reels:[{url:'https://www.instagram.com/reel/sample1/',views:18.2,thumb:''},{url:'https://www.instagram.com/reel/sample2/',views:10.4,thumb:''}]},
+  {id:2,brand:'Minix',product:'더시프트',ch:'데일리핏',followers:1450000,platform:'유튜브',chId:'everyday_fit',start:'2026-05-12',end:'2026-05-14',status:'완료',views:19.8,qty:178,rev:4539000,code:'MX-SHF-001',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
+  {id:3,brand:'Minix',product:'더 플렌더 MAX',ch:'헤어러브제이',followers:42000,platform:'인스타그램',chId:'hairlove_j',start:'2026-05-20',end:'2026-05-22',status:'완료',views:41.2,qty:389,rev:15170100,code:'MX-BLD-002',s:{retail:52900,sale:42900,comm:13,note:'인스타 전용 · 상위 달성 시 +3% 보너스'}},
+  {id:4,brand:'Minix',product:'더슬림',ch:'슬림데일리',followers:7600,platform:'인스타그램',chId:'slim.daily',start:'2026-05-27',end:'2026-05-29',status:'완료',views:15.6,qty:145,rev:3770000,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
+  {id:5,brand:'Minix',product:'더 플렌더 PRO',ch:'키친퀸',tier:'메가',followers:310000,platform:'인스타그램',chId:'kitchen_queen',start:'2026-06-10',end:'2026-06-12',status:'완료',views:33.4,qty:298,rev:8910200,code:'MX-BLD-001',s:{retail:39900,sale:32900,comm:12,note:'상위 50개 구매자 추가 증정품 제공'}},
+  {id:6,brand:'Minix',product:'더시프트',ch:'데일리팁스',followers:96000,platform:'유튜브',chId:'daily.tips',start:'2026-06-24',end:'2026-06-26',status:'진행중',views:27.8,qty:241,rev:9400000,code:'MX-SHF-002',s:{retail:35900,sale:29900,comm:11,note:'공구 전용 증정품 세트 포함'}},
   {id:7,brand:'Minix',product:'더 플렌더 MAX',ch:'뷰티노트',platform:'인스타그램',chId:'beauty.note',start:'2026-07-02',end:'2026-07-04',status:'예정',views:null,qty:null,rev:null,code:'MX-BLD-002',s:{retail:59900,sale:49900,comm:14,note:'신규 채널 기본 스킴'}},
   {id:8,brand:'Minix',product:'더슬림',ch:'핏푸디',platform:'인스타그램',chId:'fit.foodie',start:'2026-07-08',end:'2026-07-10',status:'예정',views:null,qty:null,rev:null,code:'MX-SLM-001',s:{retail:32900,sale:28900,comm:11,note:'기본 스킴 적용'}},
 ];
@@ -1431,10 +1567,11 @@ let EVENTS=SAMPLE_EVENTS.map(e=>({...e}));
 const _NOW=new Date();
 const ST={prod:'all',model:'all'};
 const DASH_PERIOD_LS_KEY='gp_dash_period';
-// channel: null=전체, 문자열=해당 인플루언서(채널명)만 / tier: 'all'=전체, 그 외는 해당 등급만
-// (기간 3종만 localStorage에 저장 — channel/tier는 세션 내 임시 필터라 새로고침 시 전체로 돌아감)
+// channel: null=전체, 문자열=해당 인플루언서(채널명)만
+// revTier/followerTier: 'all'=전체, 그 외는 해당 등급만 — 두 등급 필터는 서로 AND로 조합됨
+// (기간 3종만 localStorage에 저장 — channel/등급 2종은 세션 내 임시 필터라 새로고침 시 전체로 돌아감)
 // product: 'all' | 'line:<라인키>' | 'fine:<모델키>' — 기간과 함께 localStorage에 저장됨
-const DASH={years:null,months:null,weeks:null,channel:null,tier:'all',product:'all'};
+const DASH={years:null,months:null,weeks:null,channel:null,revTier:'all',followerTier:'all',product:'all'};
 function dashPLoad(){
   try{
     const raw=localStorage.getItem(DASH_PERIOD_LS_KEY);
@@ -1612,7 +1749,9 @@ const TIER_TAXONOMY=[
 ];
 const TIER_OPTIONS=TIER_TAXONOMY.map(t=>t.key);
 const TIER_UNRATED='미산정'; // 완료 실적이 없어 자동 산정이 불가능한 채널(+수동 지정도 없는 경우)
-const TIER_COLORS=Object.assign({},...TIER_TAXONOMY.map(t=>({[t.key]:t.color})),{[TIER_UNRATED]:{bg:'#F3F4F6',fg:'#6B7280'}});
+const TIER_FOLLOWER_UNSET='미입력'; // 팔로워 수가 시트에 없어 팔로워등급을 판정할 수 없는 채널
+const TIER_COLORS=Object.assign({},...TIER_TAXONOMY.map(t=>({[t.key]:t.color})),
+  {[TIER_UNRATED]:{bg:'#F3F4F6',fg:'#6B7280'},[TIER_FOLLOWER_UNSET]:{bg:'#F3F4F6',fg:'#6B7280'}});
 const TIER_MIN_SAMPLE=3; // 이 건수 미만이면 등급별 성과 표/차트에서 "표본 적음"으로 표시
 
 /* ── 등급 자동 산정 (2026-09-10 전환) ───────────────────────────────────────
@@ -1631,6 +1770,58 @@ const TIER_RULES=[
   {tier:'마이크로', avg: 20000000, max:  200000000},
 ]; // 어느 기준에도 못 미치면 TIER_FALLBACK
 const TIER_FALLBACK='나노';
+
+/* ── 팔로워등급 (2026-09-11) ────────────────────────────────────────────────
+   등급을 "매출 축"과 "팔로워 축" 두 개로 나눔. 위의 TIER_RULES로 나오는 등급은 이제 화면에서
+   **매출등급**으로 부르고(수동 지정 우선 규칙은 그대로), 여기 FOLLOWER_RULES로 나오는 등급이
+   **팔로워등급**이다.
+   팔로워등급은 누적 평균이 아니라 "채널의 가장 최근 팔로워 수" 하나만 보고 판정한다 — 팔로워는
+   과거값을 평균 내면 성장한 채널이 계속 낮게 잡히는, 시점이 곧 의미인 값이기 때문.
+   두 등급의 차이(갭)가 "팔로워 규모 대비 얼마나 잘 파는 채널인가"를 나타낸다. */
+const FOLLOWER_RULES=[
+  {tier:'메가',     min:1000000},
+  {tier:'매크로',   min: 100000},
+  {tier:'마이크로', min:  10000},
+]; // 어느 기준에도 못 미치면 FOLLOWER_FALLBACK
+const FOLLOWER_FALLBACK='나노';
+// 팔로워 수 → 팔로워등급. null(미입력)은 '나노'로 떨어뜨리지 않고 별도 값으로 구분함 —
+// "팔로워가 적은 채널"과 "아직 안 적은 채널"을 섞으면 갭 분석이 통째로 오염됨.
+function followerTierOf(n){
+  if(n==null)return TIER_FOLLOWER_UNSET;
+  for(let i=0;i<FOLLOWER_RULES.length;i++)if(n>=FOLLOWER_RULES[i].min)return FOLLOWER_RULES[i].tier;
+  return FOLLOWER_FALLBACK;
+}
+// 갭 계산용 점수 — 나노=0 … 메가=3. TIER_OPTIONS는 메가가 앞(0)이라 방향이 반대인 점에 주의.
+// 미산정/미입력은 null → 갭도 null(어느 한쪽이라도 없으면 갭은 의미가 없음).
+function tierScore(t){const i=TIER_OPTIONS.indexOf(t);return i===-1?null:TIER_OPTIONS.length-1-i;}
+function tierGapOf(revTier,fTier){
+  const a=tierScore(revTier),b=tierScore(fTier);
+  return(a==null||b==null)?null:a-b; // 범위 −3 ~ +3
+}
+// 갭 해석 — 팔로워 규모보다 매출등급이 높으면 고효율, 낮으면 저효율
+function gapKind(g){return g==null?null:g>=1?'high':g<=-1?'low':'even';}
+function gapLabelOf(g){const k=gapKind(g);return k?{high:'고효율',even:'적정',low:'저효율'}[k]:'';}
+const GAP_COLORS={high:{bg:'#DCFCE7',fg:'#15803D'},even:{bg:'#F3F4F6',fg:'#6B7280'},low:{bg:'#FFEDD5',fg:'#C2410C'}};
+// "▲+1 고효율" / "● 적정" / "▼−2 저효율" — 부호는 수학 기호(−)로 통일해 하이픈과 헷갈리지 않게 함
+function gapBadge(g){
+  if(g==null)return'<span style="color:var(--text-3)">—</span>';
+  const k=gapKind(g),c=GAP_COLORS[k];
+  const sign=g>0?` +${g}`:g<0?` −${Math.abs(g)}`:'';
+  return`<span class="bp bp-gap" style="background:${c.bg};color:${c.fg}">${k==='high'?'▲':k==='low'?'▼':'●'}${sign} ${gapLabelOf(g)}</span>`;
+}
+// 팔로워 수 표기 — "152만 명"/"8,200명"처럼 짧게(표·툴팁 공용)
+function followerShort(n){
+  if(n==null)return'—';
+  if(n>=10000)return(Math.round(n/10000*10)/10).toLocaleString('ko-KR')+'만 명';
+  return n.toLocaleString('ko-KR')+'명';
+}
+// 팔로워등급 기준표 툴팁 — FOLLOWER_RULES에서 생성(매출등급의 tierCriteriaText와 같은 방식)
+function followerCriteriaText(){
+  return['팔로워등급 기준 (채널의 가장 최근 팔로워 수)']
+    .concat(FOLLOWER_RULES.map(r=>`${r.tier}: ${followerShort(r.min)} 이상`))
+    .concat([`${FOLLOWER_FALLBACK}: 그 외`,`${TIER_FOLLOWER_UNSET}: 팔로워 수가 입력되지 않은 채널`])
+    .join('\n');
+}
 
 // 금액을 "6,200만" / "3.1억"처럼 짧게 — 모달 한 줄 요약과 근거 툴팁 전용(표에는 won()을 그대로 씀)
 function wonShort(n){
@@ -1704,9 +1895,23 @@ function _computeTierStats(deals){
     const manualSrc=manualItems[0];
     const manual=manualSrc?manualTierOf(manualSrc):'';
     const auto=cur?cur.tier:null;
+    /* 팔로워 수는 "가장 최근에 입력된 값" 하나만 씀 — 건별 스냅샷이라 평균을 내면 의미가 사라지고,
+       GAS updateChannelFollowers도 같은 규칙(가장 최근 공구건 행)에 쓰기 때문에 읽기/쓰기가 한 지점에서
+       만난다. 시작일이 같으면 id가 큰(=시트에서 아래쪽) 행이 이기도록 해서 결과를 고정. */
+    const withF=items.filter(d=>d.followers!=null)
+      .sort((a,b)=>String(a.start||'').localeCompare(String(b.start||''))||((a.id||0)-(b.id||0)));
+    const fSrc=withF[withF.length-1];
+    const followerCount=fSrc?fSrc.followers:null;
+    const followerTier=followerTierOf(followerCount);
+    const effective=manual||auto||TIER_UNRATED;
+    const gap=tierGapOf(effective,followerTier);
     map.set(ch,{
       channel:ch,auto,manual,
-      effective:manual||auto||TIER_UNRATED,
+      effective,
+      revTier:effective, // 축 이름이 생긴 뒤의 별칭 — 값은 effective와 항상 같음(기존 호출부 호환)
+      followerCount,followerTier,gap,gapLabel:gapLabelOf(gap),
+      followerAt:fSrc?fSrc.start:'', // 그 팔로워 수가 기록된 공구건의 시작일(툴팁 "2026.08 기준"용)
+      followerDealId:fSrc?fSrc.dealId:'',
       avg:cur?cur.avg:null,max:cur?cur.max:null,count:done.length,
       provisional:done.length===1,
       prevAuto:prev?prev.tier:null,
@@ -1731,10 +1936,29 @@ function tierStatOf(ch){
 }
 // 이 공구건 행에 저장된 "수동 지정" 값(허용값 밖/빈값이면 빈 문자열)
 function manualTierOf(d){const t=String((d&&d.tier)||'').trim();return TIER_OPTIONS.includes(t)?t:'';}
-// 화면·집계에서 쓰는 실효 등급 = 채널 단위(수동 지정 > 자동 산정 > 미산정). 건별 값이 아님에 유의.
+// 화면·집계에서 쓰는 실효 매출등급 = 채널 단위(수동 지정 > 자동 산정 > 미산정). 건별 값이 아님에 유의.
 function effectiveTierOfChannel(ch){const s=tierStatOf(ch);return s?s.effective:TIER_UNRATED;}
 function effectiveTierOf(d){return effectiveTierOfChannel(d&&(d.ch||d.influencer));}
-// 등급별 집계 대상인지 — 미산정은 제외 대상
+// 팔로워 축의 같은 쌍 — 매출등급과 완전히 대칭이라 집계 코드가 축만 바꿔 끼우면 되게 함
+function followerTierOfChannel(ch){const s=tierStatOf(ch);return s?s.followerTier:TIER_FOLLOWER_UNSET;}
+function followerTierOf_(d){return followerTierOfChannel(d&&(d.ch||d.influencer));}
+function followerCountOfChannel(ch){const s=tierStatOf(ch);return s?s.followerCount:null;}
+/* ── 등급 축 (2026-09-11) ───────────────────────────────────────────────────
+   '등급별 성과' 섹션 전체가 이 축 하나로 매출/팔로워를 갈아끼운다. 새 축을 추가하려면 여기에
+   한 줄 추가하고 토글 버튼만 늘리면 됨 — 각 차트가 축을 따로 알 필요가 없게 만든 게 핵심. */
+const TIER_AXES={
+  rev:{key:'rev',label:'매출등급',of:effectiveTierOf,unratedWord:'등급 미산정/미분류',
+    // 매출등급은 매출로 산정되므로 매출 지표가 자기참조 — 팔로워 축에서는 이 경고가 필요 없음
+    revSelfRef:true},
+  follower:{key:'follower',label:'팔로워등급',of:followerTierOf_,unratedWord:'팔로워 미입력',
+    revSelfRef:false},
+};
+let _dashTierAxis='rev';
+function _tierAxis(){return TIER_AXES[_dashTierAxis]||TIER_AXES.rev;}
+function _axisTierOf(d){return _tierAxis().of(d);}
+// 채널명으로 바로 묻는 버전(재협업률처럼 건이 아니라 채널 단위로 도는 집계용)
+function _axisTierOfChannel(ch){return _dashTierAxis==='follower'?followerTierOfChannel(ch):effectiveTierOfChannel(ch);}
+// 등급별 집계 대상인지 — 미산정(매출축)/미입력(팔로워축)은 양쪽 다 TIER_OPTIONS 밖이라 같이 걸러짐
 function isRatedTier(t){return TIER_OPTIONS.indexOf(t)!==-1;}
 
 function tierLabel(t){return t||TIER_UNRATED;}
@@ -2007,7 +2231,9 @@ function dashPNone(kind){DASH[kind]=new Set();dashPNormalizeChildren(kind);dashP
 function renderDashPeriodBar(){
   _renderDashInfluencerChip();
   const tierSel=document.getElementById('dashTierFilter');
-  if(tierSel)tierSel.value=DASH.tier||'all';
+  if(tierSel)tierSel.value=DASH.revTier||'all';
+  const fTierSel=document.getElementById('dashFollowerTierFilter');
+  if(fTierSel)fTierSel.value=DASH.followerTier||'all';
   _renderDashProductOptions();
   const years=dashPAvailableYears(),months=dashPAvailableMonths(),weeks=dashPAvailableWeeks();
   document.getElementById('dashPYearBtn').textContent=dashPLabel('years');
@@ -2048,7 +2274,10 @@ function dashPeriodMatch(d,opts){
     }
   }
   if(DASH.channel&&(d.ch||d.influencer||'').trim()!==DASH.channel)return false;
-  if(!o.ignoreTier&&DASH.tier&&DASH.tier!=='all'&&effectiveTierOf(d)!==DASH.tier)return false;
+  if(!o.ignoreTier){
+    if(DASH.revTier&&DASH.revTier!=='all'&&effectiveTierOf(d)!==DASH.revTier)return false;
+    if(DASH.followerTier&&DASH.followerTier!=='all'&&followerTierOf_(d)!==DASH.followerTier)return false;
+  }
   if(!o.ignoreProduct&&!_dashProductMatch(d))return false;
   return true;
 }
@@ -2196,9 +2425,14 @@ function _onDashProductFilterChange(){
   renderDashboard();
 }
 
-// 등급 전역 필터 — 기간/인플루언서 필터와 AND로 조합됨(판정은 dashPeriodMatch 한 곳에서)
+// 등급 전역 필터 2종(매출/팔로워) — 기간/인플루언서 필터, 그리고 서로와도 AND로 조합됨
+// (판정은 dashPeriodMatch 한 곳에서)
 function _onDashTierFilterChange(){
-  DASH.tier=document.getElementById('dashTierFilter').value;
+  DASH.revTier=document.getElementById('dashTierFilter').value;
+  renderDashboard();
+}
+function _onDashFollowerTierFilterChange(){
+  DASH.followerTier=document.getElementById('dashFollowerTierFilter').value;
   renderDashboard();
 }
 function _clearDashInfluencerFilter(){
@@ -2507,6 +2741,7 @@ function _axisMoneyFmt(maxVal){
 let _dashChannelChartInst=null,_dashProductChartInst=null,_dashPlatformChartInst=null;
 function renderDashAnalytics(){
   renderDashTierAnalytics();
+  renderDashGapAnalytics(); // 등급 교차 분석 — 등급별 성과 바로 아래 카드
   renderDashChannelAnalytics();
   renderDashProductAnalytics();
   renderDashPlatformAnalytics();
@@ -2528,7 +2763,9 @@ function _dashTierScopeAllProducts(){return DATA.filter(d=>d.start&&dashPeriodMa
 
 // 등급 필터가 특정 등급일 때, 그 등급이 아닌 것들을 흐리게 하기 위한 판정/색 계산
 const TIER_DIM_ALPHA=0.22;
-function _tierDimmed(key){return !!(DASH.tier&&DASH.tier!=='all'&&DASH.tier!==key);}
+// 강조 대상은 "지금 보고 있는 축"의 필터값 — 축을 팔로워로 바꾸면 팔로워등급 필터를 따라감
+function _dashAxisFilterValue(){return _dashTierAxis==='follower'?DASH.followerTier:DASH.revTier;}
+function _tierDimmed(key){const v=_dashAxisFilterValue();return !!(v&&v!=='all'&&v!==key);}
 function _hexAlpha(hex,a){
   const h=String(hex||'').replace('#','');
   const full=h.length===3?h.split('').map(c=>c+c).join(''):h;
@@ -2578,25 +2815,46 @@ function _tierMetrics(items){
   };
 }
 
+/* 축 토글 — 이 섹션(1차 표·비중 바 + 2차 4개 차트)과 달성률의 '등급' 기준이 한꺼번에 따라감.
+   상태는 모듈 변수라 필터를 바꿔도 유지되고 새로고침하면 매출등급으로 돌아감(정렬 상태와 같은 규칙). */
+function _setDashTierAxis(axis){
+  if(!TIER_AXES[axis]||_dashTierAxis===axis)return;
+  _dashTierAxis=axis;
+  renderDashTierAnalytics();
+  renderDashAchievement(); // 달성률의 '등급' 기준도 같은 축을 씀
+}
+function _renderDashTierAxisToggle(){
+  const host=document.getElementById('dashTierAxisToggle');
+  if(host)host.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.axis===_dashTierAxis));
+  const hd=document.getElementById('dashTierHdAxis');
+  if(hd)hd.textContent=_tierAxis().label;
+  // 매출 지표 "참고용" ⓘ는 매출등급 축일 때만 — 팔로워등급은 매출로 산정되지 않아 자기참조가 아님
+  const selfRef=_tierAxis().revSelfRef;
+  document.querySelectorAll('.tier-selfref').forEach(el=>{el.style.display=selfRef?'':'none';});
+}
+
 function renderDashTierAnalytics(){
   const scope=_dashTierScope();
+  const axis=_tierAxis();
   const body=document.getElementById('dashTierBody');
   const hdNote=document.getElementById('dashTierHdNote');
   const note=document.getElementById('dashTierNote');
   const chartEl=document.getElementById('dashTierShareChart');
   const grid=document.getElementById('dashTier2Grid');
   const empty=document.getElementById('dashTier2Empty');
-  const classified=scope.filter(d=>isRatedTier(effectiveTierOf(d)));
+  _renderDashTierAxisToggle();
+  const classified=scope.filter(d=>isRatedTier(_axisTierOf(d)));
   const unclassified=scope.length-classified.length;
 
   // 미분류 안내는 카드 우측 상단으로(2차 차트까지 이 섹션 전체에 걸리는 조건이라 맨 위가 맞음)
-  hdNote.textContent='완료+진행중 기준'+(unclassified>0?` · 등급 미산정/미분류 ${unclassified}건 제외`:'');
+  hdNote.textContent=`완료+진행중 기준 · ${axis.label} 기준`+(unclassified>0?` · ${axis.unratedWord} ${unclassified}건 제외`:'');
   // 아래 note는 "왜 필터를 걸었는데 다른 등급도 보이나"를 설명하는 자리로 씀
-  note.textContent=(DASH.tier&&DASH.tier!=='all')
-    ?`등급 필터: ${DASH.tier} 강조 — 비교를 위해 나머지 등급도 흐리게 함께 표시합니다`:'';
+  const fv=_dashAxisFilterValue();
+  note.textContent=(fv&&fv!=='all')
+    ?`${axis.label} 필터: ${fv} 강조 — 비교를 위해 나머지 등급도 흐리게 함께 표시합니다`:'';
 
   if(!classified.length){
-    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${scope.length?'해당 조건의 채널은 아직 등급이 산정되지 않았습니다(완료 실적 필요)':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
+    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${scope.length?(axis.key==='follower'?'해당 조건의 채널에 팔로워 수가 입력되지 않았습니다':'해당 조건의 채널은 아직 등급이 산정되지 않았습니다(완료 실적 필요)'):'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     if(_dashTierShareChartInst){_dashTierShareChartInst.destroy();_dashTierShareChartInst=null;}
     // 2차 영역은 통째로 빈 상태 카드로 대체
     grid.style.display='none';
@@ -2612,7 +2870,7 @@ function renderDashTierAnalytics(){
   const totalCount=classified.length;
   const totalRev=classified.reduce((s,d)=>s+(d.rev||0),0);
   const rows=TIER_OPTIONS.map(key=>{
-    const items=classified.filter(d=>effectiveTierOf(d)===key);
+    const items=classified.filter(d=>_axisTierOf(d)===key);
     const m=_tierMetrics(items);
     return Object.assign({key},m,{
       countShare:_safeDiv(m.count,totalCount),
@@ -2687,7 +2945,7 @@ function renderDashTierHeatmap(){
     subEl.textContent='색 진하기는 같은 제품군(열) 안에서의 상대값 · 셀에 마우스를 올리면 상세'+
       (pl?` · 품목 필터: ${pl} 열 강조(비교를 위해 다른 제품군도 함께 표시)`:'');
   }
-  const classified=_dashTierScopeAllProducts().filter(d=>isRatedTier(effectiveTierOf(d)));
+  const classified=_dashTierScopeAllProducts().filter(d=>isRatedTier(_axisTierOf(d)));
   if(!classified.length){host.innerHTML='';return;}
 
   const present=new Set(classified.map(d=>productLineKey(d.product)));
@@ -2696,7 +2954,7 @@ function renderDashTierHeatmap(){
   const lines=known.concat(unknown);
   if(!lines.length){host.innerHTML='<div class="dash-analytics-empty">제품군 정보를 읽을 수 있는 건이 없습니다</div>';return;}
 
-  const cell=(tier,line)=>_tierMetrics(classified.filter(d=>effectiveTierOf(d)===tier&&productLineKey(d.product)===line));
+  const cell=(tier,line)=>_tierMetrics(classified.filter(d=>_axisTierOf(d)===tier&&productLineKey(d.product)===line));
   const matrix=TIER_OPTIONS.map(t=>lines.map(l=>cell(t,l)));
 
   const pick=m=>m.count?(_dashTierHeatMetric==='revSum'?m.revSum:_dashTierHeatMetric==='conv'?m.conv:m.avgRev):null;
@@ -2748,9 +3006,9 @@ function renderDashTierHeatmap(){
    표본이 TIER_MIN_SAMPLE 미만인 등급은 범위 바를 그리지 않고 평균 점만 찍음(범위를 그리면
    2건짜리 두 점 사이가 마치 분포처럼 보여서 과대 해석됨). */
 function _tierStabilityRows(){
-  const classified=_dashTierScope().filter(d=>isRatedTier(effectiveTierOf(d))&&d.rev!=null);
+  const classified=_dashTierScope().filter(d=>isRatedTier(_axisTierOf(d))&&d.rev!=null);
   return TIER_OPTIONS.map(key=>{
-    const items=classified.filter(d=>effectiveTierOf(d)===key);
+    const items=classified.filter(d=>_axisTierOf(d)===key);
     if(!items.length)return{key,count:0};
     const vals=items.map(d=>d.rev);
     const n=vals.length;
@@ -2869,9 +3127,9 @@ function _tierRepeatRows(){
   });
   const chans=[];
   byCh.forEach((items,ch)=>{
-    // 채널의 실효 등급(수동 지정 > 자동 산정)을 그대로 씀 — 예전의 "최근 건 기준" 규칙은 폐기됨
-    const tier=effectiveTierOfChannel(ch);
-    if(!isRatedTier(tier))return; // 미산정 채널은 등급별 집계 대상 아님
+    // 채널의 실효 등급을 그대로 씀(예전의 "최근 건 기준" 규칙은 폐기) — 축 토글에 따라 매출/팔로워
+    const tier=_axisTierOfChannel(ch);
+    if(!isRatedTier(tier))return; // 미산정/미입력 채널은 등급별 집계 대상 아님
     chans.push({ch,tier,n:items.length});
   });
   return TIER_OPTIONS.map(key=>{
@@ -2960,7 +3218,7 @@ function renderDashTierMix(){
   if(sel)sel.value=_dashTierMixMode;
   if(!el||typeof Chart==='undefined')return;
 
-  const classified=_dashTierScopeYear().filter(d=>isRatedTier(effectiveTierOf(d)));
+  const classified=_dashTierScopeYear().filter(d=>isRatedTier(_axisTierOf(d)));
   const hlMonths=_dashActive(DASH.months)?DASH.months:null;
   const isPct=_dashTierMixMode==='pct';
   const useRev=_dashTierMixMode==='rev';
@@ -2970,7 +3228,7 @@ function renderDashTierMix(){
   const cnt=TIER_OPTIONS.map(t=>Array.from({length:12},()=>0));
   classified.forEach(d=>{
     const m=monthOf(d.start); if(!m)return;
-    const ti=TIER_OPTIONS.indexOf(effectiveTierOf(d)); if(ti<0)return;
+    const ti=TIER_OPTIONS.indexOf(_axisTierOf(d)); if(ti<0)return;
     cnt[ti][m-1]+=1;
     raw[ti][m-1]+=useRev?(d.rev||0):1;
   });
@@ -3020,6 +3278,356 @@ function renderDashTierMix(){
   });
 }
 
+/* ══ 등급 교차 분석 (2026-09-11) ═══════════════════════════════════════════
+   매출등급과 팔로워등급의 관계를 네 각도에서 봄. 네 패널이 전부 같은 대상 집합(_dashGapRows)을
+   쓰는 게 핵심 — 패널마다 대상이 다르면 "매트릭스 합계와 TOP10 건수가 왜 다르지?"가 됨.
+   대상: 지금 필터에 걸린 스코프에 등장하는 채널 중 "완료 건 1건 이상 + 팔로워 입력" 둘 다
+   만족하는 채널. 둘 중 하나라도 없으면 갭이 정의되지 않으므로 제외하고 그 수를 부제에 밝힌다.
+   등급 필터 2종은 스코프에서 뺌(등급 간 비교가 존재 이유인 섹션이라 한 등급만 남기면 의미 소멸 —
+   등급별 성과 섹션과 같은 판단). */
+let _dashGapMatrixMetric='count'; // 'count' | 'rev'
+let _dashGapEffMetric='revPerFol'; // 'revPerFol' | 'conv'
+let _dashGapTopDir='high';         // 'high' | 'low'
+let _dashGapScatterInst=null,_dashGapEffInst=null;
+function _onDashGapMatrixMetricChange(){_dashGapMatrixMetric=document.getElementById('dashGapMatrixMetric').value;renderDashGapAnalytics();}
+function _onDashGapEffMetricChange(){_dashGapEffMetric=document.getElementById('dashGapEffMetric').value;renderDashGapAnalytics();}
+function _setDashGapTopDir(dir){if(_dashGapTopDir===dir)return;_dashGapTopDir=dir;renderDashGapAnalytics();}
+
+function _dashGapRows(){
+  const scope=_dashTierScope();
+  const byCh=new Map();
+  scope.forEach(d=>{
+    const ch=(d.ch||d.influencer||'').trim();
+    if(!ch)return;
+    if(!byCh.has(ch))byCh.set(ch,[]);
+    byCh.get(ch).push(d);
+  });
+  const rows=[];
+  let excluded=0;
+  byCh.forEach((items,ch)=>{
+    const stat=tierStatOf(ch);
+    // 완료 실적(매출 기록 포함)과 팔로워 수가 둘 다 있어야 두 등급이 모두 서고 갭이 정의됨
+    if(!stat||!stat.count||stat.followerCount==null){excluded++;return;}
+    // 총매출은 avg×count로 복원 — tierStats가 평균/건수만 들고 있고 둘의 곱이 곧 완료 건 매출 합
+    const revSum=stat.avg!=null?stat.avg*stat.count:0;
+    rows.push({
+      ch,stat,items,
+      revTier:stat.effective,followerTier:stat.followerTier,gap:stat.gap,
+      followerCount:stat.followerCount,avgRev:stat.avg,count:stat.count,revSum,
+      // 팔로워 1만 명당 평균 매출 — 규모가 다른 채널을 같은 자로 재기 위한 정규화 지표
+      revPerFol:stat.followerCount>0?_safeDiv(stat.avg,stat.followerCount/10000):null
+    });
+  });
+  return{rows,excluded,total:byCh.size};
+}
+
+/* 스피어만 순위상관 — 값 자체가 아니라 순위로 상관을 재므로 팔로워/매출처럼 분포가 크게 치우친
+   (한두 채널이 자릿수로 큰) 데이터에 적합함. 동점은 평균 순위를 주고, 순위에 피어슨을 적용. */
+function _spearman(xs,ys){
+  const n=xs.length;
+  if(n<3)return null;
+  const rank=arr=>{
+    const idx=arr.map((v,i)=>[v,i]).sort((a,b)=>a[0]-b[0]);
+    const r=new Array(arr.length);
+    let i=0;
+    while(i<idx.length){
+      let j=i;
+      while(j+1<idx.length&&idx[j+1][0]===idx[i][0])j++;
+      const avg=(i+j)/2+1; // 동점 구간의 평균 순위(1-based)
+      for(let k=i;k<=j;k++)r[idx[k][1]]=avg;
+      i=j+1;
+    }
+    return r;
+  };
+  const rx=rank(xs),ry=rank(ys);
+  const mx=rx.reduce((s,v)=>s+v,0)/n,my=ry.reduce((s,v)=>s+v,0)/n;
+  let num=0,dx=0,dy=0;
+  for(let i=0;i<n;i++){const a=rx[i]-mx,b=ry[i]-my;num+=a*b;dx+=a*a;dy+=b*b;}
+  return(dx&&dy)?num/Math.sqrt(dx*dy):null;
+}
+function _rhoWord(r){const a=Math.abs(r);return a>=0.7?'강함':a>=0.4?'보통':'약함';}
+// log 축 눈금 라벨용 — Chart.js가 10의 거듭제곱 사이에 중간 눈금까지 만들어 라벨이 겹치므로
+// 거듭제곱 자리에만 글자를 남김(눈금선 자체는 그대로 둬서 격자는 촘촘하게 유지)
+function _isPow10(v){const l=Math.log10(v);return Math.abs(l-Math.round(l))<1e-9;}
+
+function renderDashGapAnalytics(){
+  const{rows,excluded,total}=_dashGapRows();
+  const hdNote=document.getElementById('dashGapHdNote');
+  const empty=document.getElementById('dashGapEmpty');
+  const grid=document.getElementById('dashGapGrid');
+  if(!hdNote)return;
+  document.getElementById('dashGapMatrixMetric').value=_dashGapMatrixMetric;
+  document.getElementById('dashGapEffMetric').value=_dashGapEffMetric;
+  document.getElementById('dashGapTopTabs').querySelectorAll('button')
+    .forEach(b=>b.classList.toggle('on',b.dataset.dir===_dashGapTopDir));
+
+  hdNote.textContent=`채널 단위 · 대상 ${rows.length}개 채널`+(excluded>0?` · 제외 ${excluded}개(완료 실적 또는 팔로워 수 없음)`:'');
+  if(!rows.length){
+    grid.style.display='none';
+    empty.style.display='';
+    empty.textContent=total
+      ?'대상 채널이 없습니다 — 완료 실적과 팔로워 수가 모두 있는 채널이 필요합니다(팔로워 수는 채널별 성과 표에서 바로 입력할 수 있습니다)'
+      :'해당 기간에 완료·진행중인 공구건이 없습니다';
+    [_dashGapScatterInst,_dashGapEffInst].forEach(c=>{if(c)c.destroy();});
+    _dashGapScatterInst=_dashGapEffInst=null;
+    closeGapCellPop();
+    return;
+  }
+  grid.style.display='';
+  empty.style.display='none';
+  _renderGapMatrix(rows);
+  _renderGapScatter(rows);
+  _renderGapEff(rows);
+  _renderGapTop(rows);
+}
+
+/* a) 팔로워 × 매출 등급 매트릭스 — 행은 팔로워등급(위=메가), 열은 매출등급(오른쪽=메가)이라
+   같은 등급끼리 만나는 칸이 좌하→우상 대각선에 놓인다(=갭 0 '적정'). 대각선 위쪽이 고효율. */
+let _gapCellChannels=null; // 팝오버가 쓰는 마지막 렌더의 셀→채널 목록
+function _renderGapMatrix(rows){
+  const host=document.getElementById('dashGapMatrix');
+  const sum=document.getElementById('dashGapMatrixSum');
+  const rowTiers=TIER_OPTIONS;                 // 위에서부터 메가 → 나노
+  const colTiers=TIER_OPTIONS.slice().reverse(); // 왼쪽부터 나노 → 메가
+  const bucket=new Map();
+  rows.forEach(r=>{
+    const k=r.followerTier+'|'+r.revTier;
+    if(!bucket.has(k))bucket.set(k,[]);
+    bucket.get(k).push(r);
+  });
+  _gapCellChannels=bucket;
+
+  host.style.gridTemplateColumns=`58px repeat(${colTiers.length},minmax(0,1fr))`;
+  const head=['<div class="gm-h" title="세로=팔로워등급 / 가로=매출등급">팔로워↓</div>']
+    .concat(colTiers.map(c=>`<div class="gm-h">${c}</div>`));
+  const cells=rowTiers.map(rt=>{
+    const lbl=`<div class="gm-rowlbl">${tierBadge(rt)}</div>`;
+    const tds=colTiers.map(ct=>{
+      const list=bucket.get(rt+'|'+ct)||[];
+      const gap=tierGapOf(ct,rt);
+      if(!list.length)return`<div class="gm-cell gm-zero"><span class="gm-v">0</span></div>`;
+      const k=gapKind(gap);
+      // 진하기는 갭의 크기(1~3)에 비례 — 0(적정)은 회색 고정
+      const alpha=k==='even'?0.12:0.14+0.20*Math.abs(gap);
+      const base=k==='even'?'#6B7280':GAP_COLORS[k].fg;
+      const revSum=list.reduce((s,x)=>s+x.revSum,0);
+      const main=_dashGapMatrixMetric==='rev'?wonShort(revSum):`${list.length}개`;
+      const sub=_dashGapMatrixMetric==='rev'?`${list.length}개 채널`:wonShort(revSum);
+      const tip=[`팔로워 ${rt} × 매출 ${ct} — 갭 ${gap>0?'+':gap<0?'−':''}${Math.abs(gap)} ${gapLabelOf(gap)}`,
+        `채널 ${list.length}개 · 총매출 ${wonShort(revSum)}`,'클릭하면 채널 목록'].join('\n');
+      return`<div class="gm-cell" style="background:${_hexAlpha(base,alpha)}" title="${_escAttr(tip)}"
+        onclick="openGapCellPop(event,'${_escAttr(rt)}','${_escAttr(ct)}')">
+        <span class="gm-v">${main}</span><span class="gm-sub">${sub}</span></div>`;
+    });
+    return[lbl].concat(tds).join('');
+  });
+  host.innerHTML=head.join('')+cells.join('');
+
+  const n=rows.length;
+  const cnt=k=>rows.filter(r=>gapKind(r.gap)===k).length;
+  const p=v=>Math.round(v/n*100);
+  sum.innerHTML=`적정 <b>${p(cnt('even'))}%</b> · 고효율 <b>${p(cnt('high'))}%</b> · 저효율 <b>${p(cnt('low'))}%</b>`+
+    ` <span style="color:var(--text-3)">(${cnt('even')}·${cnt('high')}·${cnt('low')} / ${n}개 채널)</span>`;
+}
+function closeGapCellPop(){const p=document.getElementById('dashGapCellPop');if(p)p.classList.remove('open');}
+function openGapCellPop(ev,followerTier,revTier){
+  if(ev){ev.stopPropagation();ev.preventDefault();}
+  const pop=document.getElementById('dashGapCellPop');
+  const list=_gapCellChannels?(_gapCellChannels.get(followerTier+'|'+revTier)||[]):[];
+  if(!pop||!list.length)return;
+  const gap=tierGapOf(revTier,followerTier);
+  const sorted=list.slice().sort((a,b)=>(b.avgRev||0)-(a.avgRev||0));
+  pop.innerHTML=`<div class="gcp-hd">팔로워 ${followerTier} × 매출 ${revTier} · ${list.length}개 채널 ${gapBadge(gap)}</div>
+    <table><tbody>${sorted.map(r=>`<tr>
+      <td><span class="gap-ch-link" onclick="_gapPickChannel('${_escAttr(r.ch)}')">${r.ch}</span></td>
+      <td class="num-col">${followerShort(r.followerCount)}</td>
+      <td class="num-col">${wonShort(r.avgRev)}</td>
+      <td class="num-col">${r.gap>0?'+':r.gap<0?'−':''}${Math.abs(r.gap)}</td>
+    </tr>`).join('')}</tbody></table>`;
+  pop.classList.add('open');
+  // 되돌리기 팝오버와 같은 배치 규칙 — 아래 공간이 부족하면 위로 뒤집고 화면 안으로 물림
+  const r=(ev&&ev.currentTarget?ev.currentTarget:document.body).getBoundingClientRect();
+  const vw=window.innerWidth,vh=window.innerHeight,m=6;
+  const pw=pop.offsetWidth,ph=pop.offsetHeight;
+  let top=r.bottom+m;
+  if(top+ph>vh-8&&r.top-m-ph>=8)top=r.top-m-ph;
+  pop.style.top=Math.max(8,Math.min(top,vh-8-ph))+'px';
+  pop.style.left=Math.max(8,Math.min(r.left,vw-8-pw))+'px';
+}
+function _gapPickChannel(ch){closeGapCellPop();_selectDashInfluencer(ch);}
+document.addEventListener('click',e=>{
+  const pop=document.getElementById('dashGapCellPop');
+  if(pop&&pop.classList.contains('open')&&!pop.contains(e.target))closeGapCellPop();
+});
+
+/* b) 팔로워 수 × 건당 평균 매출 산점도 — 둘 다 자릿수 차이가 커서 선형 축이면 점이 좌하단에
+   뭉치므로 log 축. 등급 임계값에 점선을 그어 4×4 격자가 보이게 하면 "어느 칸에 있는 채널인가"가
+   곧 두 등급의 조합이 된다(매트릭스와 같은 정보를 연속값으로 본 것). */
+function _renderGapScatter(rows){
+  const el=document.getElementById('dashGapScatter');
+  const rhoEl=document.getElementById('dashGapRho');
+  // log 축은 0 이하를 그릴 수 없음 — 팔로워 0/매출 0 채널은 점에서 제외(상관계수는 전체로 계산)
+  const pts=rows.filter(r=>r.followerCount>0&&r.avgRev>0);
+  const rho=_spearman(rows.map(r=>r.followerCount),rows.map(r=>r.avgRev||0));
+  rhoEl.textContent=rho==null
+    ?'ρ — (채널 3개 이상 필요)'
+    :`ρ = ${rho.toFixed(2)} (팔로워와 매출의 상관: ${_rhoWord(rho)})`;
+  rhoEl.title=rho==null?'스피어만 순위상관계수는 채널이 3개 이상일 때만 계산합니다'
+    :'스피어만 순위상관계수 — 0.7 이상 강함 / 0.4~0.7 보통 / 0.4 미만 약함';
+  if(!el||typeof Chart==='undefined')return;
+  if(_dashGapScatterInst)_dashGapScatterInst.destroy();
+  if(!pts.length){_dashGapScatterInst=null;return;}
+
+  // 등급 임계값 점선 — x는 FOLLOWER_RULES, y는 TIER_RULES의 평균 기준(매출등급 판정의 주 기준)
+  const guides={
+    id:'gapGuides',
+    beforeDatasetsDraw(chart){
+      const{ctx,chartArea,scales:{x,y}}=chart;
+      if(!x||!y)return;
+      ctx.save();
+      ctx.strokeStyle='#C9CEDA';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+      ctx.fillStyle='#9AA1B2';ctx.font='9px system-ui,sans-serif';
+      FOLLOWER_RULES.forEach(r=>{
+        const px=x.getPixelForValue(r.min);
+        if(px<chartArea.left||px>chartArea.right)return;
+        ctx.beginPath();ctx.moveTo(px,chartArea.top);ctx.lineTo(px,chartArea.bottom);ctx.stroke();
+        ctx.textAlign='left';ctx.textBaseline='top';
+        ctx.fillText(r.tier,px+2,chartArea.top+2);
+      });
+      TIER_RULES.forEach(r=>{
+        const py=y.getPixelForValue(r.avg);
+        if(py<chartArea.top||py>chartArea.bottom)return;
+        ctx.beginPath();ctx.moveTo(chartArea.left,py);ctx.lineTo(chartArea.right,py);ctx.stroke();
+        ctx.textAlign='right';ctx.textBaseline='bottom';
+        ctx.fillText(r.tier,chartArea.right-2,py-2);
+      });
+      ctx.restore();
+    }
+  };
+  const byKind=k=>pts.filter(r=>gapKind(r.gap)===k).map(r=>({x:r.followerCount,y:r.avgRev,_r:r}));
+  _dashGapScatterInst=new Chart(el.getContext('2d'),{
+    type:'scatter',
+    data:{datasets:[
+      {label:'고효율',data:byKind('high'),backgroundColor:GAP_COLORS.high.fg},
+      {label:'적정',  data:byKind('even'),backgroundColor:GAP_COLORS.even.fg},
+      {label:'저효율',data:byKind('low'), backgroundColor:GAP_COLORS.low.fg},
+    ].filter(ds=>ds.data.length)},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'bottom',labels:{boxWidth:10,font:{size:11},usePointStyle:true}},
+        tooltip:{callbacks:{label:ctx=>{
+          const r=ctx.raw._r;
+          return[r.ch,
+            `팔로워: ${followerShort(r.followerCount)}`,
+            `완료 ${r.count}건 · 평균 매출 ${wonShort(r.avgRev)}`,
+            `팔로워등급 ${r.followerTier} → 매출등급 ${r.revTier}`,
+            `갭 ${r.gap>0?'+':r.gap<0?'−':''}${Math.abs(r.gap)} ${r.stat.gapLabel}`];
+        }}}
+      },
+      scales:{
+        x:{type:'logarithmic',title:{display:true,text:'팔로워 수(log)'},
+          ticks:{maxRotation:0,autoSkip:false,callback:v=>_isPow10(v)?followerShort(v):''}},
+        y:{type:'logarithmic',title:{display:true,text:'건당 평균 매출(log)'},
+          ticks:{maxRotation:0,autoSkip:false,callback:v=>_isPow10(v)?wonShort(v):''}}
+      }
+    },
+    plugins:[guides]
+  });
+}
+
+/* c) 팔로워등급별 효율 — "팔로워가 커질수록 효율이 떨어지는가"를 한눈에 보려는 차트라 막대 순서를
+   TIER_OPTIONS(메가→나노)로 고정한다. 값이 큰 순으로 정렬하면 그 질문 자체가 안 보임.
+   표본(채널 수)이 TIER_MIN_SAMPLE 미만인 등급은 다른 표·차트와 같은 규칙으로 옅게 처리. */
+function _renderGapEff(rows){
+  const el=document.getElementById('dashGapEffChart');
+  const sub=document.getElementById('dashGapEffSub');
+  const isConv=_dashGapEffMetric==='conv';
+  const scope=_dashTierScope();
+  const chanSet=new Map(rows.map(r=>[r.ch,r]));
+  const series=TIER_OPTIONS.map(t=>{
+    const mine=rows.filter(r=>r.followerTier===t);
+    let val=null;
+    if(isConv){
+      // 전환율은 건 단위 합계로 계산(채널 평균을 다시 평균 내면 작은 채널이 과대 반영됨)
+      const items=scope.filter(d=>{const r=chanSet.get((d.ch||d.influencer||'').trim());return r&&r.followerTier===t;});
+      val=_tierMetrics(items).conv;
+      val=val!=null?val*100:null;
+    }else{
+      const vals=mine.map(r=>r.revPerFol).filter(v=>v!=null);
+      val=vals.length?vals.reduce((s,v)=>s+v,0)/vals.length:null;
+    }
+    return{key:t,val,n:mine.length,low:_tierLowSample(mine.length)};
+  });
+  if(sub)sub.textContent=(isConv
+    ?'해당 팔로워등급 채널들의 판매수량 ÷ 조회수(건 단위 합계)'
+    :'채널별 (건당 평균 매출 ÷ 팔로워 1만 명)의 평균 — 규모가 다른 채널을 같은 자로 비교하기 위한 정규화 지표')
+    +` · 채널 ${TIER_MIN_SAMPLE}개 미만 등급은 옅게`;
+  if(!el||typeof Chart==='undefined')return;
+  if(_dashGapEffInst)_dashGapEffInst.destroy();
+
+  const nLabels={
+    id:'gapEffLabels',
+    afterDatasetsDraw(chart){
+      const{ctx}=chart;
+      const meta=chart.getDatasetMeta(0);
+      ctx.save();
+      ctx.font='700 10px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';
+      series.forEach((s,i)=>{
+        const bar=meta.data[i];
+        if(!bar||s.val==null)return;
+        ctx.fillStyle='#5B6375';
+        ctx.fillText(`${s.n}개 채널${s.low?' · 표본 적음':''}`,bar.x,bar.y-4);
+      });
+      ctx.restore();
+    }
+  };
+  _dashGapEffInst=new Chart(el.getContext('2d'),{
+    type:'bar',
+    data:{labels:TIER_OPTIONS,datasets:[{
+      label:isConv?'전환율':'팔로워 1만 명당 평균 매출',
+      data:series.map(s=>s.val),
+      backgroundColor:series.map(s=>s.low?_hexAlpha(tierColor(s.key).fg,0.35):tierColor(s.key).fg),
+      borderRadius:4,maxBarThickness:56
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      layout:{padding:{top:18}},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>{
+          const s=series[ctx.dataIndex];
+          if(s.val==null)return'해당 등급 채널 없음';
+          return[`${isConv?'전환율':'팔로워 1만 명당 평균 매출'}: ${isConv?_pct1(s.val):won(Math.round(s.val))}`,
+            `채널 ${s.n}개${s.low?' — 참고용':''}`];
+        }}}
+      },
+      scales:{y:{min:0,ticks:{callback:v=>isConv?v.toFixed(1)+'%':won(Math.round(v))}}}
+    },
+    plugins:[nLabels]
+  });
+}
+
+/* d) 고효율/저효율 TOP 10 — 갭이 1차 기준, 같으면 팔로워 1만 명당 매출로 2차. 2차 기준이 없으면
+   같은 갭 안에서 순서가 무작위로 보여 "왜 이 채널이 위인가"에 답할 수 없음. */
+function _renderGapTop(rows){
+  const body=document.getElementById('dashGapTopBody');
+  const high=_dashGapTopDir==='high';
+  const eff=r=>r.revPerFol==null?-Infinity:r.revPerFol;
+  const sorted=rows.slice().sort((a,b)=>high
+    ?(b.gap-a.gap)||(eff(b)-eff(a))||a.ch.localeCompare(b.ch)
+    :(a.gap-b.gap)||(eff(a)-eff(b))||a.ch.localeCompare(b.ch)).slice(0,10);
+  body.innerHTML=sorted.length?sorted.map(r=>`
+    <tr>
+      <td><span class="gap-ch-link" onclick="_gapPickChannel('${_escAttr(r.ch)}')">${r.ch}</span></td>
+      <td>${tierBadge(r.followerTier)} <span style="color:var(--text-3)">→</span> ${tierBadge(r.revTier)}</td>
+      <td>${gapBadge(r.gap)}</td>
+      <td class="num-col">${num(r.followerCount)}</td>
+      <td class="num-col">${wonShort(r.avgRev)}</td>
+      <td class="num-col">${r.count}</td>
+    </tr>`).join(''):'<tr><td colspan="6" class="dash-analytics-empty">표시할 채널이 없습니다</td></tr>';
+}
+
 /* 1) 채널(인플루언서)별 성과 — 매출 상위순 표 + 차트, 회차별 추세는 "회차" 전용 필드가 없어
    같은 채널 내 시작일 순 정렬로 대체 계산(첫 공구 vs 최근 공구 매출 비교, 2건 이상일 때만).
    집계 단위는 "공구건"(DATA의 원소 하나 = 서버가 dealId로 이미 합친 공구건 하나) — 상품코드가
@@ -3037,6 +3645,24 @@ function renderDashTierMix(){
 // 재사용. 기본값은 기존 동작 그대로 누적 매출 내림차순. 제품 필터를 바꿔도 이 값은 그대로 유지되고
 // renderDashChannelAnalytics가 재호출될 때마다 이 기준으로 다시 정렬됨(별도 유지 로직 불필요).
 let _dashChannelSort={key:'revSum',dir:-1};
+let _dashChFollowerMissingOnly=false; // 헤더의 "팔로워 미입력 N개" 배지로 켜고 끄는 표 전용 보기
+function _toggleDashChFollowerMissing(){
+  _dashChFollowerMissingOnly=!_dashChFollowerMissingOnly;
+  renderDashChannelAnalytics();
+}
+/* 팔로워등급 셀 툴팁 — 등급 툴팁(tierEvidence)과 같은 톤으로, 무엇을 근거로 어느 시점 값을
+   썼는지 밝힘. 팔로워도 등급처럼 기간 필터와 무관한 채널 단위 값이라 그 점을 첫 줄에 적음. */
+function followerEvidence(stat){
+  if(!stat||stat.followerCount==null)
+    return'팔로워 수 미입력 — 표의 팔로워 수 칸을 클릭해 입력할 수 있습니다';
+  const when=stat.followerAt?`${String(stat.followerAt).slice(0,7).replace('-','.')} 공구건 기준`:'기록 시점 미상';
+  const parts=[`채널 단위 · 가장 최근 입력값 (${when})`,
+    `${followerShort(stat.followerCount)} (${num(stat.followerCount)})`,
+    `팔로워등급: ${stat.followerTier}`];
+  if(stat.gap!=null)parts.push(`갭: ${stat.gap>0?'+':stat.gap<0?'−':''}${Math.abs(stat.gap)} ${stat.gapLabel} (매출등급 ${stat.effective} − 팔로워등급 ${stat.followerTier})`);
+  else parts.push('매출등급이 미산정이라 갭은 계산되지 않습니다');
+  return parts.join('\n');
+}
 function _sortDashChannelTable(key){
   // sortSales(실적 상세 표)와 동일하게 새 컬럼을 처음 클릭하면 오름차순(dir:1)부터 시작
   if(_dashChannelSort.key===key)_dashChannelSort.dir*=-1;else{_dashChannelSort={key,dir:1};}
@@ -3050,6 +3676,7 @@ function _dashChannelSortVal(r,key){
   if(key==='trend')return r.trend?(r.trend.dir==='down'?-r.trend.pct:r.trend.pct):null;
   // 등급은 TIER_OPTIONS 순서(메가=0 … 나노=3)로 정렬. 미분류는 null이라 방향과 무관하게 항상 맨 아래.
   if(key==='tier')return tierRank(r.tier);
+  if(key==='followerTier')return tierRank(r.followerTier); // 미입력도 null → 맨 아래
   return r[key];
 }
 function _dashChannelCompare(a,b,key,dir){
@@ -3060,7 +3687,8 @@ function _dashChannelCompare(a,b,key,dir){
   if(bv==null)return -1;
   return (av-bv)*dir;
 }
-const DASH_CHANNEL_HD_IDS={ch:'dashChHdCh',tier:'dashChHdTier',count:'dashChHdCount',revSum:'dashChHdRev',avgQty:'dashChHdQty',avgViews:'dashChHdViews',conv:'dashChHdConv',trend:'dashChHdTrend'};
+const DASH_CHANNEL_HD_IDS={ch:'dashChHdCh',tier:'dashChHdTier',followerTier:'dashChHdFTier',gap:'dashChHdGap',
+  followerCount:'dashChHdFol',count:'dashChHdCount',revSum:'dashChHdRev',avgQty:'dashChHdQty',avgViews:'dashChHdViews',conv:'dashChHdConv',trend:'dashChHdTrend'};
 function _renderDashChannelSortIcons(){
   Object.keys(DASH_CHANNEL_HD_IDS).forEach(k=>{
     const el=document.getElementById(DASH_CHANNEL_HD_IDS[k]);
@@ -3075,9 +3703,12 @@ function renderDashChannelAnalytics(){
   const body=document.getElementById('dashChannelBody');
   const note=document.getElementById('dashChannelNote');
   const chartEl=document.getElementById('dashChannelChart');
+  const info=document.getElementById('dashChHdFTierInfo');
+  if(info)info.title=followerCriteriaText();
   if(!scope.length){
-    body.innerHTML=`<tr><td colspan="8" class="dash-analytics-empty">${_dashProductLabel()?'해당 기간·품목 조건에 완료·진행중인 공구건이 없습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
+    body.innerHTML=`<tr><td colspan="11" class="dash-analytics-empty">${_dashProductLabel()?'해당 기간·품목 조건에 완료·진행중인 공구건이 없습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     note.textContent='';
+    document.getElementById('dashChFolMissing').style.display='none';
     if(_dashChannelChartInst){_dashChannelChartInst.destroy();_dashChannelChartInst=null;}
     return;
   }
@@ -3111,22 +3742,40 @@ function renderDashChannelAnalytics(){
     const tier=tierStat&&isRatedTier(tierStat.effective)?tierStat.effective:'';
     // 등급 툴팁용 — 필터가 걸린 이 스코프 안에서 등급 산정 대상이 되는 완료 건이 몇 건인지
     const scopedDone=items.filter(_isTierCountable).length;
-    return{ch:g.ch,tier,tierStat,scopedDone,count:items.length,revSum,avgQty,avgViews,conv,trend};
+    // 팔로워 축 — 등급과 마찬가지로 채널 단위 값(기간 필터와 무관한 "가장 최근 팔로워 수" 기준)
+    const followerTier=tierStat?tierStat.followerTier:TIER_FOLLOWER_UNSET;
+    const followerCount=tierStat?tierStat.followerCount:null;
+    const gap=tierStat?tierStat.gap:null;
+    return{ch:g.ch,tier,tierStat,scopedDone,followerTier,followerCount,gap,
+      count:items.length,revSum,avgQty,avgViews,conv,trend};
   });
+
+  // 팔로워 미입력 채널 수 — 헤더 옆 배지로 보여주고, 누르면 그 채널만 남겨 채워넣기 쉽게 함
+  const missing=rows.filter(r=>r.followerCount==null).length;
+  const misBtn=document.getElementById('dashChFolMissing');
+  misBtn.style.display=(missing||_dashChFollowerMissingOnly)?'':'none';
+  misBtn.textContent=_dashChFollowerMissingOnly?`팔로워 미입력 ${missing}개만 보는 중 ✕`:`팔로워 미입력 ${missing}개`;
+  misBtn.classList.toggle('on',_dashChFollowerMissingOnly);
+  misBtn.title=_dashChFollowerMissingOnly?'클릭하면 전체 채널을 다시 표시합니다':'클릭하면 팔로워 수가 없는 채널만 표시합니다';
+  if(_dashChFollowerMissingOnly&&!missing)_dashChFollowerMissingOnly=false; // 다 채우면 자동 해제
 
   // 차트는 표 정렬 기준과 무관하게 항상 "매출 상위 10개"를 보여줌(차트 자체가 "누적 매출" 기준으로
   // 라벨돼 있어, 표를 다른 기준으로 정렬해도 차트까지 같이 흔들리면 오히려 더 헷갈림) — rows를
-  // 정렬하기 전에 매출 기준 정렬본을 따로 떼어둠.
+  // 정렬하기 전에 매출 기준 정렬본을 따로 떼어둠. 미입력 보기는 표에만 걸고 차트는 그대로 둠.
   const top=[...rows].sort((a,b)=>b.revSum-a.revSum).slice(0,10);
   note.textContent=rows.length>10?`매출 상위 10개 채널만 차트에 표시(전체 ${rows.length}개 채널)`:'';
 
-  rows.sort((a,b)=>_dashChannelCompare(a,b,_dashChannelSort.key,_dashChannelSort.dir));
+  const shown=_dashChFollowerMissingOnly?rows.filter(r=>r.followerCount==null):rows;
+  shown.sort((a,b)=>_dashChannelCompare(a,b,_dashChannelSort.key,_dashChannelSort.dir));
 
   const trendIcon={up:'▲',down:'▼',flat:'–'};
-  body.innerHTML=rows.map(r=>`
+  body.innerHTML=shown.map(r=>`
     <tr>
       <td>${r.ch}</td>
       <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat,r.scopedDone))}">${tierBadgeWithFlags(r.tierStat,true)}${tierDeltaHtml(r.tierStat)}</td>
+      <td class="tier-help" title="${_escAttr(followerEvidence(r.tierStat))}">${tierBadge(r.followerTier)}</td>
+      <td>${gapBadge(r.gap)}</td>
+      <td class="num-col fol-cell" data-ch="${_escAttr(r.ch)}" onclick="_startFollowerEdit(this)" title="클릭하면 수정">${r.followerCount!=null?num(r.followerCount):'<span style="color:var(--text-3)">—</span>'}</td>
       <td class="num-col">${r.count}</td>
       <td class="num-col"><strong>${won(r.revSum)}</strong></td>
       <td class="num-col">${r.avgQty!=null?num(Math.round(r.avgQty)):'—'}</td>
@@ -3147,6 +3796,66 @@ function renderDashChannelAnalytics(){
       scales:{x:{ticks:{callback:v=>won(v)}}}
     }
   });
+}
+
+/* ── 팔로워 수 인라인 편집 (채널별 성과 표) ─────────────────────────────────
+   셀을 누르면 그 자리에서 입력칸이 되고, Enter/포커스 아웃으로 저장한다. 저장은 GAS
+   updateChannelFollowers — 그 채널의 "가장 최근 공구건 행"에만 쓰는 채널 단위 갱신이라,
+   과거 건의 당시 팔로워 수(스냅샷)는 건드리지 않는다.
+   로컬 DATA도 같은 규칙(가장 최근 건)으로 즉시 반영해 fetchLive를 기다리지 않고 등급·갭·
+   매트릭스가 바로 다시 그려지게 함(수동 등급 되돌리기와 같은 패턴). */
+let _folEditing=null; // 편집 중인 채널명 — 중복 저장/재진입 방지
+function _startFollowerEdit(td){
+  if(_folEditing)return;
+  const ch=td.dataset.ch;
+  const stat=tierStatOf(ch);
+  const cur=stat?stat.followerCount:null;
+  _folEditing=ch;
+  td.innerHTML=`<input class="fol-inp" type="text" inputmode="numeric" value="${cur!=null?num(cur):''}" placeholder="예: 1,520,000">`;
+  const inp=td.querySelector('input');
+  inp.oninput=()=>{
+    const digits=inp.value.replace(/[^\d]/g,'');
+    inp.value=digits?Number(digits).toLocaleString('ko-KR'):'';
+  };
+  inp.onkeydown=e=>{
+    if(e.key==='Enter'){e.preventDefault();inp.blur();}
+    else if(e.key==='Escape'){e.preventDefault();_folEditing=null;renderDashChannelAnalytics();}
+  };
+  inp.onblur=()=>{
+    if(_folEditing!==ch)return; // Escape로 이미 빠져나온 경우
+    const digits=String(inp.value||'').replace(/[^\d]/g,'');
+    const next=digits===''?null:Number(digits);
+    _folEditing=null;
+    if(next===cur){renderDashChannelAnalytics();return;} // 안 바뀌었으면 저장하지 않음
+    _saveChannelFollowers(ch,next);
+  };
+  inp.focus();
+  inp.select();
+}
+async function _saveChannelFollowers(ch,followers){
+  const url=_getGasUrl();
+  try{
+    if(url){
+      const j=await _gasWrite(url,'updateChannelFollowers',{channel:ch,followers:followers==null?'':followers});
+      if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'updateChannelFollowers 응답에 success:true가 없습니다');
+    }
+    // 로컬 반영 — GAS와 같은 기준(그 채널의 가장 최근 공구건)으로 한 건에만 씀
+    const key=_dashInfluencerNorm(ch);
+    const mine=DATA.filter(d=>_dashInfluencerNorm(d.ch||d.influencer||'')===key)
+      .sort((a,b)=>String(a.start||'').localeCompare(String(b.start||''))||((a.id||0)-(b.id||0)));
+    const target=mine[mine.length-1];
+    if(target)target.followers=followers;
+    render(); // 등급 캐시가 무효화되며 팔로워등급·갭·교차 분석이 한 번에 재집계됨
+    const stat=tierStatOf(ch);
+    showToast(followers==null
+      ?`${ch} 팔로워 수를 비웠습니다`
+      :`${ch} 팔로워 ${followerShort(followers)} → 팔로워등급 ${stat?stat.followerTier:followerTierOf(followers)}`,{type:'success'});
+    if(url)fetchLive();
+  }catch(e){
+    console.error('[팔로워 수 저장 실패]',e);
+    renderDashChannelAnalytics();
+    showToast('팔로워 수 저장 실패: '+_friendlySaveError(e.message),{type:'error'});
+  }
 }
 
 /* 2) 제품군별 비교 — productColorKey/PRODUCT_COLORS(실적 표 배지와 동일 팔레트)를 그대로 재사용해
@@ -3283,7 +3992,9 @@ const DASH_ACHV_CROSS_DIMS={
   '채널':d=>d.ch||d.influencer,
   '제품군':d=>PRODUCT_GROUP_LABELS[productColorKey(d.product)]||productColorKey(d.product),
   // 미분류 건은 빈 문자열을 돌려 아래 집계 루프에서 자동으로 빠짐(다른 차원의 빈 값 처리와 동일)
-  '등급':d=>{const t=effectiveTierOf(d);return isRatedTier(t)?t:'';}
+  // '등급'은 등급별 성과 섹션의 축 토글(_dashTierAxis)을 그대로 따라감 — 두 곳이 서로 다른 등급을
+  // 보여주면 같은 화면에서 "등급"이라는 말이 두 가지를 뜻하게 되므로
+  '등급':d=>{const t=_axisTierOf(d);return isRatedTier(t)?t:'';}
 };
 let _dashAchvCrossDim='채널'; // 기본값: 채널별
 // 헤더 클릭 전까지는 "신뢰도 우선" 기본 정렬(건수 2건 이상을 먼저, 그 안에서 평균 내림차순)을 씀 —
@@ -3318,7 +4029,8 @@ function _dashAchvRenderCommon(entries,buckets,crossValLabel,overLabel,underLabe
     </tr>`).join('');
 
   dimSel.value=_dashAchvCrossDim;
-  dimHd.textContent=_dashAchvCrossDim;
+  // '등급' 기준일 때는 지금 보고 있는 축 이름을 그대로 써서 어느 등급인지 헷갈리지 않게 함
+  dimHd.textContent=_dashAchvCrossDim==='등급'?_tierAxis().label:_dashAchvCrossDim;
   const keyFn=DASH_ACHV_CROSS_DIMS[_dashAchvCrossDim];
   const map=new Map();
   entries.forEach(({d,val})=>{
@@ -4126,6 +4838,9 @@ function _openRegisteredModal(d){
   _refreshChannelNameList();
   // 드롭다운에는 '이 행에 저장된 수동 지정' 값만 들어감(비어 있는 게 정상) — 아래 안내줄이 자동 산정을 보여줌
   document.getElementById('mTier').value=manualTierOf(d);
+  _setFollowerInput('mFollowers',d.followers!=null?d.followers:null);
+  // 이 건에 팔로워 수가 없으면 같은 채널의 최근 값으로 채워줌(비어 있는 칸에만 — 아래 함수가 판정)
+  _autofillFollowers('mInfluencer','mFollowers');
   _refreshTierAutoLine('mInfluencer','mTier','mTierAuto');
   document.getElementById('mPlatform').value=d.platform||'';
   document.getElementById('mChannelId').value='';
@@ -4498,6 +5213,7 @@ function _collectModalChanges(d){
   const platform=document.getElementById('mPlatform').value;
   const vendor=document.getElementById('mVendor').value.trim();
   const tier=document.getElementById('mTier').value;
+  const followers=_followerInputValue('mFollowers'); // 숫자 or null(미입력)
   const link=document.getElementById('mLinkInput').value.trim();
   const marketingLink=document.getElementById('mMarketingLink').value.trim();
   const start=document.getElementById('mStart').value;
@@ -4538,13 +5254,14 @@ function _collectModalChanges(d){
     giftItem1:d.giftItem1||'',giftQty1:d.giftQty1!=null?String(d.giftQty1):'',
     giftItem2:d.giftItem2||'',giftQty2:d.giftQty2!=null?String(d.giftQty2):'',
     giftItem3:d.giftItem3||'',giftQty3:d.giftQty3!=null?String(d.giftQty3):'',
-    extraQty:d.extraQty!=null?d.extraQty:null,note2:s.note!=null?s.note:'',tier:manualTierOf(d)
+    extraQty:d.extraQty!=null?d.extraQty:null,note2:s.note!=null?s.note:'',tier:manualTierOf(d),
+    followers:d.followers!=null?d.followers:null
   };
   const next={
     product,channel:influencer,platform,vendor,link,marketingLink,start,end,sale,comm,format,composition,targetQty,qty,
     option2,firstCome,firstComeQty,note,
     giftItem1,giftQty1,giftItem2,giftQty2,giftItem3,giftQty3,
-    extraQty,note2:noteText,tier
+    extraQty,note2:noteText,tier,followers
   };
 
   const changes={};
@@ -4608,7 +5325,7 @@ async function saveSchemeModal(){
       }
     })().then(()=>{
       // fetchLive()가 끝나기 전에 모달/테이블/캘린더가 빈 상태로 보이지 않도록, 방금 저장한 값을 로컬 DATA에도 바로 반영
-      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,status:_calcStatus(next.start,next.end)});
+      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,followers:next.followers,status:_calcStatus(next.start,next.end)});
       if(codesChanged)d.codes=codes;
       d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
       if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
@@ -4620,7 +5337,7 @@ async function saveSchemeModal(){
       fetchLive();
     }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+_friendlySaveError(e.message),{type:'error'});setLoad(false);});
   } else {
-    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,status:_calcStatus(next.start,next.end)});
+    Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,followers:next.followers,status:_calcStatus(next.start,next.end)});
     if(codesChanged)d.codes=codes;
     d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
     if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
@@ -4975,6 +5692,8 @@ function adaptGAS(j){
     giftItem3:p.giftItem3||'',giftQty3:p.giftQty3!=null?String(p.giftQty3):'',
     extraQty:p.extraQty!=null?Number(p.extraQty):null,
     tier:p.tier||'', // 인플루언서 등급(빈 문자열=미분류) — 기존 건은 계속 빈 값으로 들어옴
+    // 팔로워 수(공구 당시) — 미입력은 null. 0은 실제 값이므로 null로 뭉개지 않게 !=null로 판정
+    followers:p.followers!=null?Number(p.followers):null,
     status:p.status||'예정',
     views:p.views!=null?Number(p.views):null,qty:p.qty!=null?Number(p.qty):null,rev:p.revenue!=null?Number(p.revenue):null,
     codes:Array.isArray(p.codes)?p.codes:[],reels:Array.isArray(p.reels)?p.reels:[],
@@ -5271,9 +5990,16 @@ function _rebuildModelOptions(selectEl,line){
 // 등급 '수동 지정' 드롭다운 + 기준표 툴팁 — 기준 문구는 TIER_RULES에서 생성해 상수와 어긋나지 않게 함
 ['mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_tierManualOptionsHtml();});
 ['mTierHelp','fTierHelp','mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=tierCriteriaText();});
+['mFollowerHelp','fFollowerHelp','mFollowers','fFollowers'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=followerCriteriaText();});
 // 등급 전역 필터 옵션(전체 + 4등급) — 미분류는 선택지로 두지 않음(등급별 집계 대상이 아니므로)
 // 신규 인플루언서만 골라 보기 위해 '미산정'도 선택지에 둠
-(()=>{const el=document.getElementById('dashTierFilter');if(el)el.innerHTML='<option value="all">전체</option>'+TIER_OPTIONS.concat([TIER_UNRATED]).map(t=>`<option value="${t}">${t}</option>`).join('');})();
+// 등급 필터 2종의 옵션 — 매출축은 '미산정', 팔로워축은 '미입력'이 마지막 항목으로 붙음
+(()=>{
+  const fill=(id,last)=>{const el=document.getElementById(id);
+    if(el)el.innerHTML='<option value="all">전체</option>'+TIER_OPTIONS.concat([last]).map(t=>`<option value="${t}">${t}</option>`).join('');};
+  fill('dashTierFilter',TIER_UNRATED);
+  fill('dashFollowerTierFilter',TIER_FOLLOWER_UNSET);
+})();
 
 /* ── 채널명 자동완성(datalist) + 등급 자동 산정 안내줄 ──
    후보는 하드코딩하지 않고 매번 현재 DATA에서 다시 뽑음(대시보드 인플루언서 필터와 동일한 방식).
@@ -5306,24 +6032,72 @@ function _refreshTierAutoLine(inputId,selectId,hostId){
     warnEl.title=otherManual>0?msg:'';
     if(otherManual>0)lines.push(msg);
   }
+  // 1줄: 매출등급 — 기존 자동 산정 내용 그대로(이름만 '매출등급'으로 명확히 함)
   if(!stat||!stat.count){
-    lines.push(`자동 산정: ${tierBadge('')} <span style="color:var(--text-3)">완료된 공구 실적이 없어 아직 산정할 수 없습니다(신규 채널)</span>`);
+    lines.push(`매출등급: ${tierBadge('')} <span style="color:var(--text-3)">완료된 공구 실적이 없어 아직 산정할 수 없습니다(신규 채널)</span>`);
   }else{
-    lines.push(`자동 산정: ${tierBadge(stat.auto)}${stat.provisional?TIER_FLAG_PROV:''} · 완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)}`+
-      ` <span style="color:var(--text-3)">· ${tierPeriodNote(stat)}</span>`);
+    lines.push(`매출등급: ${tierBadge(stat.auto)}${stat.provisional?TIER_FLAG_PROV:''}`+
+      ` <span style="color:var(--text-3)">(${tierPeriodNote(stat)} · 완료 ${stat.count}건 · 평균 ${wonShort(stat.avg)} · 최대 ${wonShort(stat.max)})</span>`);
+  }
+  // 2줄: 팔로워등급 + 갭 — 지금 입력 중인 팔로워 수를 우선 반영해서(저장 전에도) 바로 보이게 함
+  const typed=_followerInputValue(hostId==='mTierAuto'?'mFollowers':'fFollowers');
+  const fCount=typed!=null?typed:(stat?stat.followerCount:null);
+  const fTier=followerTierOf(fCount);
+  const fWhen=(typed==null&&stat&&stat.followerAt)?` · ${String(stat.followerAt).slice(0,7).replace('-','.')} 기준`:'';
+  if(fCount==null){
+    lines.push(`팔로워등급: ${tierBadge(TIER_FOLLOWER_UNSET)} <span style="color:var(--text-3)">팔로워 수를 입력하면 산정됩니다</span>`);
+  }else{
+    const revTier=stat?stat.effective:TIER_UNRATED;
+    const gap=tierGapOf(revTier,fTier);
+    lines.push(`팔로워등급: ${tierBadge(fTier)} <span style="color:var(--text-3)">(${followerShort(fCount)}${fWhen})</span>`+
+      (gap!=null?` → 갭 ${gapBadge(gap)}`:''));
   }
   if(own){
-    lines.push(`이 건의 수동 지정 <b>${own}</b>${TIER_FLAG_MANUAL} — 이 채널의 등급을 자동 산정 대신 이 값으로 씁니다`);
+    lines.push(`이 건의 수동 지정 <b>${own}</b>${TIER_FLAG_MANUAL} — 이 채널의 매출등급을 자동 산정 대신 이 값으로 씁니다`);
   }else if(stat&&stat.manual){
     // 수동 지정은 건별로 저장되므로, 다른 건이 물고 있으면 여기서 알려줘야 해제 지점을 찾을 수 있음
     lines.push(`이 채널은 <b>다른 공구건</b>에서 지정한 수동 등급 <b>${stat.manual}</b>${TIER_FLAG_MANUAL}이 적용 중입니다 — 해제하려면 그 건에서 '사용 안 함'으로 바꾸세요`);
   }
   host.innerHTML=lines.join('<br>');
 }
+/* ── 팔로워 수 입력 (등록 폼/수정 모달 공용) ──
+   화면에는 천 단위 콤마로 보여주고 저장은 숫자로 — 입력 도중에도 즉시 포맷해서 "152만인지 15만인지"를
+   자릿수로 헷갈리지 않게 함. 커서는 항상 끝으로 보내지 않고, 숫자만 세어 원래 자리로 되돌린다. */
+function _onFollowerInput(el){
+  const before=el.value.slice(0,el.selectionStart||0).replace(/[^\d]/g,'').length;
+  const digits=el.value.replace(/[^\d]/g,'');
+  el.value=digits?Number(digits).toLocaleString('ko-KR'):'';
+  let pos=0,seen=0;
+  while(pos<el.value.length&&seen<before){if(/\d/.test(el.value[pos]))seen++;pos++;}
+  try{el.setSelectionRange(pos,pos);}catch(e){}
+  // 채널 정보 안내줄의 팔로워등급/갭을 입력 즉시 갱신
+  _refreshTierAutoLine(el.id==='mFollowers'?'mInfluencer':'fInfluencer',
+    el.id==='mFollowers'?'mTier':'fTier',el.id==='mFollowers'?'mTierAuto':'fTierAuto');
+}
+// 입력 필드의 현재 값 → 숫자(빈값이면 null). 저장·안내줄이 같은 함수를 씀
+function _followerInputValue(id){
+  const el=document.getElementById(id);
+  if(!el)return null;
+  const digits=String(el.value||'').replace(/[^\d]/g,'');
+  return digits===''?null:Number(digits);
+}
+function _setFollowerInput(id,n){
+  const el=document.getElementById(id);
+  if(el)el.value=n==null?'':Number(n).toLocaleString('ko-KR');
+}
 function _onFormTierChange(){_refreshTierAutoLine('fInfluencer','fTier','fTierAuto');}
 function _onModalTierChange(){_refreshTierAutoLine('mInfluencer','mTier','mTierAuto');}
-function _onFormInfluencerInput(){_refreshTierAutoLine('fInfluencer','fTier','fTierAuto');}
-function _onModalInfluencerInput(){_refreshTierAutoLine('mInfluencer','mTier','mTierAuto');}
+// 채널명을 바꾸면 그 채널의 "가장 최근 팔로워 수"를 자동으로 채워줌 — 사람이 매번 다시 찾아
+// 입력하지 않게 하려는 것. 이미 이 건에 값이 들어 있으면 덮어쓰지 않는다(건별 스냅샷이 원칙).
+function _autofillFollowers(inputId,followerId){
+  const el=document.getElementById(followerId);
+  if(!el||String(el.value||'').trim()!=='')return;
+  const chEl=document.getElementById(inputId);
+  const stat=chEl?tierStatOf(chEl.value):null;
+  if(stat&&stat.followerCount!=null)_setFollowerInput(followerId,stat.followerCount);
+}
+function _onFormInfluencerInput(){_autofillFollowers('fInfluencer','fFollowers');_refreshTierAutoLine('fInfluencer','fTier','fTierAuto');}
+function _onModalInfluencerInput(){_autofillFollowers('mInfluencer','mFollowers');_refreshTierAutoLine('mInfluencer','mTier','mTierAuto');}
 
 let _formCodes=['']; // 새 공구건 등록 폼의 상품코드 목록(모달의 _modalCodes와 별개 인스턴스)
 function renderFormCodeList(){
@@ -5405,6 +6179,7 @@ function openDealForm(){
   document.getElementById('fFirstComeQty').value='';
   document.getElementById('fPoints').value='';
   document.getElementById('fTier').value=''; // 수동 지정은 항상 '사용 안 함'에서 시작
+  _setFollowerInput('fFollowers',null); // 채널명을 입력하면 그 채널의 최근 값으로 자동 채워짐
   _refreshChannelNameList();
   _refreshTierAutoLine('fInfluencer','fTier','fTierAuto');
   fRecalcComposition();
@@ -5456,6 +6231,7 @@ function copyDealToNew(){
   document.getElementById('fChannelId').value=_extractChannelIdFromLink(d.platform,d.link);
   document.getElementById('fVendor').value=d.vendor||'';
   document.getElementById('fTier').value=manualTierOf(d); // 복사한 건의 수동 지정을 그대로 이어받음(같은 채널이므로)
+  _setFollowerInput('fFollowers',d.followers!=null?d.followers:null); // 같은 채널이라 직전 값이 출발점으로 적절
   document.getElementById('fLink').value=d.link||'';
   document.getElementById('fMarketingLink').value=d.marketingLink||'';
 
@@ -5593,6 +6369,7 @@ function saveDeal(){
     extraQty:document.getElementById('fExtraQty').value?Number(document.getElementById('fExtraQty').value):null,
     note2:noteText,
     tier:document.getElementById('fTier').value,
+    followers:_followerInputValue('fFollowers'),
     status:_calcStatus(start,end),views:null,qty:null,rev:null,
     codes:_formCodes.map(c=>c.trim()).filter(c=>c),
     s:{retail:null,sale:Number(document.getElementById('fSalePrice').value)||null,comm:Number(document.getElementById('fCommission').value)||null,note:noteText}
