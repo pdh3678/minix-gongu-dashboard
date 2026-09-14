@@ -1532,7 +1532,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-follower-man-2026-09-11-06';
+const DASHBOARD_VERSION='dash-tiercols-2026-09-14-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1541,7 +1541,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='followers-2026-09-11-01';
+const REQUIRED_SCRIPT_VERSION='tiercols-2026-09-14-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -1964,6 +1964,77 @@ function effectiveTierOf(d){return effectiveTierOfChannel(d&&(d.ch||d.influencer
 function followerTierOfChannel(ch){const s=tierStatOf(ch);return s?s.followerTier:TIER_FOLLOWER_UNSET;}
 function followerTierOf_(d){return followerTierOfChannel(d&&(d.ch||d.influencer));}
 function followerCountOfChannel(ch){const s=tierStatOf(ch);return s?s.followerCount:null;}
+
+/* ── 등급 결과를 시트 G·H열에 되기록 (2026-09-14) ───────────────────────────
+   등급은 전부 프론트가 산정하는 값이라, 시트만 보는 사람에게는 보이지 않는다는 문제가 있었다.
+   그래서 재계산이 끝날 때마다 "지금 화면이 보고 있는 등급"을 시트의 '매출등급'/'팔로워 등급'
+   열에 그대로 되비춰 준다(사람이 채우는 칸이 아니라 결과 칸 — 헤더 메모로도 못 박아 둠).
+
+   설계에서 중요한 세 가지:
+   · **채널 단위 값을 행 단위로 편다** — 등급은 채널 속성이므로 그 채널이 등장하는 모든 물리 행에
+     같은 값을 쓴다. 공구건 하나가 상품코드 수만큼 여러 행을 차지하고 그 행들이 시트에서 붙어 있지도
+     않아서, 서버가 건별로 내려주는 _tierRows(행 번호 + 현재 셀값)를 그대로 펼쳐 쓴다.
+   · **차이가 없으면 요청 자체를 안 보낸다** — 그래서 render()마다 불려도 안전하다. 정상 상태에서는
+     보낼 행이 0개라 네트워크 호출이 아예 일어나지 않고, 값이 실제로 달라진 순간에만 한 번 나간다.
+     (초기 로드/공구건 저장/수동 지정 변경/팔로워 수 편집/완료 전환이 전부 render()를 거치므로,
+      기록 시점을 경로마다 따로 챙길 필요가 없음 — 한 곳에 걸어두면 전부 커버된다.)
+   · **실패해도 화면에는 아무 영향이 없어야 한다** — 조용히 1회 재시도하고, 그래도 안 되면 콘솔
+     경고까지만. 대시보드 표시는 전적으로 로컬 산정 결과를 쓰므로 시트 기록 성공 여부와 무관하다. */
+let _tierSyncReady=false; // fetchLive가 한 번이라도 성공해야 시작 — 샘플/로컬캐시 렌더로 시트를 덮어쓰지 않게
+let _tierSyncBusy=false;  // 전송 중 중복 실행 방지
+let _tierSyncAgain=false; // 전송 중에 또 바뀌었으면 끝난 뒤 한 번 더
+
+// 이 채널에 기록할 [매출등급, 팔로워등급]. 미산정(매출축)/미입력(팔로워축)은 빈 문자열 = 시트도 빈칸.
+function _tierCellsFor(ch){
+  const st=tierStatOf(ch);
+  return[
+    st&&isRatedTier(st.effective)?st.effective:'',
+    st&&isRatedTier(st.followerTier)?st.followerTier:''
+  ];
+}
+
+// 시트 현재값과 달라서 실제로 써야 하는 행만 모음. _tierRows 원소는 [행번호, 현재 매출등급, 현재 팔로워등급].
+function _collectTierWrites(){
+  const out=[];
+  DATA.forEach(d=>{
+    const rows=d._tierRows;
+    if(!Array.isArray(rows)||!rows.length)return;
+    const[sales,follower]=_tierCellsFor(d.ch||d.influencer);
+    rows.forEach(r=>{
+      if(String(r[1]||'')===sales&&String(r[2]||'')===follower)return;
+      out.push({rowIndex:r[0],salesTier:sales,followerTier:follower,_cell:r});
+    });
+  });
+  return out;
+}
+
+async function syncTiersToSheet(){
+  if(!_tierSyncReady)return;
+  if(_tierSyncBusy){_tierSyncAgain=true;return;}
+  const url=_getGasUrl();
+  if(!url)return;
+  const pending=_collectTierWrites();
+  if(!pending.length)return; // 정상 상태 — 여기서 조용히 끝나는 게 대부분의 호출
+  _tierSyncBusy=true;
+  const payload={rows:pending.map(p=>({rowIndex:p.rowIndex,salesTier:p.salesTier,followerTier:p.followerTier}))};
+  try{
+    let j=await _gasWrite(url,'writeTiers',payload);
+    if(!j||j.success!==true||j.error){
+      console.warn('[등급 시트 기록] 1차 실패 — 조용히 1회 재시도:',(j&&j.error)||j);
+      j=await _gasWrite(url,'writeTiers',payload);
+    }
+    if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'writeTiers 응답에 success:true가 없습니다');
+    // 서버가 받아들인 값으로 로컬 사본을 맞춰둬야 다음 render()에서 같은 행을 또 보내지 않음
+    // (서버 캐시는 _handleWriteAction이 쓰기 직후 알아서 무효화하므로 여기서 따로 할 일 없음)
+    pending.forEach(p=>{p._cell[1]=p.salesTier;p._cell[2]=p.followerTier;});
+    console.log('[등급 시트 기록] 전송 '+pending.length+'행 / 시트 갱신 '+(j.written!=null?j.written:'?')+'행');
+  }catch(e){
+    console.warn('[등급 시트 기록] 실패 — 대시보드 표시에는 영향 없음:',e);
+  }finally{
+    _tierSyncBusy=false;
+    if(_tierSyncAgain){_tierSyncAgain=false;syncTiersToSheet();}
+  }
+}
 /* ── 등급 축 (2026-09-11) ───────────────────────────────────────────────────
    '등급별 성과' 섹션 전체가 이 축 하나로 매출/팔로워를 갈아끼운다. 새 축을 추가하려면 여기에
    한 줄 추가하고 토글 버튼만 늘리면 됨 — 각 차트가 축을 따로 알 필요가 없게 만든 게 핵심. */
@@ -5707,6 +5778,7 @@ async function fetchLive(forceFresh){
         '/ 병합된(다중 dealId) 건수=',merged.filter(d=>d._isComposite).length);
       DATA.splice(0,DATA.length,...merged);
       EVENTS.splice(0,EVENTS.length,...adaptGASEvents(j));
+      _tierSyncReady=true; // 실서버 데이터를 받은 뒤에만 시트 기록 허용(샘플/로컬캐시로 덮어쓰기 방지)
       _connOk();setConn('live');render();
       _saveDataCache(j);
       if(_fetchLiveAuthRetryTimer){clearTimeout(_fetchLiveAuthRetryTimer);_fetchLiveAuthRetryTimer=null;} // 성공했으니 예약된 재시도는 취소
@@ -5745,6 +5817,10 @@ function adaptGAS(j){
     views:p.views!=null?Number(p.views):null,qty:p.qty!=null?Number(p.qty):null,rev:p.revenue!=null?Number(p.revenue):null,
     codes:Array.isArray(p.codes)?p.codes:[],reels:Array.isArray(p.reels)?p.reels:[],
     rowCount:p.rowCount!=null?Number(p.rowCount):1,
+    // 이 공구건이 차지하는 시트 행들의 [행번호, 현재 매출등급 셀값, 현재 팔로워등급 셀값].
+    // 등급 되기록(syncTiersToSheet)에서 "이미 같은 값이면 안 보내기" 비교용으로만 씀 —
+    // 시트에 사람이 직접 적어 넣은 값이라도 등급 판정에는 절대 반영하지 않는다(결과 칸이므로).
+    _tierRows:Array.isArray(p.tierRows)?p.tierRows:[],
     s:{retail:p.retail!=null?Number(p.retail):null,sale:p.sale!=null?Number(p.sale):null,comm:p.commission!=null?Number(p.commission):null,note:p.note2||''}
   }));
 }
@@ -5820,6 +5896,9 @@ function _mergeDuplicateCodeRows(deals){
     return{
       ...first,
       codes,qty,rev,views,reels,
+      // 내용 기준으로 합쳐진 건이라 시트 행도 여러 dealId에 흩어져 있음 — 전부 이어붙여야
+      // 그 채널의 모든 행에 등급이 기록됨(첫 건 것만 남기면 나머지 행이 영영 빈칸으로 남음)
+      _tierRows:members.flatMap(m=>m._tierRows||[]),
       _rowCount:rowCount,
       _isComposite:isComposite,
       _mergedDealIds:members.map(m=>m.dealId)
@@ -5961,8 +6040,11 @@ function navSales(el,prod){
   if(hashKey){_currentPageHash=hashKey;_setHash(hashKey);}
 }
 
-// DATA가 바뀔 수 있는 모든 경로가 render()를 거치므로 여기서 등급 산정 캐시를 비움
-function render(){invalidateTierStats();renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();}
+// DATA가 바뀔 수 있는 모든 경로가 render()를 거치므로 여기서 등급 산정 캐시를 비움.
+// 시트 G·H열 되기록(syncTiersToSheet)도 같은 이유로 여기 한 곳에만 걸어둠 — 초기 로드/공구건 저장/
+// 수동 지정 변경/팔로워 수 편집/완료 전환이 전부 이 경로를 지나므로 시점을 따로 챙길 필요가 없다.
+// 값이 안 바뀌었으면 내부에서 즉시 빠져나가므로(요청 자체가 안 나감) 매 렌더 호출해도 부담 없음.
+function render(){invalidateTierStats();renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();syncTiersToSheet();}
 document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.getMonth()+1)+'월 '+_NOW.getDate()+'일';
 
 /* ── 사은품/오픈시간/선착순/적립금 공용 상수 + 구성 자동생성 (공구건 모달 드롭다운 개편, 2026-08-18) ──

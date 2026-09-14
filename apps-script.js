@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'followers-2026-09-11-01';
+var SCRIPT_VERSION = 'tiercols-2026-09-14-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -27,66 +27,81 @@ var MAIN_SHEET = '실적통합';
 // 데이터 시작 행 (2행이 헤더 → 3행부터 데이터, 0-based index = 2)
 var DATA_START_ROW = 2;
 
-// 열 인덱스 (0-based: A=0, B=1, C=2 ...) — 실적통합 탭에 마케팅링크(G)/상품코드(H)가 새로 삽입되면서
-// 전체 재확정됨(2026-07-24). 추측이 아니라 실제 헤더 행을 CSV로 내려받아 한 칸씩 확인한 값.
-// G/H 삽입으로 기존 G(공동구매가)부터는 전부 +2, 옛 AJ열(상품코드)은 폐기되고 H로 대체되면서
-// 그 뒤(link~codeSeq)는 +1만 밀림 — 단순 "전부 +2"가 아니므로 다음에 또 열이 바뀌면 반드시
-// 실제 헤더를 다시 읽고(예: CSV 내보내기) 재확정할 것.
-var COL = {
-  brand:        1,   // B: 브랜드
-  product:      2,   // C: 제품명
-  vendor:       3,   // D: 소속(벤더사)
-  channel:      4,   // E: 채널명(인플루언서)
-  platform:     5,   // F: 플랫폼
-  marketingLink: 6,  // G: 마케팅 링크 (신규)
-  code:         7,   // H: 상품코드 (신규 — 옛 AJ열은 폐기 예정, 더 이상 참조하지 않음)
-  salePrice:    8,   // I: 공동구매가
-  qty:          9,   // J: 판매수량
-  revenue:      10,  // K: 총매출
-  commission:   11,  // L: 수수료율 (0.35 = 35% 형태의 소수로 저장됨)
-  year:         12,  // M: 연도
-  startMD:      13,  // N: 시작일
-  endMD:        14,  // O: 종료일
-  status:       15,  // P: 진행상태
-  format:       16,  // Q: 포맷
-  composition:  17,  // R: 구성 (같은 헤더가 AM에도 있지만 그건 레거시 — 여기가 실제 사용 열)
-  // ⚠ 2026-08-18 사은품/오픈시간/선착순/적립금 드롭다운 개편(공구건 모달 개편 0~1단계)로 의미 변경:
-  // option1(S)은 더 이상 쓰지 않음(사은품이 아래 AS~AX 전용 열로 이동, 과거 자유텍스트만 legacy로 남음).
-  // option2(T)=오픈시간, firstCome(U)=선착순 품목명, note(X)=적립금으로 용도 변경. 필드명(JS 프로퍼티)은
-  // 기존 프론트(2단계 개편 전) 호환을 위해 그대로 유지 — 실제 저장되는 "값의 의미"만 바뀜.
-  option1:      18,  // S: (레거시, 더 이상 안 씀) 구 추가옵션1 — 과거 자유텍스트 그대로 남겨둠(비파괴)
-  option2:      19,  // T: 오픈시간 (구 추가옵션2 자리 재사용, 예: "14:00")
-  firstCome:    20,  // U: 선착순 품목명 (구 선착순 자리 재사용, 품목명만)
-  targetQty:    21,  // V: 목표수량 (AL열 "목표수량"은 레거시 중복이라 무시)
-  extraQty:     22,  // W: 추가물량 (신규)
-  note:         23,  // X: 적립금 (구 비고 자리 재사용, 예: "NPAY 2만원")
-  // Y~AI(11칸)이 "조회수" 병합 헤더: Y=합계, Z~AI=릴스별 슬롯(REEL_COL_START/REEL_SLOT_COUNT 참고)
-  views:        24,  // Y: 조회수 합계 (이미 "만" 단위로 저장됨, 예: 3.4 = 3.4만회)
-  // AJ~AK: "성과 (대표 게시물 기준)" — 용도 불명, 대시보드가 읽지도 쓰지도 않음(그대로 둠)
-  // AL:목표수량(레거시 중복,무시) AM:구성(레거시 중복,무시)
-  link:         39,  // AN: 채널 링크(인플루언서 링크)
-  thumbs:       40,  // AO: 릴스 썸네일(JSON)
-  source:       41,  // AP: 출처(레거시, 브랜드 시트 없어져서 이제 무의미 — 절대 안 읽음)
-  dealId:       42,  // AQ: 공구건 유일 식별자(UUID) — 조회/저장/삭제는 전부 이 값 기준
-  codeSeq:      43,  // AR: 코드순번(1~10) — 같은 dealId를 공유하는 행들 중 순서/대표행 구분용. 1이 대표 행.
-  // 2026-08-18 신규 추가 — 사은품(품목+수량 최대 3쌍)/선착순 수량/신규 자유입력 비고.
-  giftItem1:    44,  // AS: 사은품 품목1
-  giftQty1:     45,  // AT: 사은품 수량1
-  giftItem2:    46,  // AU: 사은품 품목2
-  giftQty2:     47,  // AV: 사은품 수량2
-  giftItem3:    48,  // AW: 사은품 품목3
-  giftQty3:     49,  // AX: 사은품 수량3
-  firstComeQty: 50,  // AY: 선착순 수량
-  note2:        51,  // AZ: 비고 (신규 자유입력 — 구 비고 내용은 마이그레이션 시 전부 여기로 이관됨)
-  // 2026-09-09 신규 추가 — 인플루언서 등급. 기존 열 인덱스가 밀리지 않도록 반드시 맨 끝에만 추가할 것.
-  tier:         52,  // BA: 등급(수동) — 자동 산정을 덮어쓸 때만 값을 넣음. 빈값이 기본(=자동 산정 사용)
-  // 2026-09-11 신규 추가 — 팔로워 수(공구 진행 당시 값). 등급을 매출/팔로워 두 축으로 나누면서 추가됨.
-  followers:    53,  // BB: 팔로워 수 — 숫자만. 대표 행(코드순번=1)에만 기록하는 건별 스냅샷 값
-};
+// 열 인덱스 (0-based: A=0, B=1, C=2 ...) — ⚠ 2026-09-14부터 고정 숫자가 아니라 **2행 헤더 텍스트에서
+// 매 실행마다 해석**함(_resolveCols). 과거엔 여기 숫자를 손으로 박아뒀는데, 시트에 열이 하나
+// 삽입될 때마다 뒤쪽 수십 개가 통째로 밀려서 그때마다 전부 재확정해야 했고(2026-07-24 마케팅링크/
+// 상품코드 삽입, 2026-09-14 매출등급/팔로워등급 삽입) 한 칸만 틀려도 "엉뚱한 열에 값을 쓰는"
+// 사고로 이어졌음. 이제 열 위치의 유일한 근거는 시트 2행 헤더 텍스트 하나뿐이고, 코드에는
+// "어떤 헤더를 찾을지"만 있음 → 열을 옮기거나 삽입해도 코드는 손댈 필요 없음. 헤더 문구 자체를
+// 바꿀 때만 아래 목록을 고칠 것.
+var HEADER_ROW = 2;
 
-// 릴스별 조회수/링크를 담는 열 범위: Z~AI (10칸). 셀 값=조회수(만 단위), 링크=해당 셀의 하이퍼링크.
-// Y열(조회수 합계)은 이 10개 칸의 합으로 대시보드가 직접 계산해 덮어씀
-var REEL_COL_START = 26; // Z (1-based)
+// 논리 열 이름 → 2행에서 찾을 헤더 후보 텍스트(앞에서부터 순서대로 시도).
+// ⚠ 배열의 **순서가 곧 해석 순서**이며, 한 번 어떤 논리 열이 차지한 시트 열은 뒤에 오는 논리 열이
+//   다시 가져가지 못함(선점). 이 규칙이 실제로 필요한 이유:
+//   · '비고'가 두 열에 있음 — 구 비고 자리(지금은 적립금)와 신규 자유입력 비고.
+//     note가 ['적립금','비고']로 먼저 해석되어 왼쪽을 선점하므로, note2['비고']는 자연히 오른쪽을 잡음.
+//   · '구성'·'목표수량'도 레거시 중복 헤더가 오른쪽에 하나씩 더 있는데, 실제로 쓰는 열이 항상 더
+//     왼쪽이라 "왼쪽 우선" 규칙만으로 정리됨.
+// 세 번째 원소가 true면 선택 열(없어도 에러 없이 -1) — 읽지도 쓰지도 않는 레거시 열에만 붙임.
+// 나머지는 전부 필수라 못 찾으면 명시적으로 던짐: 없는 열에 쓰기를 시도해 시트를 망가뜨리는 것보다
+// 통째로 실패하는 쪽이 훨씬 안전하기 때문(실패 메시지에 실제 2행 헤더 전체를 같이 실어 보냄).
+var COL_HEADER_SPECS = [
+  ['brand',         ['브랜드']],
+  ['product',       ['제품명']],
+  ['vendor',        ['소속(벤더사)', '소속', '벤더사']],
+  ['channel',       ['채널명(인플루언서)', '채널명', '인플루언서', '채널']],
+  ['platform',      ['플랫폼']],
+  // 2026-09-14 신규 — 대시보드가 산정 결과를 되비추는 열(사람이 입력하는 열이 아님).
+  ['salesTier',     ['매출등급']],
+  ['followerTier',  ['팔로워 등급']],
+  ['marketingLink', ['마케팅 링크']],
+  ['code',          ['상품코드']],
+  ['salePrice',     ['공동구매가']],
+  ['qty',           ['판매수량']],
+  ['revenue',       ['총매출']],
+  ['commission',    ['수수료율']],   // 0.35 = 35% 형태의 소수로 저장됨
+  ['year',          ['연도']],
+  ['startMD',       ['시작일']],
+  ['endMD',         ['종료일']],
+  ['status',        ['진행상태']],
+  ['format',        ['포맷']],
+  ['composition',   ['구성']],
+  // ⚠ 2026-08-18 사은품/오픈시간/선착순/적립금 드롭다운 개편으로 "값의 의미"가 바뀐 열들.
+  // 필드명(JS 프로퍼티)은 기존 프론트 호환을 위해 그대로 두고, 찾는 헤더만 새 의미를 따라감.
+  ['option1',       ['추가옵션1']],  // (레거시, 더 이상 안 씀) 과거 자유텍스트 보존용
+  ['option2',       ['오픈시간', '추가옵션2']],
+  ['firstCome',     ['선착순 품목', '선착순 품목명', '선착순']], // 헤더는 '정확히 일치'로만 매칭하므로 '선착순 수량'과 안 섞임
+  ['targetQty',     ['목표수량']],
+  ['extraQty',      ['추가물량']],
+  ['note',          ['적립금', '비고']],       // 위 주석 참고 — 반드시 note2보다 먼저 해석되어야 함
+  ['views',         ['조회수', '조회수 합계']], // 병합 헤더의 왼쪽 끝(합계). 오른쪽 10칸이 릴스 슬롯
+  ['link',          ['채널 링크', '인플루언서 링크', '링크']],
+  ['thumbs',        ['릴스 썸네일', '썸네일']],
+  ['source',        ['출처'], true],           // 레거시 — 읽지도 쓰지도 않음
+  ['dealId',        ['dealId(내부용, 수동 수정 금지)', 'dealId']],
+  ['codeSeq',       ['코드순번(내부용, 수동 수정 금지)', '코드순번']],
+  ['giftItem1',     ['사은품 품목1']],
+  ['giftQty1',      ['사은품 수량1']],
+  ['giftItem2',     ['사은품 품목2']],
+  ['giftQty2',      ['사은품 수량2']],
+  ['giftItem3',     ['사은품 품목3']],
+  ['giftQty3',      ['사은품 수량3']],
+  ['firstComeQty',  ['선착순 수량']],
+  ['note2',         ['비고']],
+  ['tier',          ['등급(수동)', '등급']],   // 자동 산정을 덮어쓸 때만 값을 넣는 '수동 지정' 열
+  ['followers',     ['팔로워 수']]
+];
+
+// 해석 결과가 담기는 객체 — 코드 전체는 예전과 똑같이 COL.xxx로 참조함(바뀐 건 "값이 어디서
+// 오는가"뿐이라 호출부는 한 줄도 안 바뀜). _resolveCols 전에는 비어 있으므로, 메인 시트를 만지는
+// 모든 진입점은 반드시 _mainSheet(ss)를 거쳐야 함.
+var COL = {};
+
+// 릴스별 조회수/링크를 담는 열 범위(1-based 시작 열, 10칸). 조회수 합계 열 바로 오른쪽에 붙어 있어서
+// 고정값이 아니라 COL.views에서 파생시킴 — 조회수 열이 밀리면 릴스 슬롯도 같이 따라감.
+// 셀 값=조회수(만 단위), 링크=해당 셀의 하이퍼링크. 합계 열은 이 10칸의 합으로 대시보드가 직접 계산해 덮어씀.
+var REEL_COL_START = 0; // _resolveCols가 COL.views + 2로 채움
 var REEL_SLOT_COUNT = 10;
 
 // 상품코드 최대 개수(그룹당 최대 행 수) — H열 하나만 사용, 옛 AJ열은 참조하지 않음
@@ -121,6 +136,103 @@ function _normalizeFollowers(v) {
   if (!isFinite(n) || n < 0) return null;
   return Math.round(n);
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 2행 헤더 텍스트 → 열 인덱스 해석 (2026-09-14) ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// 헤더 비교용 정규화 — 공백(일반/전각/줄바꿈)과 대소문자 차이만 무시함.
+// 부분 문자열 매칭은 절대 하지 않음: '선착순'이 '선착순 수량'을, '등급'이 '매출등급'을 잡아버리는
+// 종류의 사고가 이 함수 하나로 막힘(항상 "정규화 후 완전히 같을 때"만 매칭).
+function _normHeaderText(v) {
+  return String(v == null ? '' : v).replace(/\s+/g, '').toLowerCase();
+}
+
+// 2행 헤더는 한 실행 안에서 여러 번 읽히므로 시트 이름 기준으로 한 번만 읽어 재사용.
+// (Apps Script는 실행이 끝나면 전역이 초기화되므로 요청 간에 남지 않음 — 캐시 무효화 걱정 불필요)
+var _headerRowCache = null, _headerRowCacheSheet = null;
+function _headerRowValues(sheet) {
+  if (_headerRowCache && _headerRowCacheSheet === sheet.getName()) return _headerRowCache;
+  var lastCol = sheet.getLastColumn();
+  _headerRowCache = lastCol > 0 ? sheet.getRange(HEADER_ROW, 1, 1, lastCol).getValues()[0] : [];
+  _headerRowCacheSheet = sheet.getName();
+  return _headerRowCache;
+}
+
+/* 2행 헤더에서 열 인덱스(0-based)를 찾는 단일 창구.
+   header: 문자열 또는 후보 문자열 배열(앞에서부터 순서대로 시도).
+   opts.claimed: {열인덱스:true} — 이미 다른 논리 열이 선점한 열은 건너뜀(같은 헤더 텍스트가
+     두 열에 있는 '비고' 같은 경우를 순서로 갈라내기 위함. COL_HEADER_SPECS 주석 참고).
+   opts.optional: true면 못 찾아도 -1을 돌려줌. 기본은 "못 찾으면 던진다".
+   같은 후보가 여러 열에 있으면 가장 왼쪽 열을 씀 — 레거시 중복 헤더('구성'/'목표수량')가 항상
+   오른쪽에 있어서 이 규칙만으로 실제 사용 열이 선택됨. */
+function getColIndexByHeader(sheet, header, opts) {
+  opts = opts || {};
+  var names = Object.prototype.toString.call(header) === '[object Array]' ? header : [header];
+  var row = _headerRowValues(sheet);
+  var claimed = opts.claimed || null;
+  for (var n = 0; n < names.length; n++) {
+    var want = _normHeaderText(names[n]);
+    if (!want) continue;
+    for (var c = 0; c < row.length; c++) {
+      if (claimed && claimed[c]) continue;
+      if (_normHeaderText(row[c]) === want) return c;
+    }
+  }
+  if (opts.optional) return -1;
+  // 실패 메시지에 실제 2행 헤더 전체를 열 문자와 함께 실어 보냄 — 헤더 문구가 코드와 어긋났을 때
+  // 시트를 따로 열어보지 않고도 무엇을 고쳐야 하는지 바로 알 수 있게 하려는 것.
+  var dump = [];
+  for (var d = 0; d < row.length; d++) dump.push(_colLetter(d) + '=' + String(row[d] == null ? '' : row[d]));
+  throw new Error('시트 "' + sheet.getName() + '" ' + HEADER_ROW + '행에서 "' + names.join('" 또는 "') +
+    '" 헤더를 찾을 수 없습니다. 헤더를 추가하거나 문구를 맞춰주세요. 현재 ' + HEADER_ROW + '행 헤더: [' +
+    dump.join(' | ') + ']');
+}
+
+// COL_HEADER_SPECS를 순서대로 훑어 COL을 채움. 한 실행 안에서 한 번만 수행.
+// 이 함수가 끝나기 전에는 COL이 비어 있으므로, 메인 시트를 만지는 코드는 전부 _mainSheet(ss)
+// (또는 doGet처럼 직접 _resolveCols 호출)를 거쳐야 함.
+var _colsResolved = false;
+function _resolveCols(sheet) {
+  if (_colsResolved) return COL;
+  var claimed = {};
+  var log = [];
+  for (var i = 0; i < COL_HEADER_SPECS.length; i++) {
+    var key = COL_HEADER_SPECS[i][0];
+    var idx = getColIndexByHeader(sheet, COL_HEADER_SPECS[i][1], { claimed: claimed, optional: !!COL_HEADER_SPECS[i][2] });
+    COL[key] = idx;
+    if (idx >= 0) { claimed[idx] = true; log.push(key + '=' + _colLetter(idx)); }
+    else log.push(key + '=(없음)');
+  }
+  REEL_COL_START = COL.views + 2; // 0-based 조회수 열 → 1-based(+1) → 그 바로 오른쪽 칸(+1)
+  _colsResolved = true;
+  // 열이 밀렸을 때 "어느 열로 해석됐는지"를 실행 기록 한 줄로 확인할 수 있게 항상 남김 — 값이
+  // 이상해 보이는 문제는 대부분 이 줄과 시트를 나란히 보면 바로 판별됨.
+  Logger.log('[열 해석] ' + log.join(', ') + ' / 릴스 슬롯 시작=' + _colLetter(REEL_COL_START - 1));
+  return COL;
+}
+
+// 실적통합 시트 + 열 해석을 한 번에 — MAIN_SHEET를 직접 getSheetByName 하지 말고 항상 이걸 쓸 것.
+// 열 인덱스가 2행 헤더에서 나오므로, 시트를 손에 넣는 순간 해석도 끝나 있어야 안전함.
+// 시트가 없으면 null(호출부가 기존과 똑같이 에러 JSON을 만들 수 있도록 예외를 던지지 않음).
+function _mainSheet(ss) {
+  var sheet = ss.getSheetByName(MAIN_SHEET);
+  if (sheet) _resolveCols(sheet);
+  return sheet;
+}
+
+// ── 등급 결과 열(매출등급/팔로워 등급)의 시트 측 표시 (2026-09-14) ──
+// 이 두 열은 대시보드가 계산해서 되비추는 "결과 칸"이라, 시트에서 직접 고쳐도 다음 기록 때
+// 덮어써짐. 그 사실을 헤더 메모로 못 박아 두고, 읽기 로직은 이 두 열을 등급 판정에 절대 쓰지 않음.
+var TIER_RESULT_NOTE = "대시보드 자동 기록 — 직접 수정 시 덮어써짐. 수동 지정은 '등급(수동)' 열 사용";
+// 조건부 서식 색 — 프론트 TIER_COLORS와 같은 톤(배경/글자색 쌍)을 그대로 옮긴 것.
+// 드롭다운(데이터 확인)은 일부러 넣지 않음: 사람이 고르는 칸이 아니라 결과 칸이기 때문.
+var TIER_SHEET_COLORS = {
+  '메가':     { bg: '#EDE9FE', fg: '#6D28D9' },
+  '매크로':   { bg: '#DBEAFE', fg: '#1D4ED8' },
+  '마이크로': { bg: '#D1FAE5', fg: '#047857' },
+  '나노':     { bg: '#FEF3C7', fg: '#B45309' }
+};
 
 // ── 사은품/선착순/오픈시간/적립금 드롭다운 공용 상수 (2026-08-18 모달 개편) ──
 // 프론트(index.html)의 동일 목록과 반드시 값이 일치해야 함 — 여긴 마이그레이션 매칭용, 프론트는 UI 렌더용.
@@ -384,6 +496,7 @@ function doGet(e) {
 
       // ?debug=reels&row=123 으로 호출 시 해당 행의 릴스 슬롯/썸네일 원본 상태를 그대로 반환
       if (e.parameter.debug === 'reels' && e.parameter.row) {
+        _resolveCols(sheet); // 릴스 슬롯 위치(REEL_COL_START)가 필요하므로 이 분기만 먼저 해석
         return _json(_debugReelsRaw(sheet, parseInt(e.parameter.row, 10)));
       }
 
@@ -393,6 +506,11 @@ function doGet(e) {
         return _json(_debugRawDump(ss, sheet));
       }
     }
+
+    // 여기서부터 COL이 필요함 — 2행 헤더를 읽어 열 인덱스를 해석한다(_resolveCols 주석 참고).
+    // ⚠ 일부러 위 디버그 분기보다 "뒤"에 둠: 헤더 문구가 코드와 어긋나 해석이 실패하는 상황이야말로
+    // ?debug=1의 실제 2행 헤더 덤프가 가장 필요한 때라, 그 진단 경로까지 같이 죽으면 안 되기 때문.
+    _resolveCols(sheet);
 
     // ?nocache=1이면 캐시를 건너뛰고 항상 새로 계산(수동 새로고침 버튼용)
     var noCache = !!(e && e.parameter && e.parameter.nocache === '1');
@@ -506,7 +624,7 @@ function _invalidateDashboardCache() {
 // ② 무효화 직후엔 다시 미스로 떨어지는지(=쓰기 후 다음 조회가 최신 데이터로 재계산됨)를 로그로 확인.
 function _testCacheBehavior() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) { Logger.log('[캐시테스트] 실적통합 시트를 찾을 수 없어 중단'); return; }
 
   var cache = CacheService.getScriptCache();
@@ -623,13 +741,23 @@ function _debugRawDump(ss, sheet) {
   var data = sheet.getDataRange().getValues();
   var headerRow = data.length > 1 ? data[1] : []; // 2행(0-based index 1)이 헤더
 
+  // 열 해석 실패(2행 헤더 문구가 COL_HEADER_SPECS와 어긋남)야말로 이 덤프가 가장 필요한 상황이라,
+  // 실패해도 멈추지 않고 에러 문구를 응답에 실어 보냄 — headerRow2_raw와 나란히 보면 바로 고칠 수 있음.
+  var colError = '', colMap = {};
+  try {
+    _resolveCols(sheet);
+    for (var ck in COL) colMap[ck] = COL[ck] >= 0 ? _colLetter(COL[ck]) : '(없음)';
+  } catch (colErr) {
+    colError = String((colErr && colErr.message) || colErr);
+  }
+
   var totalDataRows = Math.max(0, data.length - DATA_START_ROW);
   var withProduct = 0, withoutProduct = 0;
   var brandCounts = {}; // 실제로 등장하는 브랜드 값별 건수(오타/공백 차이 확인용)
   var passMinixFilter = 0;
 
   var sampleRows = [];
-  for (var i = DATA_START_ROW; i < data.length; i++) {
+  for (var i = colError ? data.length : DATA_START_ROW; i < data.length; i++) {
     var row = data[i];
     var brand = String(row[COL.brand] || '').trim();
     var product = String(row[COL.product] || '').trim();
@@ -662,6 +790,8 @@ function _debugRawDump(ss, sheet) {
     allSheetNamesInThisSpreadsheet: ss.getSheets().map(function (s) { return s.getName(); }),
     dataStartRowConfig_0based: DATA_START_ROW, // 3행부터 데이터로 간주(0-based 2)
     headerRow2_raw: headerRow,
+    columnMap: colMap,      // 2행 헤더에서 해석된 논리 열 → 실제 시트 열 문자(열이 밀렸는지 한눈에 확인)
+    columnError: colError,  // 비어있지 않으면 해석 실패 — 이 메시지가 어떤 헤더를 못 찾았는지 알려줌
     totalRowsInSheet: data.length,
     totalDataRows: totalDataRows,
     withProduct: withProduct,
@@ -810,6 +940,24 @@ function parseMainSheet(sheet) {
       if (c) codes.push(c);
     }
 
+    /* 등급 결과 열(매출등급/팔로워 등급)을 프론트가 되기록할 때 쓰는 행 목록 (2026-09-14).
+       원소 하나가 [시트 행 번호(1-based), 현재 매출등급 셀값, 현재 팔로워등급 셀값].
+       · 등급은 채널 속성이라 그 채널이 등장하는 **모든 물리 행**에 같은 값을 써야 하는데, 공구건
+         하나가 상품코드 수만큼 여러 행을 차지하고 그 행들이 시트에서 붙어 있지도 않다(코드가
+         나중에 추가되면 시트 맨 아래에 붙음). 그래서 대표 행만으로는 부족하고 그룹 전체의 행
+         번호를 프론트에 알려줘야 함.
+       · 현재 셀값을 같이 실어 보내는 이유는 단 하나, "이미 같은 값이면 아예 요청을 안 보내기"
+         위해서임. 이 두 값은 대시보드가 쓴 결과라 등급 판정에는 절대 쓰지 않는다(사람이 시트에서
+         직접 고쳐도 무시되고 다음 기록 때 덮어써짐 — 수동 지정은 '등급(수동)' 열이 담당). */
+    var tierRows = [];
+    for (var tr = 0; tr < members.length; tr++) {
+      tierRows.push([
+        members[tr].rowIdx + 1,
+        String(members[tr].row[COL.salesTier] || '').trim(),
+        String(members[tr].row[COL.followerTier] || '').trim()
+      ]);
+    }
+
     var vendor     = String(pRow[COL.vendor]   || '').trim();
     var channel    = String(pRow[COL.channel]  || '').trim();
     var product    = String(pRow[COL.product]  || '').trim();
@@ -950,6 +1098,7 @@ function parseMainSheet(sheet) {
       note2: note2,
       tier: tier,
       followers: followers,
+      tierRows:    tierRows,
       rowCount:    members.length // 이 그룹(dealId)이 시트에서 실제로 몇 개 물리 행을 차지하는지 — 프론트가 "N행" 안내에 사용
     });
   }
@@ -958,37 +1107,71 @@ function parseMainSheet(sheet) {
   return { deals: deals };
 }
 
-// 대시보드에서 쓰는 dealId/codeSeq 열에 헤더가 없으면 채워줌(원본 시트 열이 부족하면 확장도 함)
+/* 시트 쪽 부가 정비 — 내부용 열 숨기기 + 등급 결과 열(매출등급/팔로워 등급)의 헤더 메모·조건부 서식.
+   ⚠ 2026-09-14: 예전엔 여기서 "헤더가 비어 있으면 만들어 넣는" 일도 했는데, 열 위치의 근거가
+   2행 헤더 텍스트 하나로 일원화된 뒤로는 그게 모순이 됨 — 헤더가 없으면 애초에 어느 열에 만들어야
+   할지 알 수 없고, 코드가 임의 위치에 만들어 넣는 순간 "근거"가 두 개로 갈라지기 때문.
+   이제 헤더가 없으면 _resolveCols가 실제 2행 헤더를 통째로 실은 에러로 알려주고, 사람이 시트에서
+   직접 추가하는 것이 정규 경로다. */
 function _ensureExtraHeaders(sheet) {
-  var maxColNeeded = COL.followers + 1;
-  if (sheet.getMaxColumns() < maxColNeeded) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), maxColNeeded - sheet.getMaxColumns());
-  }
-  var headers = [
-    [COL.dealId, 'dealId(내부용, 수동 수정 금지)'],
-    [COL.codeSeq, '코드순번(내부용, 수동 수정 금지)'],
-    [COL.giftItem1, '사은품 품목1'],
-    [COL.giftQty1, '사은품 수량1'],
-    [COL.giftItem2, '사은품 품목2'],
-    [COL.giftQty2, '사은품 수량2'],
-    [COL.giftItem3, '사은품 품목3'],
-    [COL.giftQty3, '사은품 수량3'],
-    [COL.firstComeQty, '선착순 수량'],
-    [COL.note2, '비고'],
-    [COL.tier, TIER_HEADER],
-    [COL.followers, FOLLOWERS_HEADER]
-  ];
-  for (var i = 0; i < headers.length; i++) {
-    var cell = sheet.getRange(2, headers[i][0] + 1);
-    if (!cell.getValue()) cell.setValue(headers[i][1]);
-  }
   // 등급 열은 의미가 '수동 지정'으로 바뀌었으므로, 구 문구('등급')로 남아 있으면 한 번만 갱신함
+  // (해석 자체는 '등급(수동)'/'등급' 둘 다 후보로 두고 있어서 문구가 어느 쪽이든 동작함)
   try {
-    var tierHd = sheet.getRange(2, COL.tier + 1);
+    var tierHd = sheet.getRange(HEADER_ROW, COL.tier + 1);
     if (String(tierHd.getValue() || '').trim() === '등급') tierHd.setValue(TIER_HEADER);
   } catch (e) { Logger.log('등급 헤더 갱신 실패 (무시): ' + e); }
   try { sheet.hideColumns(COL.dealId + 1); } catch (e) { Logger.log('dealId 열 숨기기 실패 (무시): ' + e); }
   try { sheet.hideColumns(COL.codeSeq + 1); } catch (e) { Logger.log('코드순번 열 숨기기 실패 (무시): ' + e); }
+  _ensureTierResultColumnChrome(sheet);
+}
+
+/* 매출등급/팔로워 등급 열의 "사람이 보는 부분" — 헤더 메모와 등급별 4색 조건부 서식.
+   매 요청마다 다시 칠하면 낭비이므로, 두 열의 위치를 지문 삼아 문서 속성에 찍어두고 달라졌을 때만
+   실행함(열이 밀려서 위치가 바뀌면 자동으로 다시 칠해짐).
+   데이터 유효성(드롭다운)은 일부러 넣지 않음 — 사람이 고르는 칸이 아니라 결과 칸이기 때문. */
+var TIER_CHROME_PROP_KEY = 'tierResultColChrome';
+function _ensureTierResultColumnChrome(sheet) {
+  var stamp = _colLetter(COL.salesTier) + ',' + _colLetter(COL.followerTier) + ',v1';
+  var props;
+  try { props = PropertiesService.getDocumentProperties(); } catch (e) { props = null; }
+  if (props && props.getProperty(TIER_CHROME_PROP_KEY) === stamp) return;
+
+  try {
+    sheet.getRange(HEADER_ROW, COL.salesTier + 1).setNote(TIER_RESULT_NOTE);
+    sheet.getRange(HEADER_ROW, COL.followerTier + 1).setNote(TIER_RESULT_NOTE);
+
+    var maxRows = sheet.getMaxRows();
+    if (maxRows > DATA_START_ROW) {
+      var ranges = [
+        sheet.getRange(DATA_START_ROW + 1, COL.salesTier + 1, maxRows - DATA_START_ROW, 1),
+        sheet.getRange(DATA_START_ROW + 1, COL.followerTier + 1, maxRows - DATA_START_ROW, 1)
+      ];
+      var mine = {};
+      for (var r = 0; r < ranges.length; r++) mine[ranges[r].getA1Notation()] = true;
+      // 이 두 열만을 대상으로 하는 기존 규칙(= 이전 실행이 남긴 것)만 걷어냄. 다른 열이 하나라도
+      // 섞인 규칙은 사람이 직접 만든 것일 수 있으므로 절대 건드리지 않음.
+      var rules = sheet.getConditionalFormatRules();
+      var kept = [];
+      for (var i = 0; i < rules.length; i++) {
+        var rr = rules[i].getRanges(), onlyMine = true;
+        for (var j = 0; j < rr.length; j++) if (!mine[rr[j].getA1Notation()]) { onlyMine = false; break; }
+        if (!onlyMine) kept.push(rules[i]);
+      }
+      for (var t = 0; t < TIER_OPTIONS.length; t++) {
+        var color = TIER_SHEET_COLORS[TIER_OPTIONS[t]];
+        kept.push(SpreadsheetApp.newConditionalFormatRule()
+          .whenTextEqualTo(TIER_OPTIONS[t])
+          .setBackground(color.bg).setFontColor(color.fg)
+          .setRanges(ranges).build());
+      }
+      sheet.setConditionalFormatRules(kept);
+    }
+    if (props) props.setProperty(TIER_CHROME_PROP_KEY, stamp);
+    Logger.log('[등급 결과 열 정비] 메모·조건부 서식 적용 완료 (' + stamp + ')');
+  } catch (e) {
+    // 표시용 장식이라 실패해도 데이터 흐름과는 무관 — 다음 실행에서 다시 시도되게 속성만 안 찍고 넘어감
+    Logger.log('등급 결과 열 정비 실패 (무시): ' + e);
+  }
 }
 
 // dealId가 비어있는 행(사람이 시트에 직접 새 행을 추가한 경우 등)에 새 UUID+codeSeq=1을 발급해 기록함.
@@ -1084,7 +1267,7 @@ function _deriveGiftFields(oldOption1, oldOption2, oldFirstCome, oldNote) {
 
 function migrateGiftFieldsOnce() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) { Logger.log('[마이그레이션] 실적통합 시트를 찾을 수 없어 중단'); return; }
 
   _backupMainSheetOnce(ss, sheet);
@@ -1160,9 +1343,12 @@ function _backupMainSheetOnce(ss, sheet) {
 // 기준으로 처음부터 다시 계산해서 덮어씀. _deriveGiftFields를 그대로 재사용하므로 로직은 항상 최신
 // 수정 버전과 일치함 — 백업이 원본 그대로이므로 몇 번을 다시 실행해도 항상 같은(올바른) 결과가 나옴.
 // Apps Script 편집기에서 이 함수를 직접 선택해 실행할 것.
+// ⚠ 이 함수는 백업 시트의 행을 **현재 실적통합 시트의 열 배치 기준**으로 읽는다. 백업을 뜬 뒤
+// 열이 삽입/이동됐다면(2026-09-14 매출등급/팔로워등급 삽입 등) 백업 쪽 열이 어긋나므로 절대
+// 재실행하지 말 것 — 이미 1회성으로 완료된 보정이다.
 function remigrateFromBackup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   var backup = ss.getSheetByName(MAIN_SHEET_BACKUP_NAME);
   if (!sheet || !backup) { Logger.log('[보정] 실적통합 또는 백업 시트를 찾을 수 없어 중단'); return; }
 
@@ -1256,21 +1442,25 @@ function _findGroupRows(sheet, dealId) {
 
 // 그룹 전체(모든 코드순번 행)에 동일하게 반영하는 필드 — 사람이 시트를 훑어볼 때 헷갈리지 않도록
 // (등급은 채널명에 종속된 값이라 channel과 같은 취급 — 그룹의 모든 행에 동일하게 기록)
-var GROUP_MIRROR_COLS = { brand: COL.brand, product: COL.product, channel: COL.channel, vendor: COL.vendor, tier: COL.tier };
+// ⚠ 2026-09-14: 예전엔 {필드명: COL.xxx} 형태의 맵이었는데, COL이 파일 로드 시점의 고정 상수가
+// 아니라 _resolveCols가 런타임에 채우는 객체가 되면서 그 방식이 성립하지 않게 됨(로드 시점엔 전부
+// undefined). 마침 이 맵들은 키와 COL 키가 이름까지 동일했으므로, 키 목록만 남기고 열 인덱스는
+// 쓰는 순간 COL[k]로 조회하도록 바꿈.
+var GROUP_MIRROR_KEYS = ['brand', 'product', 'channel', 'vendor', 'tier'];
 
-// 대표 행(코드순번=1)에만 반영하는 필드 — 실적/조건 값은 그룹당 하나만 존재해야 하므로 중복 저장 금지
-var PRIMARY_ONLY_COLS = {
-  platform: COL.platform, link: COL.link, format: COL.format, composition: COL.composition,
-  targetQty: COL.targetQty, marketingLink: COL.marketingLink,
-  option1: COL.option1, option2: COL.option2, firstCome: COL.firstCome,
-  extraQty: COL.extraQty, note: COL.note,
-  giftItem1: COL.giftItem1, giftQty1: COL.giftQty1,
-  giftItem2: COL.giftItem2, giftQty2: COL.giftQty2,
-  giftItem3: COL.giftItem3, giftQty3: COL.giftQty3,
-  firstComeQty: COL.firstComeQty, note2: COL.note2,
-  // 팔로워 수는 "공구 진행 당시" 스냅샷이라 채널이 아니라 건에 속하는 값 — 대표 행에만 기록함
-  followers: COL.followers
-};
+// 대표 행(코드순번=1)에만 반영하는 필드 — 실적/조건 값은 그룹당 하나만 존재해야 하므로 중복 저장 금지.
+// 팔로워 수는 "공구 진행 당시" 스냅샷이라 채널이 아니라 건에 속하는 값이어서 여기(대표 행)에 들어감.
+var PRIMARY_ONLY_KEYS = [
+  'platform', 'link', 'format', 'composition',
+  'targetQty', 'marketingLink',
+  'option1', 'option2', 'firstCome',
+  'extraQty', 'note',
+  'giftItem1', 'giftQty1',
+  'giftItem2', 'giftQty2',
+  'giftItem3', 'giftQty3',
+  'firstComeQty', 'note2',
+  'followers'
+];
 
 // 채널명(E열) 셀의 텍스트는 그대로 두고 하이퍼링크만 걸거나 제거함 — 별도 링크 열(COL.link)과
 // 어긋나지 않도록 저장 시 항상 같이 갱신함. url이 falsy면 링크 제거(텍스트는 유지).
@@ -1390,6 +1580,7 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'deleteDeal') resp = _deleteDeal(ss, data);
     else if (action === 'clearChannelTier') resp = _clearChannelTier(ss, data);
     else if (action === 'updateChannelFollowers') resp = _updateChannelFollowers(ss, data);
+    else if (action === 'writeTiers') resp = _writeTiers(ss, data);
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
@@ -1525,7 +1716,7 @@ function _getLastDataRow(sheet, keyCol) {
 // 기록함. 실적/조회 필드(판매수량·총매출·조회수·릴스)만 그룹당 하나여야 하므로 첫 행에만 기록.
 // 여러 행을 setValues로 한 번에 써서, 중간에 실패해도 일부 행만 생기는 일이 없게 함(원자적 삽입).
 function _addDeal(ss, data) {
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) throw new Error('실적통합 시트를 찾을 수 없습니다.');
   _ensureExtraHeaders(sheet);
 
@@ -1643,11 +1834,11 @@ function _addDeal(ss, data) {
 }
 
 // 공구건 상세 모달 저장 — dealId 그룹 전체에 반영.
-// data.changes: 공통 필드(GROUP_MIRROR_COLS)는 그룹의 모든 행에 동일 반영, 나머지(PRIMARY_ONLY_COLS +
+// data.changes: 공통 필드(GROUP_MIRROR_KEYS)는 그룹의 모든 행에 동일 반영, 나머지(PRIMARY_ONLY_KEYS +
 // sale/comm/start/end/status)는 대표 행에만 반영.
 // data.codes: 최신 상품코드 배열(1~5개) — 그룹 행 수와 비교해 부족하면 append, 남으면 delete.
 function _updateDeal(ss, data) {
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
 
   var groupRows = _findGroupRows(sheet, data.dealId);
@@ -1669,18 +1860,20 @@ function _updateDeal(ss, data) {
   }
 
   // 공통 필드 — 그룹의 모든 행에 동일 반영
-  for (var k in GROUP_MIRROR_COLS) {
+  for (var ki = 0; ki < GROUP_MIRROR_KEYS.length; ki++) {
+    var k = GROUP_MIRROR_KEYS[ki];
     if (c[k] !== undefined) {
       for (var g = 0; g < groupRows.length; g++) {
-        sheet.getRange(groupRows[g].row, GROUP_MIRROR_COLS[k] + 1).setValue(c[k] || '');
+        sheet.getRange(groupRows[g].row, COL[k] + 1).setValue(c[k] || '');
       }
     }
   }
 
   // 대표 행 전용 필드
-  for (var k2 in PRIMARY_ONLY_COLS) {
+  for (var k2i = 0; k2i < PRIMARY_ONLY_KEYS.length; k2i++) {
+    var k2 = PRIMARY_ONLY_KEYS[k2i];
     if (c[k2] !== undefined) {
-      var pCell = sheet.getRange(primaryRow, PRIMARY_ONLY_COLS[k2] + 1);
+      var pCell = sheet.getRange(primaryRow, COL[k2] + 1);
       // option2(오픈시간, "10:00")를 구글 시트가 시간 값으로 자동 인식하는 문제 방지 — 값을 쓰기
       // 전에 이 열만 일반 텍스트로 고정(REVIEW_COL.ym에 이미 쓰던 setNumberFormat('@') 패턴 재사용)
       if (k2 === 'option2') pCell.setNumberFormat('@');
@@ -1689,7 +1882,7 @@ function _updateDeal(ss, data) {
   }
 
   // 채널명 셀의 하이퍼링크도 함께 갱신 — 위 링크 열(COL.link)과 어긋나지 않게, 그룹의 모든 행에
-  // 반영함(채널명 텍스트는 위 GROUP_MIRROR_COLS 반영이 이미 끝난 뒤라 최신 텍스트를 그대로 씀).
+  // 반영함(채널명 텍스트는 위 GROUP_MIRROR_KEYS 반영이 이미 끝난 뒤라 최신 텍스트를 그대로 씀).
   // 링크를 빈 값으로 저장하면 하이퍼링크만 제거되고 텍스트는 유지됨.
   if (c.link !== undefined) {
     for (var lg = 0; lg < groupRows.length; lg++) {
@@ -1738,7 +1931,7 @@ function _updateDeal(ss, data) {
     if (codes.length > groupRows.length) {
       // 부족한 만큼 그룹 끝에 새 행 추가(공통 필드는 대표 행 현재 값을 복사, 실적/조건 값은 비움)
       var mirrorVals = {};
-      for (var mk in GROUP_MIRROR_COLS) mirrorVals[mk] = sheet.getRange(primaryRow, GROUP_MIRROR_COLS[mk] + 1).getValue();
+      for (var mki = 0; mki < GROUP_MIRROR_KEYS.length; mki++) mirrorVals[GROUP_MIRROR_KEYS[mki]] = sheet.getRange(primaryRow, COL[GROUP_MIRROR_KEYS[mki]] + 1).getValue();
       // 새로 추가되는 행도 채널명 하이퍼링크가 맞도록, 지금 이 요청에서 바뀐 링크(c.link)가
       // 있으면 그걸 쓰고 없으면 현재 저장된 링크(링크 열 → 없으면 채널명 셀 하이퍼링크)를 따라감
       var linkForNewRows = c.link !== undefined ? c.link : String(sheet.getRange(primaryRow, COL.link + 1).getValue() || '').trim();
@@ -1748,7 +1941,7 @@ function _updateDeal(ss, data) {
       }
       for (var add = groupRows.length; add < codes.length; add++) {
         var newRow = [];
-        for (var mk2 in GROUP_MIRROR_COLS) newRow[GROUP_MIRROR_COLS[mk2]] = mirrorVals[mk2];
+        for (var mk2 = 0; mk2 < GROUP_MIRROR_KEYS.length; mk2++) newRow[COL[GROUP_MIRROR_KEYS[mk2]]] = mirrorVals[GROUP_MIRROR_KEYS[mk2]];
         newRow[COL.code] = codes[add];
         newRow[COL.dealId] = data.dealId;
         newRow[COL.codeSeq] = add + 1;
@@ -1792,7 +1985,7 @@ function _updateDeal(ss, data) {
 //     현재 보이는 값이 바뀌지 않음. 코드순번 2 이상인 보조 행/제품명 없는 빈 행은 건드리지 않음).
 function fixMissingRevenueFormulas() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) { Logger.log('[매출수식보정] 실적통합 시트를 찾을 수 없어 중단'); return; }
 
   _backupMainSheetForRevenueFix(ss, sheet);
@@ -1842,7 +2035,7 @@ function _backupMainSheetForRevenueFix(ss, sheet) {
 // 열 하나를 통째로 읽어 메모리에서 지운 뒤 한 번의 setValues로 되쓴다(행마다 setValue를 부르면
 // 행 수만큼 시트 왕복이 생겨 느림).
 function _clearChannelTier(ss, data) {
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
   var channel = String((data && data.channel) || '').trim();
   if (!channel) return _json({ error: '채널명이 비어 있습니다.' });
@@ -1875,7 +2068,7 @@ function _clearChannelTier(ss, data) {
    스냅샷이라는 성격이 깨짐). 프론트의 followerCount도 같은 규칙("가장 최근 값")으로 읽는다.
    _clearChannelTier와 같이 열을 통째로 읽어 메모리에서 판단한 뒤 셀 하나만 쓴다. */
 function _updateChannelFollowers(ss, data) {
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
   var channel = String((data && data.channel) || '').trim();
   if (!channel) return _json({ error: '채널명이 비어 있습니다.' });
@@ -1910,9 +2103,76 @@ function _updateChannelFollowers(ss, data) {
   return _json({ success: true, channel: channel, row: bestRow, followers: followers, start: bestKey });
 }
 
+/* 등급 결과 열 배치 기록 (2026-09-14) — 프론트가 등급 재계산을 끝낸 뒤 호출.
+   data.rows: [{rowIndex, salesTier, followerTier}, ...] — rowIndex는 1-based 시트 행 번호.
+   등급 산정은 전적으로 프론트 몫이고(임계값이 바뀔 때마다 GAS를 재배포할 수는 없으므로), GAS는
+   "받은 값을 그 행에 그대로 적는" 역할만 한다. 다만 시트를 망가뜨리지 않도록 세 가지는 여기서 지킴:
+     1) 허용값 4종(TIER_OPTIONS) 밖의 값은 _normalizeTier가 전부 빈칸으로 — 시트에 이상한 값이 남지 않음
+     2) 데이터 범위 밖 행 번호와 Minix 외 행은 건너뜀 — 프론트가 잘못된 행을 보내도 남의 행을 안 건드림
+     3) 실제로 값이 달라지는 행이 하나도 없으면 아무것도 쓰지 않고 끝냄(written:0)
+   쓰기는 바뀐 행들을 전부 덮는 최소 블록(minRow~maxRow) 하나를 setValues 한 번으로 처리한다 —
+   행마다 setValue를 부르면 호출 수가 행 수만큼 늘어 6분 실행 한도에 금방 닿기 때문. 블록 안의
+   안 바뀐 행은 자기 값을 그대로 다시 쓰는 것이라 결과가 같다. */
+function _writeTiers(ss, data) {
+  var sheet = _mainSheet(ss);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+
+  var rows = (data && Object.prototype.toString.call(data.rows) === '[object Array]') ? data.rows : [];
+  if (!rows.length) return _json({ success: true, written: 0 });
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastRow <= DATA_START_ROW) return _json({ success: true, written: 0 });
+
+  var want = {}; // 1-based 행 번호 -> [매출등급, 팔로워등급]
+  var minRow = 0, maxRow = 0, skipped = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i] || {};
+    var rowIndex = _numOrNull(r.rowIndex);
+    if (rowIndex == null || rowIndex <= DATA_START_ROW || rowIndex > lastRow) { skipped++; continue; }
+    want[rowIndex] = [_normalizeTier(r.salesTier), _normalizeTier(r.followerTier)];
+    if (!minRow || rowIndex < minRow) minRow = rowIndex;
+    if (rowIndex > maxRow) maxRow = rowIndex;
+  }
+  if (!minRow) return _json({ success: true, written: 0, skipped: skipped });
+
+  var n = maxRow - minRow + 1;
+  var brandVals = sheet.getRange(minRow, COL.brand + 1, n, 1).getValues();
+  var salesVals = sheet.getRange(minRow, COL.salesTier + 1, n, 1).getValues();
+  var folVals   = sheet.getRange(minRow, COL.followerTier + 1, n, 1).getValues();
+
+  var changed = 0;
+  for (var key in want) {
+    var idx = Number(key) - minRow;
+    if (!MINIX_ALIASES[String(brandVals[idx][0] || '').trim()]) { skipped++; continue; } // Minix 외 행은 건드리지 않음
+    var s = want[key][0], f = want[key][1];
+    if (String(salesVals[idx][0] || '').trim() === s && String(folVals[idx][0] || '').trim() === f) continue;
+    salesVals[idx][0] = s;
+    folVals[idx][0] = f;
+    changed++;
+  }
+  if (!changed) return _json({ success: true, written: 0, skipped: skipped });
+
+  if (COL.followerTier === COL.salesTier + 1) {
+    // 정상 레이아웃 — 두 열이 붙어 있으므로 2칸짜리 범위 하나로 한 번에 씀
+    var pair = [];
+    for (var p = 0; p < n; p++) pair.push([salesVals[p][0], folVals[p][0]]);
+    sheet.getRange(minRow, COL.salesTier + 1, n, 2).setValues(pair);
+  } else {
+    // 누군가 두 열 사이에 다른 열을 끼워 넣어 인접이 깨진 경우 — 한 범위로 묶으면 사이 열의 수식까지
+    // 값으로 덮어써 버리므로 열별로 따로 씀(호출이 하나 늘 뿐 결과는 동일)
+    Logger.log('[등급 기록] 매출등급/팔로워등급 열이 인접하지 않아 열별로 나눠 기록함');
+    sheet.getRange(minRow, COL.salesTier + 1, n, 1).setValues(salesVals);
+    sheet.getRange(minRow, COL.followerTier + 1, n, 1).setValues(folVals);
+  }
+
+  Logger.log('[등급 기록] 요청 ' + rows.length + '행 / 갱신 ' + changed + '행 / 건너뜀 ' + skipped +
+    '행 / 블록=' + minRow + '~' + maxRow);
+  return _json({ success: true, written: changed, skipped: skipped });
+}
+
 // 공구건 삭제 — dealId 그룹의 모든 행을 하드 삭제(릴스 데이터도 대표 행에 같이 있어 함께 삭제됨)
 function _deleteDeal(ss, data) {
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
 
   var groupRows = _findGroupRows(sheet, data.dealId);
@@ -1933,7 +2193,7 @@ function _deleteDeal(ss, data) {
 // 총매출은 다른 경로와 똑같이 항상 수식으로 유지 — data.revenue를 직접 setValue하면 다른 경로가
 // 심어둔 수식을 고정 숫자로 덮어써 버려서 이후 재계산이 끊기므로 여기도 동일하게 맞춤)
 function _addPerf(ss, data) {
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
 
   var groupRows = _findGroupRows(sheet, data.dealId);
@@ -1950,7 +2210,7 @@ function _addPerf(ss, data) {
 // 모달의 릴스 관리 저장 → 채널 링크 + 릴스별 URL/조회수(하이퍼링크 포함) + 썸네일(JSON) + 조회수 합계.
 // 전부 대표 행에만 반영(릴스는 공구건 단위 데이터, 코드별로 나뉘지 않음).
 function _saveReels(ss, data) {
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
 
   var groupRows = _findGroupRows(sheet, data.dealId);
@@ -2631,7 +2891,7 @@ function _isoOf(p) { return p ? (p.y + '-' + _pad(p.m) + '-' + _pad(p.d)) : null
 // dryRun=false면 실제로 시작일/종료일 열에 반영(연도 열은 건드리지 않음 — 그대로 신뢰해 입력값으로만 씀).
 function _normalizeSheetDates(dryRun) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(MAIN_SHEET);
+  var sheet = _mainSheet(ss);
   if (!sheet) { Logger.log('실적통합 시트를 찾을 수 없습니다.'); return { error: '시트 없음' }; }
 
   var lastDataRow = _getLastDataRow(sheet, COL.channel + 1);
