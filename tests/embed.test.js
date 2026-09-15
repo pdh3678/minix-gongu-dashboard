@@ -106,5 +106,52 @@ console.log('\n[8] 로그인 화면은 셸 바깥 전체 오버레이 — 임베
   check('전체화면 오버레이로 고정', /#loginScreen\{position:fixed;inset:0/.test(html));
 }
 
+
+console.log('\n[9] 페이지 단위 임베드 — 해시 라우트로 직접 접속');
+{
+  // 라우팅 대상 5개 + 인코딩 변형. navPage/navSales를 가로채 "어느 페이지로 갔는지"만 관찰한다.
+  const ROUTES = [
+    ['calendar',            'page:calendar'],
+    ['dashboard',           'page:dashboard'],
+    ['review',              'page:review'],
+    ['product-더플렌더',     'sales:플렌더'],
+    ['product-더시프트',     'sales:시프트'],
+    // 브라우저가 프래그먼트를 퍼센트 인코딩해 돌려주는 경우 — 디코딩 없이는 기본 탭으로 떨어진다
+    ['product-' + encodeURIComponent('더플렌더'), 'sales:플렌더'],
+    ['product-' + encodeURIComponent('더시프트'), 'sales:시프트']
+  ];
+  ROUTES.forEach(([hash, expect]) => {
+    const { ctx, X } = loadFrontend(PROJ, null, { search: '?embed=1', runHeadScripts: true });
+    let landed = null;
+    ctx.navPage = (pageId) => { landed = 'page:' + pageId; };
+    ctx.navSales = (el, prod) => { landed = 'sales:' + prod; };
+    ctx.openDealForm = () => { landed = 'form'; };
+    ctx.location.hash = '#' + hash;
+    ctx._routeFromHash();
+    check('#' + hash + ' → ' + expect, landed === expect, { landed, expect });
+    check('  ↳ 임베드 유지', X.IS_EMBED === true);
+  });
+}
+
+console.log('\n[10] 로그인 화면은 같은 페이지 오버레이 — 해시/쿼리가 살아남음');
+{
+  // 로그인 때문에 다른 주소로 튕기면 원래 요청 경로가 사라진다. 이 앱은 #loginScreen을
+  // 덮어씌우기만 하므로 URL이 그대로고, 로그인 후 _routeFromHash가 그 해시를 그대로 읽는다.
+  check('로그인이 location을 바꾸지 않음(리다이렉트 코드 없음)',
+    html.indexOf('location.href=') < 0 && html.indexOf('location.replace(') < 0);
+  check('_enterDashboard가 로그인 후 해시로 라우팅', /_enterDashboard[\s\S]{0,600}_routeFromHash\(\)/.test(html));
+}
+
+console.log('\n[11] calOpen 정리가 다른 쿼리를 지우지 않음');
+{
+  const { ctx } = loadFrontend(PROJ, null, { search: '?embed=1&calOpen=a,b', runHeadScripts: true });
+  ctx.location.hash = '#calendar';
+  const keys = ctx._migrateLegacyCalOpen();
+  const url = ctx.history._urls[ctx.history._urls.length - 1];
+  check('calOpen 값은 읽어옴', JSON.stringify(keys) === JSON.stringify(['a', 'b']), keys);
+  check('calOpen은 주소에서 제거', url.indexOf('calOpen') < 0, url);
+  check('embed=1은 살아남음', url.indexOf('embed=1') >= 0, url);
+  check('해시도 보존', url.indexOf('#calendar') >= 0, url);
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);

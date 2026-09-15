@@ -1556,7 +1556,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-embed-2026-09-15-05';
+const DASHBOARD_VERSION='dash-embed-2026-09-15-06';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -4823,7 +4823,11 @@ function _migrateLegacyCalOpen(){
   if(!params.has('calOpen'))return null;
   const raw=params.get('calOpen');
   const keys=raw?raw.split(','):[];
-  history.replaceState(null,'',location.pathname+location.hash);
+  /* calOpen만 걷어내고 나머지 쿼리는 남긴다 — 예전엔 쿼리스트링을 통째로 지워서, 임베드로 들어온
+     주소에 calOpen이 섞여 있으면 ?embed=1까지 같이 날아갔다(사이드바가 다시 튀어나옴). */
+  params.delete('calOpen');
+  const rest=params.toString();
+  history.replaceState(null,'',location.pathname+(rest?'?'+rest:'')+location.hash);
   return keys;
 }
 function calLoadState(){
@@ -6110,8 +6114,18 @@ function _findPageEl(pageId){
 function _findProdEl(prod){
   return document.querySelector(`.sb-item[data-prod="${prod}"]`);
 }
+/* 해시를 라우팅 키로 바꾼다.
+   ⚠ 품목별 실적 해시에는 한글이 들어간다(#product-더플렌더). 브라우저·상황에 따라 location.hash가
+   퍼센트 인코딩된 형태(#product-%EB%8D%94...)로 돌아오는데, 그대로 비교하면 HASH_PRODUCT_TO_ST
+   조회가 실패해 조용히 기본 탭(대시보드)으로 떨어진다 — "URL은 맞는데 엉뚱한 페이지가 열린다"가 되는 자리.
+   디코딩해서 양쪽 표기를 모두 받아준다. %가 이스케이프가 아닌 채로 섞여 있으면 decodeURIComponent가
+   던지므로 그때는 원문을 그대로 쓴다. */
+function _decodeHash(h){
+  const s=String(h||'').replace(/^#/,'');
+  try{ return decodeURIComponent(s); }catch(e){ return s; }
+}
 function _routeFromHash(){
-  const raw=(location.hash||'').replace(/^#/,'');
+  const raw=_decodeHash(location.hash);
   if(raw==='new-deal'){openDealForm();return;}
   if(raw==='entry-list'){navPage('management',_findPageEl('management'));return;}
   if(raw==='calendar'){navPage('calendar',_findPageEl('calendar'));return;}
