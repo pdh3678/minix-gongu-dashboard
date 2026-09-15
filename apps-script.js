@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'inflink-2026-09-15-21';
+var SCRIPT_VERSION = 'idlink-2026-09-16-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1333,6 +1333,181 @@ function _fillInfluencerLinks(dryRun) {
     Logger.log('[링크 채움] ' + targets.length + '행 기록 완료');
   }
   return { dryRun: !!dryRun, count: targets.length, sample: targets.slice(0, 5) };
+}
+
+
+/* ── 링크 → 플랫폼 ID 역추출 (2026-09-16) ──────────────────────────────────────
+   _fillInfluencerLinks의 반대 방향이다. ID 열은 비어 있고 인플루언서 링크만 들어 있는 행에서
+   주소를 파싱해 인스타/유튜브 ID를 뽑아 채운다.
+
+   판정 기준은 **주소의 호스트**이지 플랫폼 열이 아니다. 플랫폼 표기는 '인스타'·'IG'·'릴스'처럼
+   흔들리는 데다 플랫폼 열과 링크가 실제로 어긋난 행도 있어서, 주소 쪽이 언제나 더 믿을 만하다.
+
+   뽑는 형태
+     instagram.com/{id}                → igId
+     youtube.com/@{id}                 → ytId
+     youtube.com/channel|c|user/{id}   → ytId
+   건드리지 않는 형태(로그에만 남김)
+     instagram.com/p|reel|tv|stories/…  게시물 주소라 계정명이 아니다
+     youtu.be/… · youtube.com/watch · /shorts/…  영상 주소다
+     단축 URL·블로그·그 밖의 호스트
+
+   뽑은 값은 채널 공통 전파 규칙대로 같은 채널(앞뒤 공백만 제거한 완전 일치)의 빈 칸에도 채운다.
+   다만 시트에 이미 값이 있으면 그쪽이 이긴다 — 링크에서 뽑은 값이 달라도 덮지 않고 불일치로
+   로그에만 남긴다. 사람이 넣은 값을 되돌리는 쪽이 훨씬 비싸기 때문이다.
+
+   먼저 previewIdsFromLinks()로 대상과 샘플을 확인한 뒤 fillIdsFromLinks(). */
+function previewIdsFromLinks() { return _extractIdsFromLinks(true); }
+function fillIdsFromLinks()    { return _extractIdsFromLinks(false); }
+
+// 인스타 경로의 첫 칸이 계정명이 아닌 경우 — 게시물·기능 주소
+var IG_NON_PROFILE = { p:1, reel:1, reels:1, tv:1, stories:1, explore:1, s:1, direct:1,
+  accounts:1, about:1, developer:1, legal:1, challenge:1 };
+
+/* 링크 한 줄 → { kind:'ig'|'yt'|'', id, reason }. kind가 빈 문자열이면 reason이 건너뛴 이유다.
+   Apps Script에는 브라우저의 URL 클래스가 없어 호스트와 경로만 정규식으로 잘라 쓴다. */
+function _extractIdFromLinkGas(link) {
+  var s = String(link == null ? '' : link).trim();
+  if (!s) return { kind: '', id: '', reason: '링크 없음' };
+  var m = s.match(/^(?:https?:\/\/)?([^\/?#\s]+)([^?#\s]*)/i);
+  if (!m) return { kind: '', id: '', reason: '주소 형태가 아님' };
+  var host = m[1].toLowerCase().replace(/^www\./, '').replace(/:\d+$/, '');
+  var segs = String(m[2] || '').replace(/^\/+|\/+$/g, '').split('/').filter(function (x) { return !!x; });
+  var head = segs[0] || '';
+
+  if (host === 'instagram.com' || host === 'instagr.am') {
+    if (!head) return { kind: '', id: '', reason: '인스타 주소인데 계정명이 없음' };
+    if (IG_NON_PROFILE[head.toLowerCase()]) return { kind: '', id: '', reason: '인스타 게시물/기능 주소(/' + head + ')' };
+    var ig = head.replace(/^@+/, '');
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(ig)) return { kind: '', id: '', reason: '인스타 ID 형식이 아님(' + head + ')' };
+    return { kind: 'ig', id: ig, reason: '' };
+  }
+  if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com') {
+    if (head.charAt(0) === '@') {
+      var handle = head.replace(/^@+/, '');
+      return handle ? { kind: 'yt', id: handle, reason: '' }
+                    : { kind: '', id: '', reason: '유튜브 핸들이 비어 있음' };
+    }
+    var lead = head.toLowerCase();
+    if (lead === 'channel' || lead === 'c' || lead === 'user') {
+      var seg = (segs[1] || '').replace(/^@+/, '');
+      return seg ? { kind: 'yt', id: seg, reason: '' }
+                 : { kind: '', id: '', reason: '유튜브 /' + lead + ' 주소인데 뒤가 비어 있음' };
+    }
+    return { kind: '', id: '', reason: '유튜브 채널 주소가 아님(' + (head ? '/' + head : '경로 없음') + ')' };
+  }
+  if (host === 'youtu.be') return { kind: '', id: '', reason: '유튜브 영상 단축 주소' };
+  return { kind: '', id: '', reason: '인스타/유튜브 주소가 아님(' + host + ')' };
+}
+
+function _extractIdsFromLinks(dryRun) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = _mainSheet(ss);
+  if (!sheet) { Logger.log('[ID 역추출] 실적통합 시트를 찾을 수 없습니다'); return null; }
+  _resolveCols(sheet);
+  if (COL.link < 0) { Logger.log("[ID 역추출] '인플루언서 링크' 열을 찾을 수 없습니다"); return null; }
+  if (COL.igId < 0 && COL.ytId < 0) {
+    Logger.log("[ID 역추출] 인스타/유튜브 ID 열이 없습니다 — 2행에 '인스타 ID'/'유튜브 ID' 헤더를 추가하세요");
+    return null;
+  }
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastRow <= DATA_START_ROW) { Logger.log('[ID 역추출] 데이터 행이 없습니다'); return null; }
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
+
+  function cellId(row, key) {
+    return COL[key] >= 0 ? _normalizeChannelFieldValue(key, row[COL[key]]) : '';
+  }
+
+  /* ① 한 번 훑으며 채널마다 "시트에 이미 있는 값"과 "링크에서 뽑은 값"을 따로 모은다.
+     둘을 섞지 않는 이유는 ②에서 시트 값을 우선하기 위해서다. */
+  var chs = {}, order = [], skipped = [];
+  for (var i = 0; i < n; i++) {
+    var row = vals[i];
+    if (!String(row[COL.product] || '').trim()) continue;
+    if (!MINIX_ALIASES[String(row[COL.brand] || '').trim()]) continue;
+    var ch = String(row[COL.channel] || '').trim();
+    if (!ch) continue;
+    if (!chs[ch]) {
+      chs[ch] = { ch: ch, idx: [], igSheet: '', ytSheet: '', igLink: '', ytLink: '', conflicts: [] };
+      order.push(ch);
+    }
+    var c = chs[ch];
+    c.idx.push(i);
+    var ig = cellId(row, 'igId'), yt = cellId(row, 'ytId');
+    if (ig) c.igSheet = ig;   // 아래쪽(= 최근) 행이 이긴다 — 채널 정보는 최신이 정답
+    if (yt) c.ytSheet = yt;
+    var link = String(row[COL.link] || '').trim();
+    if (!link || ig || yt) continue;   // 링크가 없거나 이미 ID가 붙은 행은 볼 것이 없다
+    var got = _extractIdFromLinkGas(link);
+    if (!got.kind) { skipped.push({ sheetRow: first + i, channel: ch, link: link, reason: got.reason }); continue; }
+    var prev = got.kind === 'ig' ? c.igLink : c.ytLink;
+    if (prev && prev !== got.id) c.conflicts.push(got.kind + ' 링크끼리: ' + prev + ' vs ' + got.id);
+    if (got.kind === 'ig') c.igLink = got.id; else c.ytLink = got.id;
+  }
+
+  // ② 채널 기준값을 정하고 빈 칸을 채운다. 쓰기는 열마다 setValues 한 번(전파 함수와 같은 방식)
+  var igCol = [], ytCol = [];
+  for (var r = 0; r < n; r++) {
+    igCol.push([COL.igId >= 0 ? vals[r][COL.igId] : '']);
+    ytCol.push([COL.ytId >= 0 ? vals[r][COL.ytId] : '']);
+  }
+  var targets = [], igFilled = 0, ytFilled = 0, hitChannels = 0, conflicts = [], touchedRows = {};
+  for (var k = 0; k < order.length; k++) {
+    var cc = chs[order[k]];
+    if (!cc.igLink && !cc.ytLink) continue;     // 이 채널에서는 링크로 뽑힌 게 없다 — 손대지 않는다
+    hitChannels++;
+    if (cc.igSheet && cc.igLink && cc.igSheet !== cc.igLink) cc.conflicts.push('igId 시트 ' + cc.igSheet + ' vs 링크 ' + cc.igLink);
+    if (cc.ytSheet && cc.ytLink && cc.ytSheet !== cc.ytLink) cc.conflicts.push('ytId 시트 ' + cc.ytSheet + ' vs 링크 ' + cc.ytLink);
+    if (cc.conflicts.length) conflicts.push(cc.ch + ' — ' + cc.conflicts.join(' / '));
+    var wantIg = cc.igSheet || cc.igLink, igSrc = cc.igSheet ? '시트' : '링크';
+    var wantYt = cc.ytSheet || cc.ytLink, ytSrc = cc.ytSheet ? '시트' : '링크';
+    for (var t = 0; t < cc.idx.length; t++) {
+      var ix = cc.idx[t];
+      if (COL.igId >= 0 && wantIg && !_normalizeChannelFieldValue('igId', igCol[ix][0])) {
+        igCol[ix][0] = wantIg; igFilled++; touchedRows[first + ix] = true;
+        targets.push({ sheetRow: first + ix, channel: cc.ch, field: 'igId', value: wantIg, src: igSrc });
+      }
+      if (COL.ytId >= 0 && wantYt && !_normalizeChannelFieldValue('ytId', ytCol[ix][0])) {
+        ytCol[ix][0] = wantYt; ytFilled++; touchedRows[first + ix] = true;
+        targets.push({ sheetRow: first + ix, channel: cc.ch, field: 'ytId', value: wantYt, src: ytSrc });
+      }
+    }
+  }
+  var rowCount = Object.keys(touchedRows).length;
+
+  Logger.log('[ID 역추출] ' + (dryRun ? '미리보기' : '실행') + ' — 링크에서 ID를 뽑은 채널 ' + hitChannels +
+    '개 / 채울 칸 ' + targets.length + '개(행 ' + rowCount + '개) / 건너뛴 링크 ' + skipped.length + '개');
+  for (var s = 0; s < Math.min(5, targets.length); s++) {
+    var g = targets[s];
+    Logger.log('  · ' + g.sheetRow + '행  ' + g.channel + '  ' + g.field + ' ← @' + g.value + ' (' + g.src + ')');
+  }
+  if (targets.length > 5) Logger.log('  · … 외 ' + (targets.length - 5) + '칸');
+  if (!targets.length) Logger.log('  (채울 칸이 없습니다)');
+  for (var q = 0; q < Math.min(40, skipped.length); q++) {
+    Logger.log('  [건너뜀] ' + skipped[q].sheetRow + '행  ' + skipped[q].channel + '  ' + skipped[q].link +
+      '  → ' + skipped[q].reason);
+  }
+  if (skipped.length > 40) Logger.log('  [건너뜀] … 외 ' + (skipped.length - 40) + '개');
+  if (conflicts.length) {
+    Logger.log('[ID 역추출] 값이 어긋난 채널 ' + conflicts.length + '개 — 시트 값을 그대로 두었습니다');
+    for (var v = 0; v < conflicts.length; v++) Logger.log('  ! ' + conflicts[v]);
+  }
+
+  if (!dryRun) {
+    if (targets.length) {
+      if (igFilled && COL.igId >= 0) sheet.getRange(first, COL.igId + 1, n, 1).setValues(igCol);
+      if (ytFilled && COL.ytId >= 0) sheet.getRange(first, COL.ytId + 1, n, 1).setValues(ytCol);
+      SpreadsheetApp.flush();
+      _invalidateDashboardCache();
+    }
+    Logger.log('[ID 역추출] 기록 완료 — 인스타 ' + igFilled + '칸 / 유튜브 ' + ytFilled + '칸 / 건너뜀 ' +
+      skipped.length + '개');
+  }
+  return { dryRun: !!dryRun, channels: hitChannels, filled: targets.length, igFilled: igFilled,
+    ytFilled: ytFilled, rows: rowCount, skipped: skipped, conflicts: conflicts,
+    sample: targets.slice(0, 5) };
 }
 
 

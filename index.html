@@ -389,6 +389,12 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .fol-missing-btn{border:none;background:var(--warn-bg);color:var(--warn);font-family:inherit;font-size:10.5px;
   font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;margin-left:8px;letter-spacing:0}
 .fol-missing-btn.on{background:var(--warn);color:#fff}
+/* 채널 정보 미입력 목록 — 빈 칸을 눌러 그 자리에서 채우는 인라인 편집(팔로워 편집과 같은 조작) */
+.chid-cell{cursor:text}
+.chid-cell:hover{background:var(--minix-lt)}
+.chid-empty{color:var(--text-3)}
+.chid-inp{width:100%;box-sizing:border-box;font:inherit;font-size:11.5px;
+  border:1px solid var(--minix);border-radius:4px;padding:2px 5px;background:var(--surface)}
 /* 등급 교차 분석 — 매트릭스 */
 .gap-matrix{display:grid;gap:4px;font-size:11px}
 .gap-matrix .gm-h{font-size:10px;color:var(--text-3);font-weight:700;text-align:center;padding:2px 0;
@@ -947,7 +953,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
 
       <div class="card">
-        <div class="card-hd"><span>채널(인플루언서)별 성과<button type="button" class="fol-missing-btn" id="dashChFolMissing" onclick="_toggleDashChFollowerMissing()" style="display:none"></button></span><span class="card-hd-r">완료+진행중 기준</span></div>
+        <div class="card-hd"><span>채널(인플루언서)별 성과<button type="button" class="fol-missing-btn" id="dashChFolMissing" onclick="_toggleDashChFollowerMissing()" style="display:none"></button><button type="button" class="fol-missing-btn" id="dashChIdMissing" onclick="_toggleDashChIdMissing()" style="display:none"></button></span><span class="card-hd-r">완료+진행중 기준</span></div>
         <div class="analytics-split analytics-split-wide">
           <div class="tbl-wrap">
             <table><thead><tr>
@@ -1098,14 +1104,25 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
     </div>
 
-    <!-- ④ 공구 관리 페이지 -->
+    <!-- ④ 공구 관리 페이지 — [실적 미기입 | 채널 정보 미입력] 두 탭 -->
     <div class="main page" id="page-management">
       <div class="card">
-        <div class="card-hd">실적 미기입 공구건 목록 <span class="card-hd-r" id="mgmtCnt"></span></div>
-        <div class="tbl-wrap">
+        <div class="card-hd">
+          <span>채워야 할 것들<span class="gap-tabs" id="mgmtTabs" style="margin-left:10px;vertical-align:middle">
+            <button type="button" data-tab="perf" onclick="_setMgmtTab('perf')">실적 미기입</button>
+            <button type="button" data-tab="chinfo" onclick="_setMgmtTab('chinfo')">채널 정보 미입력</button>
+          </span></span><span class="card-hd-r" id="mgmtCnt"></span>
+        </div>
+        <div class="tbl-wrap" id="mgmtPerfWrap">
           <table><thead><tr>
             <th>제품</th><th>채널</th><th>기간</th><th>공구가</th><th>진행상태</th>
           </tr></thead><tbody id="mgmtBody"></tbody></table>
+        </div>
+        <div class="tbl-wrap" id="mgmtChWrap" style="display:none">
+          <table><thead><tr>
+            <th>채널명</th><th>플랫폼</th><th class="num-col">공구 횟수</th>
+            <th>인스타 ID</th><th>유튜브 ID</th><th class="num-col">팔로워 수</th>
+          </tr></thead><tbody id="mgmtChBody"></tbody></table>
         </div>
       </div>
     </div>
@@ -1631,7 +1648,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-inflink-2026-09-15-21';
+const DASHBOARD_VERSION='dash-idlink-2026-09-16-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -4249,6 +4266,19 @@ function _renderGapTop(rows){
 // renderDashChannelAnalytics가 재호출될 때마다 이 기준으로 다시 정렬됨(별도 유지 로직 불필요).
 let _dashChannelSort={key:'revSum',dir:-1};
 let _dashChFollowerMissingOnly=false; // 헤더의 "팔로워 미입력 N개" 배지로 켜고 끄는 표 전용 보기
+let _dashChIdMissingOnly=false;       // 같은 방식의 "ID 미입력 N채널" 보기 — 둘은 각각 독립으로 걸린다
+/* 채널에 플랫폼 ID가 하나도 없는가.
+   둘 다 비어 있을 때만 미입력으로 본다 — 인스타 전용/유튜브 전용 채널이 대부분이라
+   "둘 다 채워라"로 잡으면 목록이 영원히 안 줄어들고, 배지 숫자가 의미를 잃는다. */
+function _chIdMissing(ch){
+  const info=channelInfoOf(ch);
+  if(!info)return true;
+  return !info.fields.igId.filled&&!info.fields.ytId.filled;
+}
+function _toggleDashChIdMissing(){
+  _dashChIdMissingOnly=!_dashChIdMissingOnly;
+  renderDashChannelAnalytics();
+}
 function _toggleDashChFollowerMissing(){
   _dashChFollowerMissingOnly=!_dashChFollowerMissingOnly;
   renderDashChannelAnalytics();
@@ -4312,6 +4342,7 @@ function renderDashChannelAnalytics(){
     body.innerHTML=`<tr><td colspan="11" class="dash-analytics-empty">${_dashProductLabel()?'해당 기간·품목 조건에 완료·진행중인 공구건이 없습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     note.textContent='';
     document.getElementById('dashChFolMissing').style.display='none';
+    document.getElementById('dashChIdMissing').style.display='none';
     if(_dashChannelChartInst){_dashChannelChartInst.destroy();_dashChannelChartInst=null;}
     return;
   }
@@ -4362,13 +4393,25 @@ function renderDashChannelAnalytics(){
   misBtn.title=_dashChFollowerMissingOnly?'클릭하면 전체 채널을 다시 표시합니다':'클릭하면 팔로워 수가 없는 채널만 표시합니다';
   if(_dashChFollowerMissingOnly&&!missing)_dashChFollowerMissingOnly=false; // 다 채우면 자동 해제
 
+  // ID 미입력 채널 수 — 팔로워 배지와 같은 조작. 두 배지는 독립이라 동시에 걸면 교집합이 남는다
+  const idMissing=rows.filter(r=>_chIdMissing(r.ch)).length;
+  const idBtn=document.getElementById('dashChIdMissing');
+  idBtn.style.display=(idMissing||_dashChIdMissingOnly)?'':'none';
+  idBtn.textContent=_dashChIdMissingOnly?`ID 미입력 ${idMissing}채널만 보는 중 ✕`:`ID 미입력 ${idMissing}채널`;
+  idBtn.classList.toggle('on',_dashChIdMissingOnly);
+  idBtn.title=_dashChIdMissingOnly?'클릭하면 전체 채널을 다시 표시합니다':'클릭하면 인스타/유튜브 ID가 하나도 없는 채널만 표시합니다';
+  if(_dashChIdMissingOnly&&!idMissing)_dashChIdMissingOnly=false;
+
   // 차트는 표 정렬 기준과 무관하게 항상 "매출 상위 10개"를 보여줌(차트 자체가 "누적 매출" 기준으로
   // 라벨돼 있어, 표를 다른 기준으로 정렬해도 차트까지 같이 흔들리면 오히려 더 헷갈림) — rows를
   // 정렬하기 전에 매출 기준 정렬본을 따로 떼어둠. 미입력 보기는 표에만 걸고 차트는 그대로 둠.
   const top=[...rows].sort((a,b)=>b.revSum-a.revSum).slice(0,10);
   note.textContent=rows.length>10?`매출 상위 10개 채널만 차트에 표시(전체 ${rows.length}개 채널)`:'';
 
-  const shown=_dashChFollowerMissingOnly?rows.filter(r=>r.followerCount==null):rows;
+  let shown=rows;
+  if(_dashChFollowerMissingOnly)shown=shown.filter(r=>r.followerCount==null);
+  if(_dashChIdMissingOnly)shown=shown.filter(r=>_chIdMissing(r.ch));
+  if(shown===rows)shown=rows.slice(); // 아래 sort가 rows 원본을 흔들지 않게(차트는 rows로 따로 뽑는다)
   shown.sort((a,b)=>_dashChannelCompare(a,b,_dashChannelSort.key,_dashChannelSort.dir));
 
   const trendIcon={up:'▲',down:'▼',flat:'–'};
@@ -5199,9 +5242,39 @@ function pendingPerfDeals(){
   return DATA.filter(d=>(d.qty==null||d.qty===0)&&(d.rev==null||d.rev===0))
     .sort((a,b)=>new Date(a.end)-new Date(b.end)); // 종료일이 오래된(먼저 끝난) 순
 }
+/* 채널 정보 미입력 목록 — 플랫폼 ID가 하나도 없거나 팔로워 수가 비어 있는 채널.
+   ID는 "둘 다 비었을 때"만 미입력으로 본다(_chIdMissing과 같은 이유 — 채널은 보통 한 플랫폼이다).
+   공구 횟수 많은 순: 채워 넣었을 때 표·등급·링크가 가장 많이 살아나는 채널부터 손이 가야 한다. */
+function pendingChannelInfo(){
+  const rows=[];
+  channelInfo().forEach(info=>{
+    const ig=info.fields.igId.latest,yt=info.fields.ytId.latest,fol=info.fields.followers.latest;
+    if((ig||yt)&&fol!=='')return;
+    const platforms=[...new Set(DATA.filter(d=>_chKey(d.ch||d.influencer)===info.channel)
+      .map(d=>String(d.platform||'').trim()).filter(Boolean))];
+    rows.push({ch:info.channel,count:info.total,platforms,igId:ig,ytId:yt,
+      followers:fol===''?null:Number(fol)});
+  });
+  rows.sort((a,b)=>b.count-a.count||a.ch.localeCompare(b.ch,'ko'));
+  return rows;
+}
+// 값이 있으면 그냥 표시, 비어 있으면 눌러서 그 자리에서 채우는 칸
+function _mgmtChCell(ch,key,val){
+  const isFol=key==='followers';
+  if(val!=null&&val!=='')return`<td${isFol?' class="num-col"':''}>${isFol?formatMan(val):'@'+_escHtml(val)}</td>`;
+  const hint=isFol?'클릭해서 입력(만 단위)':'클릭해서 입력 — 주소를 붙여넣어도 ID만 뽑습니다';
+  return `<td class="chid-cell${isFol?' num-col':''}" data-ch="${_escAttr(ch)}" data-key="${key}" `+
+    `onclick="_startChIdEdit(this)" title="${hint}"><span class="chid-empty">— 입력</span></td>`;
+}
+let _mgmtTab='perf'; // 'perf' | 'chinfo'
+function _setMgmtTab(t){if(_mgmtTab===t)return;_mgmtTab=t;renderMgmtPage();}
 function renderMgmtPage(){
+  const tabs=document.getElementById('mgmtTabs');
+  if(tabs)[...tabs.children].forEach(b=>b.classList.toggle('on',b.dataset.tab===_mgmtTab));
+  document.getElementById('mgmtPerfWrap').style.display=_mgmtTab==='perf'?'':'none';
+  document.getElementById('mgmtChWrap').style.display=_mgmtTab==='chinfo'?'':'none';
+
   const f=pendingPerfDeals();
-  document.getElementById('mgmtCnt').textContent=f.length+'건';
   document.getElementById('mgmtBody').innerHTML=f.length?f.map(d=>`
     <tr>
       <td>${productBadge(d.product)}</td>
@@ -5210,6 +5283,81 @@ function renderMgmtPage(){
       <td>${won(d.s&&d.s.sale)}</td>
       <td>${bdg(_displayStatus(d))+_savingChip(d)}</td>
     </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-3)">실적 미기입 건이 없습니다 🎉</td></tr>`;
+
+  const chRows=pendingChannelInfo();
+  document.getElementById('mgmtChBody').innerHTML=chRows.length?chRows.map(r=>`
+    <tr>
+      <td>${chNameHtml(r.ch,getChannelLinkByName(r.ch))}</td>
+      <td>${r.platforms.length?_escHtml(r.platforms.join(' / ')):'<span class="chid-empty">—</span>'}</td>
+      <td class="num-col">${r.count}</td>
+      ${_mgmtChCell(r.ch,'igId',r.igId)}
+      ${_mgmtChCell(r.ch,'ytId',r.ytId)}
+      ${_mgmtChCell(r.ch,'followers',r.followers)}
+    </tr>`).join(''):`<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-3)">채널 정보가 모두 채워져 있습니다 🎉</td></tr>`;
+
+  document.getElementById('mgmtCnt').textContent=
+    _mgmtTab==='perf'?f.length+'건':chRows.length+'채널';
+}
+
+/* ── 채널 정보 인라인 편집 (미입력 목록) ─────────────────────────────────────
+   채널별 성과 표의 팔로워 편집과 같은 조작·같은 저장 경로(updateChannelFields)를 쓴다.
+   이 목록에 뜬 칸은 그 채널의 모든 행이 비어 있다는 뜻이라 overwrite와 fillEmpty가 같은 결과다. */
+let _chIdEditing=null; // 편집 중인 칸 — 중복 저장/재진입 방지
+function _startChIdEdit(td){
+  if(_chIdEditing)return;
+  const ch=td.dataset.ch,key=td.dataset.key,isFol=key==='followers';
+  _chIdEditing=ch+'|'+key;
+  td.innerHTML=isFol
+    ?'<span class="fol-edit"><input class="fol-inp" type="text" inputmode="decimal" placeholder="예: 44.3">'+
+     '<span class="fol-unit">만</span></span><div class="fol-conv"></div>'
+    :`<input class="chid-inp" type="text" placeholder="${key==='igId'?'인스타 ID 또는 주소':'유튜브 ID 또는 주소'}">`;
+  const inp=td.querySelector('input');
+  if(isFol){
+    const conv=td.querySelector('.fol-conv');
+    inp.oninput=()=>{
+      const clean=_sanitizeManInput(inp.value);
+      if(clean!==inp.value){
+        const pos=Math.max(0,(inp.selectionStart||0)-(inp.value.length-clean.length));
+        inp.value=clean;
+        try{inp.setSelectionRange(pos,pos);}catch(e){}
+      }
+      conv.textContent=_folConvText(manToCount(inp.value));
+    };
+  }
+  inp.onkeydown=e=>{
+    if(e.key==='Enter'){e.preventDefault();inp.blur();}
+    else if(e.key==='Escape'){e.preventDefault();_chIdEditing=null;renderMgmtPage();}
+  };
+  inp.onblur=()=>{
+    if(_chIdEditing!==ch+'|'+key)return; // Escape로 이미 빠져나온 경우
+    _chIdEditing=null;
+    // 주소를 통째로 붙여넣어도 ID만 뽑는다 — 모달 입력칸과 같은 규칙
+    const next=isFol?manToCount(inp.value)
+      :_parseChannelIdInput(key==='ytId'?'유튜브':'인스타그램',inp.value).id;
+    if(next==null||next==='')return void renderMgmtPage(); // 빈 채로 나가면 원래대로
+    _saveChannelInfoCell(ch,key,next);
+  };
+  inp.focus();
+}
+async function _saveChannelInfoCell(ch,key,value){
+  const label=key==='igId'?'인스타 ID':key==='ytId'?'유튜브 ID':'팔로워 수';
+  const url=_getGasUrl();
+  try{
+    if(url){
+      const j=await _gasWrite(url,'updateChannelFields',{channel:ch,mode:'overwrite',fields:{[key]:value}});
+      if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'updateChannelFields 응답에 success:true가 없습니다');
+      // 열이 없으면 서버는 조용히 건너뛴다 — "저장됐다"고 속이면 안 되므로 여기서 실패로 올린다
+      if((j.skippedFields||[]).indexOf(key)>=0)throw new Error(`시트에 '${label}' 열이 없습니다 — 2행에 헤더를 추가해주세요`);
+    }
+    _applyChannelFieldsLocally(ch,{[key]:value},'overwrite',null);
+    render(); // 목록에서 사라지고, 실적 표의 @표시·프로필 링크가 같이 살아난다
+    showToast(`${ch} ${label} 저장`,{type:'success'});
+    if(url)fetchLive();
+  }catch(e){
+    console.error('[채널 정보 저장 실패]',e);
+    renderMgmtPage();
+    showToast(label+' 저장 실패: '+_friendlySaveError(e.message),{type:'error'});
+  }
 }
 
 /* ── 공구 캘린더 페이지 ── */
