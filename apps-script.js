@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'manualgroup-2026-09-15-17';
+var SCRIPT_VERSION = 'ungroup-2026-09-15-18';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1512,6 +1512,77 @@ function _ungroupDeal(ss, data) {
   Logger.log('[묶기 해제] 그룹ID ' + groupId + ' / 행 [' + rows.join(', ') + '] 를 각자 dealId로 되돌림');
   return _json({ success: true, groupId: groupId, rows: rows, count: changed });
 }
+/* 부분 해제 — 그룹에서 고른 행만 빼낸다(나머지는 묶인 채로 둔다).
+
+   "행 하나가 잘못 들어갔다"가 실제로 가장 흔한 상황인데, 전체 해제 후 다시 묶으면
+   남은 행들의 그룹ID가 통째로 바뀐다. 그래서 빼낼 행만 건드린다.
+
+   dealId 처리가 까다롭다. 그룹ID를 그 행의 dealId로 되돌리는 게 기본이지만, 한 dealId가
+   여러 행에 걸쳐 있던 그룹(= 예전부터 dealId로 묶여 있던 건)에서는 되돌려도 남는 행과
+   같은 값이라 분리가 되지 않는다. 그럴 때만 새 dealId를 발급한다. */
+function _ungroupRows(ss, data) {
+  var sheet = _mainSheet(ss);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+  if (COL.groupId < 0) return _json({ error: "시트에 '공구그룹ID' 헤더가 없습니다." });
+  var want = {}, asked = 0;
+  ((data && data.rowIndexes) || []).forEach(function (r) {
+    var v = Number(r);
+    if (v > DATA_START_ROW) { want[v] = true; asked++; }
+  });
+  if (!asked) return _json({ error: '빼낼 행이 지정되지 않았습니다.' });
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+  var gVals = sheet.getRange(first, COL.groupId + 1, n, 1).getValues();
+  var dVals = sheet.getRange(first, COL.dealId + 1, n, 1).getValues();
+
+  // 빼낼 행이 속한 그룹들과, 그 그룹에 남게 될 행을 먼저 파악한다
+  var groups = {};
+  for (var i = 0; i < n; i++) {
+    var g = String(gVals[i][0] || '').trim();
+    if (!g) continue;
+    if (!groups[g]) groups[g] = { out: [], stay: [] };
+    (want[first + i] ? groups[g].out : groups[g].stay).push(i);
+  }
+  /* 실제로 여러 행이 묶인 그룹만 대상이다. 단독 건도 자기 dealId를 그룹ID로 갖고 있어서
+     행 수를 보지 않으면 "빼낼 게 없는 행"까지 성공으로 보고하게 된다. */
+  var touched = Object.keys(groups).filter(function (g) {
+    return groups[g].out.length && (groups[g].out.length + groups[g].stay.length) > 1;
+  });
+  if (!touched.length) return _json({ error: '지정한 행이 다른 행과 묶여 있지 않습니다.' });
+
+  var moved = [], freed = [];
+  for (var t = 0; t < touched.length; t++) {
+    var grp = groups[touched[t]];
+    /* 이미 쓰인 dealId — 남는 행들의 것에서 시작해, 빼낸 행에 배정한 것도 더해 나간다.
+       그룹 전체를 한 번에 빼는 경우(= 전체 해제와 같다) 빼낸 행들끼리도 겹칠 수 있다. */
+    var usedIds = {};
+    for (var s = 0; s < grp.stay.length; s++) usedIds[String(dVals[grp.stay[s]][0] || '').trim()] = true;
+    for (var o = 0; o < grp.out.length; o++) {
+      var idx = grp.out[o];
+      var did = String(dVals[idx][0] || '').trim();
+      if (!did || usedIds[did]) { did = Utilities.getUuid(); dVals[idx][0] = did; }
+      usedIds[did] = true;
+      gVals[idx][0] = did;
+      moved.push(first + idx);
+    }
+    // 한 행만 남으면 더는 그룹이 아니다 — 자기 dealId로 정리한다
+    if (grp.stay.length === 1) {
+      var only = grp.stay[0];
+      var oid = String(dVals[only][0] || '').trim();
+      if (oid && gVals[only][0] !== oid) { gVals[only][0] = oid; freed.push(first + only); }
+    }
+  }
+
+  sheet.getRange(first, COL.groupId + 1, n, 1).setValues(gVals);
+  sheet.getRange(first, COL.dealId + 1, n, 1).setValues(dVals);
+  _invalidateDashboardCache();
+  _invalidateDealRowMap();
+  Logger.log('[부분 해제] 행 [' + moved.join(', ') + '] 를 그룹에서 빼냄' +
+    (freed.length ? ' / 한 행만 남아 정리된 행 [' + freed.join(', ') + ']' : ''));
+  return _json({ success: true, rows: moved, freed: freed, count: moved.length });
+}
+
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 메인 시트 파싱 (dealId로 그룹핑 → 그룹당 "공구건" 1개) ──
@@ -2328,6 +2399,7 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'updateChannelFields') resp = _updateChannelFields(ss, data);
     else if (action === 'groupDealRows') resp = _withStructLock(function () { return _groupDealRows(ss, data); });
     else if (action === 'ungroupDeal') resp = _withStructLock(function () { return _ungroupDeal(ss, data); });
+    else if (action === 'ungroupRows') resp = _withStructLock(function () { return _ungroupRows(ss, data); });
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }

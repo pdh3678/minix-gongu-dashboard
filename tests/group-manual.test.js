@@ -234,6 +234,74 @@ const ids = arr => (arr || []).slice().sort().join(',');
     check('묶기 실행은 느슨한 채널 비교를 쓰지 않음', gbody.indexOf('_normChannelLoose') < 0);
   }
 
+
+  console.log('\n[9] 해제 진입점 — 목록에서 바로, 모달에서 전체·행 단위');
+  {
+    // 목록: 묶인 건 칸이 곧 해제 버튼이다
+    const { ctx, sent } = setup();
+    const cell = ctx.groupSelectCell({ dealId: 'D7', rowCount: 2 });
+    check('묶인 건 칸에 해제 버튼', cell.indexOf('ungroupDealById') >= 0 && cell.indexOf('묶음 해제') >= 0, cell);
+    check('해제 버튼이 행 클릭으로 새지 않음', cell.indexOf('stopPropagation') >= 0, cell);
+    await ctx.ungroupDealById('D7');
+    check('목록에서 전체 해제 요청', sent.length === 1 && sent[0].action === 'ungroupDeal', sent);
+    check('그룹ID 전달', sent[0].data.groupId === 'G-OLD', sent[0].data);
+
+    // 묶이지 않은 건은 해제할 게 없다
+    const b = setup();
+    b.X.DATA.find(d => d.dealId === 'D1').groupId = '';
+    await b.ctx.ungroupDealById('D1');
+    check('묶이지 않은 건은 요청 없음', b.sent.length === 0, b.sent);
+  }
+
+  console.log('\n[10] 행 단위 빼기 — 나머지 행은 묶인 채로 남는다');
+  {
+    const { ctx, X, sent } = setup();
+    X.setModalState({
+      dealId: 'D7',
+      codeRows: [{ rowIndex: 9, code: 'X1' }, { rowIndex: 10, code: 'X2' }, { rowIndex: 11, code: 'X3' }]
+    });
+    X.DATA.find(d => d.dealId === 'D7').rowCount = 3;
+    await ctx.ungroupCodeRow(1);
+    check('ungroupRows 요청', sent.length === 1 && sent[0].action === 'ungroupRows', sent.map(s => s.action));
+    check('그 행 번호만 전달', JSON.stringify(sent[0].data.rowIndexes) === '[10]', sent[0].data.rowIndexes);
+
+    // 확인 문구가 무엇이 남고 무엇이 사라지는지 말해준다
+    const c = setup();
+    let msg = '';
+    c.ctx.confirm = m => { msg = String(m); return false; };
+    c.X.setModalState({ dealId: 'D7', codeRows: [{ rowIndex: 9, code: 'X1' }, { rowIndex: 10, code: 'X2' }, { rowIndex: 11, code: 'X3' }] });
+    await c.ctx.ungroupCodeRow(0);
+    check('남는 행 수를 안내', msg.indexOf('나머지 2개 행') >= 0, msg);
+    check('행 삭제가 아님을 안내', msg.indexOf('삭제되지 않습니다') >= 0, msg);
+    check('저장 안 한 수정은 사라짐을 경고', msg.indexOf('저장하지 않은') >= 0, msg);
+    check('취소하면 요청 없음', c.sent.length === 0, c.sent);
+
+    // 2행짜리에서 하나를 빼면 남는 쪽도 그룹이 아니다 → 전체 해제와 같다
+    const e = setup();
+    e.X.setModalState({ dealId: 'D7', codeRows: [{ rowIndex: 9, code: 'X1' }, { rowIndex: 10, code: 'X2' }] });
+    await e.ctx.ungroupCodeRow(0);
+    check('2행 건은 전체 해제로 처리', e.sent.length === 1 && e.sent[0].action === 'ungroupDeal', e.sent.map(s => s.action));
+
+    // 서버 실패
+    const f = setup();
+    f.ctx._gasWrite = async () => { throw new Error('실적통합 시트를 찾을 수 없습니다.'); };
+    f.X.setModalState({ dealId: 'D7', codeRows: [{ rowIndex: 9 }, { rowIndex: 10 }, { rowIndex: 11 }] });
+    await f.ctx.ungroupCodeRow(2);
+    check('실패 사유를 화면에', f.toasts.join(' ').indexOf('묶기 해제 실패') >= 0, f.toasts);
+  }
+
+  console.log('\n[11] 표 열 수 — 빼기 버튼 칸이 머리글에도 있다');
+  {
+    const html = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+    const head = html.slice(html.indexOf('class="coderow-tbl"'), html.indexOf('id="mCodeRowsBody"'));
+    check('머리글 th 6개', (head.match(/<th[ >]/g) || []).length === 6, (head.match(/<th[ >]/g) || []).length);
+    const body = html.slice(html.indexOf('function _renderCodeRowsBody'), html.indexOf('function _onCodeRowEdit'));
+    check('본문 td 6개', (body.match(/<td/g) || []).length === 6, (body.match(/<td/g) || []).length);
+    check('본문에 빼기 버튼', body.indexOf('ungroupCodeRow') >= 0);
+    const foot = html.slice(html.indexOf('<tfoot>', html.indexOf('id="mCodeRowsBody"')), html.indexOf('</tfoot>'));
+    // 합계 행이 본문과 같은 폭이어야 표가 어긋나지 않는다(합계 1 + 수량 1 + 매출 1 + colspan 3)
+    check('합계 행도 6칸', (foot.match(/<th[ >]/g) || []).length === 4 && foot.indexOf('colspan="3"') >= 0, foot);
+  }
   console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
   process.exit(fail ? 1 : 0);
 })();

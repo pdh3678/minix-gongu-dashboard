@@ -277,5 +277,75 @@ console.log('\n[9] 수동 묶기 / 해제');
 
   check('1개만 선택하면 거부', !!act(ctx, 'groupDealRows', { rowIndexes: [rowA] }).error);
 }
+
+console.log('\n[10] 부분 해제 — 고른 행만 그룹에서 빼낸다');
+{
+  const sheet = buildSheet(); const ctx = load(sheet);
+  ctx.applyDealGroupIds();
+  const gid = sheet._grid[2][C.groupId];           // 러브지나 3행의 공통 그룹ID
+  const rowsBefore = sheet._grid.length;
+
+  // 3행 그룹에서 5행만 빼기 → 3·4행은 묶인 채로 남는다
+  let r = act(ctx, 'ungroupRows', { rowIndexes: [5] });
+  check('부분 해제 성공', r.success === true && r.count === 1, r);
+  check('뺀 행은 자기 dealId로', sheet._grid[4][C.groupId] === 'D-LZ-2', sheet._grid[4][C.groupId]);
+  check('남은 행은 그룹 유지', sheet._grid[2][C.groupId] === gid && sheet._grid[3][C.groupId] === gid,
+    [sheet._grid[2][C.groupId], sheet._grid[3][C.groupId]]);
+  check('행을 삭제하지 않음', sheet._grid.length === rowsBefore, sheet._grid.length);
+  let lz = ctx.parseMainSheet(sheet).deals.filter(d => d.channel === '러브지나');
+  check('2행 건 + 1행 건으로 갈림', lz.length === 2 && lz.map(d => d.rowCount).sort().join(',') === '1,2',
+    lz.map(d => d.rowCount));
+
+  // 남은 2행 중 하나를 더 빼면, 혼자 남는 행도 그룹이 아니게 정리된다
+  r = act(ctx, 'ungroupRows', { rowIndexes: [4] });
+  check('혼자 남는 행도 정리 대상', (r.freed || []).indexOf(3) >= 0, r.freed);
+  check('혼자 남은 행의 그룹ID = 자기 dealId', sheet._grid[2][C.groupId] === 'D-LZ-0', sheet._grid[2][C.groupId]);
+  check('러브지나가 3건으로', ctx.parseMainSheet(sheet).deals.filter(d => d.channel === '러브지나').length === 3);
+}
+
+console.log('\n[11] 부분 해제 — dealId가 같은 행들이라 새 ID가 필요한 경우');
+{
+  const sheet = buildSheet(); const ctx = load(sheet);
+  ctx.applyDealGroupIds();
+  // 7·8행은 예전부터 같은 dealId(D-MULTI)로 묶여 있던 건이다.
+  // 그룹ID를 dealId로 되돌리기만 하면 값이 같아 분리가 되지 않으므로 새 ID를 발급해야 한다.
+  const r = act(ctx, 'ungroupRows', { rowIndexes: [8] });
+  check('성공', r.success === true, r);
+  check('뺀 행에 새 dealId 발급', sheet._grid[7][C.dealId] && sheet._grid[7][C.dealId] !== 'D-MULTI',
+    sheet._grid[7][C.dealId]);
+  check('새 dealId와 그룹ID가 일치', sheet._grid[7][C.groupId] === sheet._grid[7][C.dealId],
+    [sheet._grid[7][C.groupId], sheet._grid[7][C.dealId]]);
+  check('남은 행은 그대로 D-MULTI', sheet._grid[6][C.dealId] === 'D-MULTI' && sheet._grid[6][C.groupId] === 'D-MULTI');
+  const multi = ctx.parseMainSheet(sheet).deals.filter(d => d.product === '더 슬림');
+  check('실제로 2건으로 분리', multi.length === 2 && multi.every(d => d.rowCount === 1), multi.map(d => d.rowCount));
+}
+
+console.log('\n[12] 부분 해제 — 잘못된 요청은 아무것도 쓰지 않는다');
+{
+  const sheet = buildSheet(); const ctx = load(sheet);
+  ctx.applyDealGroupIds();
+  const snap = JSON.stringify(sheet._grid.map(r => r[C.groupId]));
+  check('행 지정이 없으면 거부', !!act(ctx, 'ungroupRows', { rowIndexes: [] }).error);
+  check('묶이지 않은 행은 거부', !!act(ctx, 'ungroupRows', { rowIndexes: [6] }).error,
+    act(ctx, 'ungroupRows', { rowIndexes: [6] }));
+  check('헤더 행 번호는 무시', !!act(ctx, 'ungroupRows', { rowIndexes: [2] }).error);
+  check('거부된 요청은 시트를 바꾸지 않음',
+    JSON.stringify(sheet._grid.map(r => r[C.groupId])) === snap);
+}
+
+console.log('\n[13] 그룹 전체를 한 번에 빼면 전체 해제와 같아진다');
+{
+  const sheet = buildSheet(); const ctx = load(sheet);
+  ctx.applyDealGroupIds();
+  // 7·8행은 dealId가 둘 다 D-MULTI라, 한꺼번에 빼면 빼낸 행끼리도 값이 겹친다
+  const r = act(ctx, 'ungroupRows', { rowIndexes: [7, 8] });
+  check('성공', r.success === true && r.count === 2, r);
+  check('두 행의 그룹ID가 서로 다름', sheet._grid[6][C.groupId] !== sheet._grid[7][C.groupId],
+    [sheet._grid[6][C.groupId], sheet._grid[7][C.groupId]]);
+  check('두 행의 dealId도 서로 다름', sheet._grid[6][C.dealId] !== sheet._grid[7][C.dealId],
+    [sheet._grid[6][C.dealId], sheet._grid[7][C.dealId]]);
+  const multi = ctx.parseMainSheet(sheet).deals.filter(d => d.product === '더 슬림');
+  check('2건으로 분리', multi.length === 2 && multi.every(d => d.rowCount === 1), multi.map(d => d.rowCount));
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);

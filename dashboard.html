@@ -1344,11 +1344,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           </div>
           <table class="coderow-tbl"><thead><tr>
             <th>상품코드</th><th class="num-col">판매수량</th><th class="num-col">총매출</th>
-            <th>진행상태</th><th class="num-col">조회수(만)</th>
+            <th>진행상태</th><th class="num-col">조회수(만)</th><th style="width:52px"></th>
           </tr></thead><tbody id="mCodeRowsBody"></tbody>
           <tfoot><tr><th>합계</th>
             <th class="num-col" id="mCodeRowsQty"></th><th class="num-col" id="mCodeRowsRev"></th>
-            <th colspan="2"></th></tr></tfoot></table>
+            <th colspan="3"></th></tr></tfoot></table>
         </div>
 
         <button type="button" class="m-delete-btn" id="mDeleteBtn" onclick="confirmDeleteDeal()">🗑 이 공구건 삭제</button>
@@ -1663,7 +1663,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-manualgroup-2026-09-15-17';
+const DASHBOARD_VERSION='dash-ungroup-2026-09-15-18';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1676,7 +1676,7 @@ if(IS_EMBED)console.log('[dashboard] 임베드 모드 — 사이드바/헤더 �
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='manualgroup-2026-09-15-17';
+const REQUIRED_SCRIPT_VERSION='ungroup-2026-09-15-18';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2386,7 +2386,8 @@ function _refreshGroupBar(){
 // 목록 행에 붙는 체크박스 — 그룹 건(이미 여러 행)은 선택 대상이 아니다
 function groupSelectCell(d){
   if(!d||!d.dealId)return '<td></td>';
-  if(isGroupDeal(d))return '<td title="이미 여러 행으로 묶인 건입니다"><span style="color:var(--text-3)">묶음</span></td>';
+  // 묶인 건은 새로 묶을 대상이 아니라 "풀 수 있는" 대상 — 같은 칸을 해제 버튼으로 쓴다
+  if(isGroupDeal(d))return `<td onclick="event.stopPropagation()"><button type="button" class="chf-badge" onclick="ungroupDealById('${_escAttr(d.dealId)}')" title="이 건을 행마다 개별 공구건으로 나눕니다. 시트 행은 삭제되지 않습니다.">묶음 해제</button></td>`;
   return `<td onclick="event.stopPropagation()"><input type="checkbox" ${isGroupSelected(d.dealId)?'checked':''} onchange="toggleGroupSelect('${_escAttr(d.dealId)}',this.checked)"></td>`;
 }
 
@@ -2486,23 +2487,50 @@ async function applyGroupSelected(){
     showToast('묶기 실패: '+_friendlySaveError(e.message),{type:'error'});
   }
 }
-/* 묶기 해제 — 그룹ID를 각 행의 dealId로 되돌린다(행은 그대로, 건만 분리). */
-async function ungroupCurrentDeal(){
-  const d=DATA.find(x=>x.dealId===_modalDealId);
-  if(!d||!d.groupId){showToast('묶인 건이 아닙니다');return;}
-  if(!confirm(`이 공구건을 ${d.rowCount||'여러'}개의 개별 건으로 나눕니다.\n\n시트 행은 삭제되지 않고, 각 행이 자기 공구건이 됩니다.\n계속할까요?`))return;
+/* 묶기 해제 — 그룹ID를 각 행의 dealId로 되돌린다(행은 그대로, 건만 분리).
+   전체 해제(ungroupDeal)와 행 하나만 빼는 부분 해제(ungroupRows)가 같은 경로를 쓴다. */
+async function _ungroupRequest(action,payload,opts){
+  opts=opts||{};
   const url=_getGasUrl();
-  if(!url){showToast('샘플 모드에서는 사용할 수 없습니다');return;}
+  if(!url){showToast('샘플 모드에서는 사용할 수 없습니다');return false;}
   try{
-    const j=await _gasWrite(url,'ungroupDeal',{groupId:d.groupId});
-    if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'ungroupDeal 응답에 success:true가 없습니다');
-    closeSchModal();
-    showToast(`${j.count}개 건으로 나눴습니다`,{type:'success'});
-    fetchLive();
+    const j=await _gasWrite(url,action,payload);
+    if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||(action+' 응답에 success:true가 없습니다'));
+    if(opts.close)closeSchModal();
+    showToast(opts.done?opts.done(j):'해제했습니다',{type:'success'});
+    fetchLive(); // 그룹 구성이 바뀌었으므로 서버에서 다시 받아 화면을 맞춘다
+    return true;
   }catch(e){
     console.error('[묶기 해제 실패]',e);
     showToast('묶기 해제 실패: '+_friendlySaveError(e.message),{type:'error'});
+    return false;
   }
+}
+function _ungroupDealObj(d,opts){
+  if(!d||!d.groupId){showToast('묶인 건이 아닙니다');return Promise.resolve(false);}
+  if(!confirm(`이 공구건을 ${d.rowCount||'여러'}개의 개별 건으로 나눕니다.\n\n시트 행은 삭제되지 않고, 각 행이 자기 공구건이 됩니다.\n계속할까요?`))return Promise.resolve(false);
+  return _ungroupRequest('ungroupDeal',{groupId:d.groupId},
+    Object.assign({done:j=>`${j.count}개 건으로 나눴습니다`},opts));
+}
+function ungroupCurrentDeal(){return _ungroupDealObj(DATA.find(x=>x.dealId===_modalDealId),{close:true});}
+function ungroupDealById(dealId){return _ungroupDealObj(DATA.find(x=>x.dealId===dealId));}
+/* 부분 해제 — 상품코드별 실적 표에서 그 행만 빼낸다. 나머지 행은 묶인 채로 남는다.
+   서버 반영 후 목록을 다시 받아오므로, 저장하지 않은 모달 수정 내용은 사라진다(경고 문구에 명시). */
+async function ungroupCodeRow(i){
+  const r=_modalCodeRows[i];
+  const d=DATA.find(x=>x.dealId===_modalDealId);
+  if(!r||!r.rowIndex){showToast('시트 행을 찾지 못했습니다');return;}
+  if(!d||!d.groupId){showToast('묶인 건이 아닙니다');return;}
+  if(_modalCodeRows.length<=2){
+    // 2행짜리에서 하나를 빼면 남는 쪽도 그룹이 아니게 된다 = 전체 해제와 같다
+    return _ungroupDealObj(d,{close:true});
+  }
+  const msg=`시트 ${r.rowIndex}행(상품코드 ${r.code||'(없음)'})을 이 공구건에서 빼냅니다.\n\n`
+    +`나머지 ${_modalCodeRows.length-1}개 행은 그대로 묶여 있고, 뺀 행은 자기 공구건이 됩니다.\n`
+    +`시트 행은 삭제되지 않습니다. 저장하지 않은 수정 내용은 사라집니다.`;
+  if(!confirm(msg))return;
+  await _ungroupRequest('ungroupRows',{rowIndexes:[r.rowIndex]},
+    {close:true,done:()=>`시트 ${r.rowIndex}행을 빼냈습니다`});
 }
 
 function _chMismatchBadge(ch){
@@ -5783,6 +5811,7 @@ function _renderCodeRowsBody(){
         ${statusOpts.map(o=>`<option value="${o}"${r.status===o?' selected':''}>${o}</option>`).join('')}
       </select></td>
       <td class="num-col"><input class="f-inp num-col" type="number" step="0.1" value="${r.views!=null?r.views:''}" oninput="_onCodeRowEdit(${i},'views',this.value)"></td>
+      <td><button type="button" class="chf-badge" onclick="ungroupCodeRow(${i})" title="이 행만 공구건에서 빼냅니다. 나머지 행은 묶인 채로 남습니다.">빼기</button></td>
     </tr>`).join('');
   _refreshCodeRowTotals();
 }
