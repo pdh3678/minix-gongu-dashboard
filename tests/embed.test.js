@@ -114,6 +114,14 @@ console.log('\n[9] 페이지 단위 임베드 — 해시 라우트로 직접 접
     ['calendar',            'page:calendar'],
     ['dashboard',           'page:dashboard'],
     ['review',              'page:review'],
+    // 표준 ASCII 슬러그
+    ['product-TheFlender',  'sales:플렌더'],
+    ['product-TheShift',    'sales:시프트'],
+    ['product-TheAirDry',   'sales:에어드라이'],
+    // 손으로 옮겨 적은 대소문자 변형
+    ['product-theflender',  'sales:플렌더'],
+    ['product-THESHIFT',    'sales:시프트'],
+    // 과거 한글 슬러그 — 기존 링크가 계속 살아 있어야 한다
     ['product-더플렌더',     'sales:플렌더'],
     ['product-더시프트',     'sales:시프트'],
     // 브라우저가 프래그먼트를 퍼센트 인코딩해 돌려주는 경우 — 디코딩 없이는 기본 탭으로 떨어진다
@@ -152,6 +160,20 @@ console.log('\n[11] calOpen 정리가 다른 쿼리를 지우지 않음');
   check('calOpen은 주소에서 제거', url.indexOf('calOpen') < 0, url);
   check('embed=1은 살아남음', url.indexOf('embed=1') >= 0, url);
   check('해시도 보존', url.indexOf('#calendar') >= 0, url);
+}
+
+console.log('\n[12] 새로 만들어지는 주소는 ASCII 슬러그 (한글은 별칭으로만 수용)');
+{
+  // 맵을 직접 보지 않고 "사이드바를 눌렀을 때 주소창에 실제로 찍히는 값"으로 확인한다 —
+  // 사용자가 복사하게 되는 건 결국 그 주소이기 때문.
+  [['플렌더', 'TheFlender'], ['시프트', 'TheShift'], ['에어드라이', 'TheAirDry']].forEach(([prod, slug]) => {
+    const { ctx } = loadFrontend(PROJ, null, { search: '?embed=1', runHeadScripts: true });
+    ctx.navPage = () => {}; ctx.renderSubTabs = () => {}; ctx.render = () => {};
+    ctx.navSales(null, prod);
+    const url = ctx.history._urls[ctx.history._urls.length - 1];
+    check(prod + ' 메뉴 → #product-' + slug, url === '/?embed=1#product-' + slug, url);
+    check('  ↳ 한글 슬러그를 만들지 않음', !/[가-힣]/.test(url), url);
+  });
 }
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);
