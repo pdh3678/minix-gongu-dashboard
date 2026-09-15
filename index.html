@@ -564,6 +564,10 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .coderow-row-no{font-size:10px;color:var(--text-3);font-weight:700}
 .chf-badge{margin-left:6px;padding:1px 7px;border-radius:999px;border:1px solid #FDE68A;background:#FEF3C7;color:#92400E;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
 .chf-badge:hover{background:#FDE68A}
+/* 묶기 선택 바 — 2건 이상 고르면 나타난다 */
+.group-bar{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:700;color:var(--text-2)}
+.group-bar .btn-save,.group-bar .btn-cancel{padding:4px 10px;font-size:11px;border-radius:6px}
+.group-bar .btn-save:disabled{opacity:.45;cursor:not-allowed}
 #chMismatchPop{position:fixed;z-index:1800;display:none;width:340px;max-height:60vh;overflow-y:auto;background:#fff;border:1px solid var(--border-s);border-radius:10px;box-shadow:0 12px 32px rgba(17,24,39,.22);padding:14px}
 #chMismatchPop h4{font-size:13px;margin-bottom:10px}
 .chf-block{margin-bottom:12px}
@@ -1101,7 +1105,13 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <div class="kpi-row" id="salesKpiRow"></div>
 
       <div class="card" id="perfCard">
-        <div class="card-hd">실적 상세</div>
+        <div class="card-hd">실적 상세
+          <span class="card-hd-r group-bar" id="groupBar" style="display:none">
+            <span id="groupBarCnt"></span>
+            <button type="button" class="btn-save" id="groupBarBtn" onclick="openGroupConfirm()">한 공구건으로 묶기</button>
+            <button type="button" class="btn-cancel" onclick="clearGroupSelection()">선택 해제</button>
+          </span>
+        </div>
         <div class="tbl-wrap">
           <table><thead><tr id="tHead"></tr></thead><tbody id="tBody"></tbody></table>
         </div>
@@ -1114,6 +1124,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="card-hd">실적 미기입 공구건 목록 <span class="card-hd-r" id="mgmtCnt"></span></div>
         <div class="tbl-wrap">
           <table><thead><tr>
+            <th style="width:28px"></th>
             <th>제품</th><th>채널</th><th>기간</th><th>공구가</th><th>진행상태</th>
           </tr></thead><tbody id="mgmtBody"></tbody></table>
         </div>
@@ -1652,7 +1663,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-savescope-2026-09-15-16';
+const DASHBOARD_VERSION='dash-manualgroup-2026-09-15-17';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1665,7 +1676,7 @@ if(IS_EMBED)console.log('[dashboard] 임베드 모드 — 사이드바/헤더 �
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='colmove-2026-09-15-15';
+const REQUIRED_SCRIPT_VERSION='manualgroup-2026-09-15-17';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2343,6 +2354,157 @@ function _presetChannelTierRows(channel,tiers){
    같은 채널명인데 행마다 플랫폼 ID·팔로워 수가 다르거나 일부만 비어 있으면 배지를 띄운다.
    전파 기능이 생겨도 과거에 쌓인 불일치는 저절로 정리되지 않기 때문에, "지금 어긋나 있다"를
    눈에 보이게 하고 한 번에 맞출 수단을 같이 준다. */
+/* ── 수동 묶기 (2026-09-15) ──────────────────────────────────────────────────
+   자동 묶기는 "채널·제품·시작일·종료일 완전 일치"라는 좁은 기준이다. 느슨하게 바꾸면 서로 다른
+   공구건을 합쳐버릴 위험이 커서 의도적으로 그대로 둔다. 대신 실제로는 한 건인데 필드가 조금씩
+   다른 건들(하늘마켓·이제이쿡 등)은 사람이 확인하고 직접 묶는다.
+
+   채널이 다르면 거부한다 — 채널은 "같은 건"의 최소 전제이고, 서로 다른 채널을 합치면 채널별
+   집계·등급이 통째로 어긋난다. 제품·기간 차이는 경고만 하고 사람 판단에 맡긴다. */
+const _groupSel = new Set(); // 선택된 dealId
+function isGroupSelected(dealId){return _groupSel.has(dealId);}
+function toggleGroupSelect(dealId,on){
+  if(on)_groupSel.add(dealId); else _groupSel.delete(dealId);
+  _refreshGroupBar();
+}
+function clearGroupSelection(){_groupSel.clear();_refreshGroupBar();render();}
+function _selectedDeals(){
+  const out=[];
+  _groupSel.forEach(id=>{const d=DATA.find(x=>x.dealId===id);if(d)out.push(d);});
+  return out.sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+}
+function _refreshGroupBar(){
+  const bar=document.getElementById('groupBar');
+  if(!bar)return;
+  const n=_groupSel.size;
+  bar.style.display=n?'':'none';
+  const cnt=document.getElementById('groupBarCnt');
+  if(cnt)cnt.textContent=`${n}건 선택됨`;
+  const btn=document.getElementById('groupBarBtn');
+  if(btn)btn.disabled=n<2;
+}
+// 목록 행에 붙는 체크박스 — 그룹 건(이미 여러 행)은 선택 대상이 아니다
+function groupSelectCell(d){
+  if(!d||!d.dealId)return '<td></td>';
+  if(isGroupDeal(d))return '<td title="이미 여러 행으로 묶인 건입니다"><span style="color:var(--text-3)">묶음</span></td>';
+  return `<td onclick="event.stopPropagation()"><input type="checkbox" ${isGroupSelected(d.dealId)?'checked':''} onchange="toggleGroupSelect('${_escAttr(d.dealId)}',this.checked)"></td>`;
+}
+
+/* ── 묶기 후보 탐지 (GAS reportUngroupedCandidates와 같은 기준) ──
+   같은 채널(공백·대소문자 무시) + 기간이 겹치거나 3일 이내 인접인데 아직 안 묶인 건들. */
+const GROUP_CANDIDATE_GAP_DAYS=3;
+function _looseCh(v){return String(v==null?'':v).replace(/\s+/g,'').toLowerCase();}
+function _daysBetween(a,b){
+  if(!a||!b)return null;
+  const da=new Date(a+'T00:00:00'),db=new Date(b+'T00:00:00');
+  if(isNaN(da)||isNaN(db))return null;
+  return Math.round((db-da)/86400000);
+}
+function _periodsNear(s1,e1,s2,e2,gap){
+  if(!s1||!s2)return false;
+  const a1=s1,b1=e1||s1,a2=s2,b2=e2||s2;
+  if(a1<=b2&&a2<=b1)return true;
+  const d=(b1<a2)?_daysBetween(b1,a2):_daysBetween(b2,a1);
+  return d!=null&&d<=gap;
+}
+let _groupCandCache=null;
+function invalidateGroupCandidates(){_groupCandCache=null;}
+function groupCandidates(){
+  if(_groupCandCache)return _groupCandCache;
+  const byCh=new Map();
+  DATA.forEach(d=>{
+    if(isGroupDeal(d))return;              // 이미 묶인 건은 후보가 아니다
+    const k=_looseCh(d.ch||d.influencer);
+    if(!k||!d.dealId)return;
+    if(!byCh.has(k))byCh.set(k,[]);
+    byCh.get(k).push(d);
+  });
+  const map=new Map();                      // dealId -> 같이 묶일 후보 dealId[]
+  byCh.forEach(list=>{
+    for(let a=0;a<list.length;a++)for(let b=a+1;b<list.length;b++){
+      if(!_periodsNear(list[a].start,list[a].end,list[b].start,list[b].end,GROUP_CANDIDATE_GAP_DAYS))continue;
+      [[list[a],list[b]],[list[b],list[a]]].forEach(([x,y])=>{
+        if(!map.has(x.dealId))map.set(x.dealId,[]);
+        if(map.get(x.dealId).indexOf(y.dealId)<0)map.get(x.dealId).push(y.dealId);
+      });
+    }
+  });
+  _groupCandCache=map;
+  return map;
+}
+function groupCandidateBadge(d){
+  if(!d||!d.dealId||isGroupDeal(d))return '';
+  const c=groupCandidates().get(d.dealId);
+  if(!c||!c.length)return '';
+  return ` <button type="button" class="chf-badge" onclick="event.stopPropagation();selectGroupCandidates('${_escAttr(d.dealId)}')" title="같은 채널에서 기간이 겹치거나 가까운 건이 ${c.length}개 있습니다. 클릭하면 함께 선택합니다.">묶기 후보 ${c.length}</button>`;
+}
+function selectGroupCandidates(dealId){
+  const c=groupCandidates().get(dealId)||[];
+  _groupSel.clear();
+  _groupSel.add(dealId);
+  c.forEach(id=>_groupSel.add(id));
+  _refreshGroupBar();
+  render();
+  openGroupConfirm();
+}
+
+/* 확인 팝업 — 선택 행의 채널·제품·기간·상품코드를 보여주고, 채널이 다르면 거부한다. */
+function openGroupConfirm(){
+  const ds=_selectedDeals();
+  if(ds.length<2){showToast('2건 이상 선택해주세요');return;}
+  const chans=[...new Set(ds.map(d=>(d.ch||d.influencer||'').trim()))];
+  const lines=ds.map(d=>`  · ${fmtS(d.start)}~${fmtS(d.end)}  ${d.product||''}  코드 ${(d.codes||[]).join(', ')||'(없음)'}`).join('\n');
+  if(chans.length>1){
+    alert(`채널이 서로 달라 묶을 수 없습니다.\n\n${chans.map(c=>`  · ${c}`).join('\n')}\n\n`+
+      `채널명 표기부터 맞춘 뒤 다시 시도해주세요(공백 차이도 다른 채널로 봅니다).`);
+    return;
+  }
+  const warns=[];
+  if(new Set(ds.map(d=>d.product)).size>1)warns.push('제품이 서로 다릅니다');
+  if(new Set(ds.map(d=>d.start+'~'+d.end)).size>1)warns.push('기간이 서로 다릅니다');
+  const msg=`${chans[0]} — ${ds.length}건을 한 공구건으로 묶습니다.\n\n${lines}\n\n`+
+    (warns.length?`⚠ ${warns.join(' / ')} — 맞는지 확인 후 진행해주세요.\n\n`:'')+
+    `대표 행은 시작일이 가장 빠른 건이 됩니다. 시트 행은 삭제되지 않습니다.`;
+  if(!confirm(msg))return;
+  applyGroupSelected();
+}
+async function applyGroupSelected(){
+  const ds=_selectedDeals();
+  const rowIndexes=[];
+  ds.forEach(d=>(d.codeRows||[]).forEach(r=>{if(r.rowIndex)rowIndexes.push(r.rowIndex);}));
+  if(rowIndexes.length<2){showToast('묶을 시트 행을 찾지 못했습니다');return;}
+  const url=_getGasUrl();
+  if(!url){showToast('샘플 모드에서는 묶기를 사용할 수 없습니다');return;}
+  try{
+    const j=await _gasWrite(url,'groupDealRows',{rowIndexes});
+    if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'groupDealRows 응답에 success:true가 없습니다');
+    _groupSel.clear();_refreshGroupBar();
+    showToast(`${j.rows.length}개 행을 한 공구건으로 묶었습니다`,{type:'success'});
+    fetchLive(); // 그룹 구성이 바뀌었으므로 서버에서 다시 받아 화면을 맞춘다
+  }catch(e){
+    console.error('[묶기 실패]',e);
+    showToast('묶기 실패: '+_friendlySaveError(e.message),{type:'error'});
+  }
+}
+/* 묶기 해제 — 그룹ID를 각 행의 dealId로 되돌린다(행은 그대로, 건만 분리). */
+async function ungroupCurrentDeal(){
+  const d=DATA.find(x=>x.dealId===_modalDealId);
+  if(!d||!d.groupId){showToast('묶인 건이 아닙니다');return;}
+  if(!confirm(`이 공구건을 ${d.rowCount||'여러'}개의 개별 건으로 나눕니다.\n\n시트 행은 삭제되지 않고, 각 행이 자기 공구건이 됩니다.\n계속할까요?`))return;
+  const url=_getGasUrl();
+  if(!url){showToast('샘플 모드에서는 사용할 수 없습니다');return;}
+  try{
+    const j=await _gasWrite(url,'ungroupDeal',{groupId:d.groupId});
+    if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'ungroupDeal 응답에 success:true가 없습니다');
+    closeSchModal();
+    showToast(`${j.count}개 건으로 나눴습니다`,{type:'success'});
+    fetchLive();
+  }catch(e){
+    console.error('[묶기 해제 실패]',e);
+    showToast('묶기 해제 실패: '+_friendlySaveError(e.message),{type:'error'});
+  }
+}
+
 function _chMismatchBadge(ch){
   const info=channelInfoOf(ch);
   if(!info||!info.mismatch)return '';
@@ -5074,7 +5236,8 @@ function renderTbl(){
   renderYMFilterBar();
   renderSalesKpi();
 
-  document.getElementById('tHead').innerHTML=SALES_COLS.map(c=>{
+  // 첫 칸은 묶기 선택용 체크박스 자리(정렬 대상이 아니라 sortable을 붙이지 않는다)
+  document.getElementById('tHead').innerHTML='<th style="width:28px"></th>'+SALES_COLS.map(c=>{
     const sorted=SALES_SORT.key===c.key;
     const arrow=sorted?(SALES_SORT.dir>0?'▲':'▼'):'⇕';
     return`<th class="sortable${sorted?' sorted':''}${colClass(c)}" onclick="sortSales('${c.key}')">${c.lb}<span class="sort-ic">${arrow}</span></th>`;
@@ -5099,11 +5262,11 @@ function renderTbl(){
   // "미연결" 배지를 붙이고 클릭을 막음
   document.getElementById('tBody').innerHTML=f.length?f.map(d=>d.dealId?`
     <tr data-id="${d.dealId}" data-ch="${_escAttr(d.ch)}" data-product="${_escAttr(d.product)}" onclick="openM('${d.dealId}',this)">
-      ${SALES_COLS.map(c=>`<td class="${colClass(c)}">${SALES_CELL[c.key](d)}</td>`).join('')}
+      ${groupSelectCell(d)}${SALES_COLS.map((c,i)=>`<td class="${colClass(c)}">${SALES_CELL[c.key](d)}${i===0?groupCandidateBadge(d):''}</td>`).join('')}
     </tr>`:`
     <tr data-ch="${_escAttr(d.ch)}" data-product="${_escAttr(d.product)}">
-      ${SALES_COLS.map((c,i)=>i===0?`<td class="${colClass(c)}">${SALES_CELL[c.key](d)} <span class="f-badge">미연결</span></td>`:`<td class="${colClass(c)}">${SALES_CELL[c.key](d)}</td>`).join('')}
-    </tr>`).join(''):`<tr><td colspan="${SALES_COLS.length}" style="text-align:center;padding:40px;color:var(--text-3)">데이터 없음</td></tr>`;
+      <td></td>${SALES_COLS.map((c,i)=>i===0?`<td class="${colClass(c)}">${SALES_CELL[c.key](d)} <span class="f-badge">미연결</span></td>`:`<td class="${colClass(c)}">${SALES_CELL[c.key](d)}</td>`).join('')}
+    </tr>`).join(''):`<tr><td colspan="${SALES_COLS.length+1}" style="text-align:center;padding:40px;color:var(--text-3)">데이터 없음</td></tr>`;
 }
 // 속성값에 쓰인 큰따옴표가 HTML을 깨뜨리지 않도록 최소 이스케이프(진단용 data-* 속성 전용)
 function _escAttr(s){return String(s||'').replace(/"/g,'&quot;');}
@@ -5165,7 +5328,8 @@ function renderMgmtPage(){
   document.getElementById('mgmtCnt').textContent=f.length+'건';
   document.getElementById('mgmtBody').innerHTML=f.length?f.map(d=>`
     <tr>
-      <td>${productBadge(d.product)}</td>
+      ${groupSelectCell(d)}
+      <td>${productBadge(d.product)}${groupCandidateBadge(d)}</td>
       <td>${d.ch}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
       <td>${won(d.s&&d.s.sale)}</td>
@@ -5599,7 +5763,10 @@ function _renderCodeRowsPanel(d){
   if(_modalCodeRows.length<=1){panel.style.display='none';return;}
   panel.style.display='';
   const hint=document.getElementById('mCodeRowsHint');
-  if(hint)hint.textContent=`상품코드 ${_modalCodeRows.length}개로 진행된 공구건 · 시트 행 ${d.rowCount||_modalCodeRows.length}개`;
+  if(hint){
+    hint.innerHTML=`상품코드 ${_modalCodeRows.length}개로 진행된 공구건 · 시트 행 ${d.rowCount||_modalCodeRows.length}개`+
+      (d.groupId?` <button type="button" class="chf-badge" onclick="ungroupCurrentDeal()" title="이 건을 행마다 개별 공구건으로 나눕니다. 시트 행은 삭제되지 않습니다.">묶기 해제</button>`:'');
+  }
   _renderCodeRowsBody();
 }
 function _renderCodeRowsBody(){
@@ -6821,7 +6988,7 @@ function navSales(el,prod){
 // 시트 G·H열 되기록(syncTiersToSheet)도 같은 이유로 여기 한 곳에만 걸어둠 — 초기 로드/공구건 저장/
 // 수동 지정 변경/팔로워 수 편집/완료 전환이 전부 이 경로를 지나므로 시점을 따로 챙길 필요가 없다.
 // 값이 안 바뀌었으면 내부에서 즉시 빠져나가므로(요청 자체가 안 나감) 매 렌더 호출해도 부담 없음.
-function render(){invalidateTierStats();invalidateChannelInfo();renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();syncTiersToSheet();}
+function render(){invalidateTierStats();invalidateChannelInfo();invalidateGroupCandidates();renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();syncTiersToSheet();}
 document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.getMonth()+1)+'월 '+_NOW.getDate()+'일';
 
 /* ── 사은품/오픈시간/선착순/적립금 공용 상수 + 구성 자동생성 (공구건 모달 드롭다운 개편, 2026-08-18) ──

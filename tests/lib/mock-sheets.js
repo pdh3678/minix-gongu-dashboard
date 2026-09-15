@@ -125,7 +125,10 @@ function installGlobals(sheets, opts) {
   global.LockService = {
     getScriptLock: () => ({ tryLock: () => true, waitLock: () => true, releaseLock() {} })
   };
-  global.Utilities = { getUuid: () => 'uuid-fixed', formatDate: () => '20260915_000000' };
+  /* getUuid는 호출마다 달라야 한다 — 고정값이면 서로 다른 그룹이 같은 공구그룹ID를 갖는
+     현실에 없는 충돌이 생겨, 테스트가 제품 버그가 아닌 목 때문에 실패한다. */
+  var _uuidN = 0;
+  global.Utilities = { getUuid: () => 'uuid-' + (++_uuidN), formatDate: () => '20260915_000000' };
   global.ScriptApp = { getService: () => ({ getUrl: () => 'mock' }) };
   global.Session = { getScriptTimeZone: () => 'Asia/Seoul', getActiveUser: () => ({ getEmail: () => 'p_dh_3678@athomecorp.com' }) };
   global.ContentService = { createTextOutput: t => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } };

@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'colmove-2026-09-15-15';
+var SCRIPT_VERSION = 'manualgroup-2026-09-15-17';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1288,6 +1288,231 @@ function _migrateDealGroupIds(dryRun) {
   return { dryRun: !!dryRun, groups: groupsFormed, singles: singles, changed: changed };
 }
 
+/* ── 묶이지 않은 후보 진단 (2026-09-15) ────────────────────────────────────
+   자동 묶기는 "채널·제품·시작일·종료일 완전 일치"라는 좁은 기준을 쓴다(느슨하게 바꾸면 서로 다른
+   공구건을 합쳐버릴 위험이 커서 의도적으로 좁게 뒀다). 그래서 실제로는 한 건인데 필드가 조금씩
+   달라 안 묶인 건들이 남는다 — 이 함수가 그런 후보를 찾아 "왜 안 묶였는지"를 필드 단위로 알려준다.
+
+   후보 기준: 같은 채널(공백·대소문자 무시) + 기간이 겹치거나 3일 이내로 인접.
+   이 함수는 아무것도 쓰지 않는다. 묶는 것은 사람이 대시보드에서 확인 후 결정한다.
+
+   Apps Script 편집기에서 reportUngroupedCandidates()를 골라 실행. */
+var GROUP_CANDIDATE_GAP_DAYS = 3;
+
+function _normChannelLoose(v) {
+  return String(v == null ? '' : v).replace(/\s+/g, '').toLowerCase();
+}
+function _daysBetweenISO(a, b) {
+  if (!a || !b) return null;
+  var da = new Date(a + 'T00:00:00'), db = new Date(b + 'T00:00:00');
+  if (isNaN(da.getTime()) || isNaN(db.getTime())) return null;
+  return Math.round((db - da) / 86400000);
+}
+/* 두 기간이 겹치거나 gap일 이내로 인접한가 */
+function _periodsNear(s1, e1, s2, e2, gap) {
+  if (!s1 || !s2) return false;
+  var a1 = s1, b1 = e1 || s1, a2 = s2, b2 = e2 || s2;
+  if (a1 <= b2 && a2 <= b1) return true;                 // 겹침
+  var d = (b1 < a2) ? _daysBetweenISO(b1, a2) : _daysBetweenISO(b2, a1);
+  return d != null && d <= gap;
+}
+
+/* 한 쌍이 왜 자동으로 안 묶였는지 — 자동 기준과 다른 지점을 전부 열거한다.
+   "이유가 하나도 없다"면 이미 자동으로 묶였어야 하므로 후보에 오르지 않는다. */
+function _whyNotGrouped(a, b) {
+  var reasons = [];
+  if (String(a.channel).trim() !== String(b.channel).trim()) {
+    reasons.push("채널명 표기 차이('" + a.channel + "' vs '" + b.channel + "')");
+  }
+  if (_normProductForGroup(a.product) !== _normProductForGroup(b.product)) {
+    reasons.push('제품 다름(' + a.product + ' vs ' + b.product + ')');
+  }
+  if (a.start !== b.start) reasons.push('시작일 다름(' + a.start + ' vs ' + b.start + ')');
+  if (a.end !== b.end) reasons.push('종료일 다름(' + a.end + ' vs ' + b.end + ')');
+  return reasons;
+}
+
+/* 진단에 쓸 행 목록을 만든다 — parseMainSheet와 같은 필터(제품 있음 + Minix)를 쓴다.
+   반환 원소: {sheetRow, channel, product, start, end, code, dealId, groupId} */
+function _groupCandidateRows(sheet) {
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastRow <= DATA_START_ROW) return [];
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
+  var out = [];
+  for (var i = 0; i < n; i++) {
+    var row = vals[i];
+    var product = String(row[COL.product] || '').trim();
+    if (!product) continue;
+    if (!MINIX_ALIASES[String(row[COL.brand] || '').trim()]) continue;
+    var year = _numOrNull(row[COL.year]);
+    out.push({
+      sheetRow: first + i,
+      channel: String(row[COL.channel] || '').trim(),
+      product: product,
+      start: _parseDate(row[COL.startMD], year) || '',
+      end: _parseDate(row[COL.endMD], year) || '',
+      code: String(row[COL.code] || '').trim(),
+      dealId: String(row[COL.dealId] || '').trim(),
+      groupId: (COL.groupId >= 0 ? String(row[COL.groupId] || '').trim() : '')
+    });
+  }
+  return out;
+}
+
+function reportUngroupedCandidates(onlyChannels) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = _mainSheet(ss);
+  if (!sheet) { Logger.log('[묶기 후보] 실적통합 시트를 찾을 수 없어 중단'); return null; }
+  var rows = _groupCandidateRows(sheet);
+
+  // 채널(느슨한 비교)별로 모아서 쌍을 본다
+  var byCh = {};
+  for (var i = 0; i < rows.length; i++) {
+    var k = _normChannelLoose(rows[i].channel);
+    if (!k) continue;
+    if (!byCh[k]) byCh[k] = [];
+    byCh[k].push(rows[i]);
+  }
+  var filter = null;
+  if (onlyChannels && onlyChannels.length) {
+    filter = {};
+    for (var f = 0; f < onlyChannels.length; f++) filter[_normChannelLoose(onlyChannels[f])] = true;
+  }
+
+  var found = [];
+  for (var ck in byCh) {
+    if (filter && !filter[ck]) continue;
+    var list = byCh[ck];
+    for (var a = 0; a < list.length; a++) {
+      for (var b = a + 1; b < list.length; b++) {
+        var ra = list[a], rb = list[b];
+        // 이미 같은 그룹이면 후보가 아니다
+        if (ra.groupId && ra.groupId === rb.groupId) continue;
+        if (!ra.groupId && !rb.groupId && ra.dealId && ra.dealId === rb.dealId) continue;
+        if (!_periodsNear(ra.start, ra.end, rb.start, rb.end, GROUP_CANDIDATE_GAP_DAYS)) continue;
+        var reasons = _whyNotGrouped(ra, rb);
+        if (!reasons.length) continue; // 이유가 없으면 자동으로 이미 묶였을 것
+        found.push({ channel: ra.channel, rows: [ra.sheetRow, rb.sheetRow], reasons: reasons,
+          detail: [ra, rb].map(function (x) {
+            return { row: x.sheetRow, product: x.product, period: x.start + '~' + x.end, code: x.code };
+          }) });
+      }
+    }
+  }
+
+  Logger.log('[묶기 후보] 같은 채널 + 기간 겹침/' + GROUP_CANDIDATE_GAP_DAYS + '일 이내 인접인데 안 묶인 쌍: ' + found.length + '건'
+    + (filter ? ' (채널 필터 적용)' : ''));
+  for (var r = 0; r < found.length; r++) {
+    var it = found[r];
+    Logger.log('  · ' + it.channel + ' / 행 ' + it.rows.join('·') + ' — ' + it.reasons.join(' / '));
+    for (var d2 = 0; d2 < it.detail.length; d2++) {
+      var dd = it.detail[d2];
+      Logger.log('        행 ' + dd.row + ': ' + dd.product + ' · ' + dd.period + ' · 코드 ' + (dd.code || '(없음)'));
+    }
+  }
+  if (!found.length) Logger.log('  (후보 없음 — 같은 채널에서 기간이 가까운 미묶음 행이 없습니다)');
+  return found;
+}
+// 보고된 두 채널부터 바로 보기 위한 단축 함수
+function reportHaneulAndEjcook() { return reportUngroupedCandidates(['하늘마켓', '이제이쿡']); }
+
+/* ── 수동 묶기 / 해제 ───────────────────────────────────────────────────────
+   자동 기준(완전 일치)은 그대로 두고, 나머지는 사람이 대시보드에서 확인 후 묶는다.
+   채널이 다르면 거부한다 — 채널은 이 시스템에서 "같은 건"의 최소 전제이고, 서로 다른 채널을
+   한 건으로 합치면 채널별 집계·등급이 통째로 어긋나기 때문(제품·기간 차이는 경고만 하고 허용). */
+function _groupDealRows(ss, data) {
+  var sheet = _mainSheet(ss);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+  if (COL.groupId < 0) return _json({ error: "시트 2행에 '공구그룹ID' 헤더가 없습니다. 열을 추가한 뒤 다시 시도해주세요." });
+
+  var want = {};
+  var list = (data && data.rowIndexes) || [];
+  for (var i = 0; i < list.length; i++) {
+    var r = _numOrNull(list[i]);
+    if (r != null && r > DATA_START_ROW) want[r] = true;
+  }
+  var rowNums = Object.keys(want).map(Number).sort(function (a, b) { return a - b; });
+  if (rowNums.length < 2) return _json({ error: '묶으려면 2개 이상의 행이 필요합니다.' });
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
+
+  // 채널 일치 검증 + 대표 행(시작일이 가장 빠른 행) 결정
+  var picked = [], channel = null, earliest = null, earliestRow = null;
+  for (var k = 0; k < rowNums.length; k++) {
+    var idx = rowNums[k] - first;
+    if (idx < 0 || idx >= n) return _json({ error: '데이터 범위를 벗어난 행이 있습니다: ' + rowNums[k] });
+    var row = vals[idx];
+    if (!MINIX_ALIASES[String(row[COL.brand] || '').trim()]) {
+      return _json({ error: 'Minix 건이 아닌 행이 포함돼 있습니다: ' + rowNums[k] });
+    }
+    var ch = String(row[COL.channel] || '').trim();
+    if (channel === null) channel = ch;
+    else if (ch !== channel) {
+      return _json({ error: "채널이 서로 다릅니다: '" + channel + "' vs '" + ch + "' — 같은 채널의 행만 묶을 수 있습니다." });
+    }
+    var st = _parseDate(row[COL.startMD], _numOrNull(row[COL.year])) || '';
+    if (earliest === null || (st && st < earliest)) { earliest = st; earliestRow = rowNums[k]; }
+    picked.push({ row: rowNums[k], idx: idx, dealId: String(row[COL.dealId] || '').trim() });
+  }
+
+  // 이미 그룹인 행이 섞여 있으면 그 그룹 전체를 함께 끌어온다 — 일부만 옮기면 남은 행이 고아가 된다
+  var existing = {};
+  for (var p = 0; p < picked.length; p++) {
+    var g = String(vals[picked[p].idx][COL.groupId] || '').trim();
+    if (g) existing[g] = true;
+  }
+  for (var gi = 0; gi < n; gi++) {
+    var gv = String(vals[gi][COL.groupId] || '').trim();
+    if (gv && existing[gv] && !want[first + gi]) {
+      want[first + gi] = true;
+      picked.push({ row: first + gi, idx: gi, dealId: String(vals[gi][COL.dealId] || '').trim() });
+    }
+  }
+
+  var groupId = Utilities.getUuid();
+  var colVals = sheet.getRange(first, COL.groupId + 1, n, 1).getValues();
+  for (var w = 0; w < picked.length; w++) colVals[picked[w].idx][0] = groupId;
+  sheet.getRange(first, COL.groupId + 1, n, 1).setValues(colVals);
+
+  _invalidateDashboardCache();
+  _invalidateDealRowMap();
+  var rowsOut = picked.map(function (x) { return x.row; }).sort(function (a, b) { return a - b; });
+  Logger.log('[수동 묶기] 채널=' + channel + ' / 행 [' + rowsOut.join(', ') + '] → 그룹ID ' + groupId +
+    ' / 대표 행(시작일 최소)=' + earliestRow);
+  return _json({ success: true, groupId: groupId, channel: channel, rows: rowsOut, primaryRow: earliestRow });
+}
+
+/* 묶기 해제 — 그룹ID를 각 행의 dealId로 되돌린다(= 그 행 하나짜리 건으로 분리).
+   dealId가 비어 있는 행은 doGet의 자동 백필이 새 UUID를 채우므로 비워둔다. */
+function _ungroupDeal(ss, data) {
+  var sheet = _mainSheet(ss);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+  if (COL.groupId < 0) return _json({ error: "시트에 '공구그룹ID' 헤더가 없습니다." });
+  var groupId = String((data && data.groupId) || '').trim();
+  if (!groupId) return _json({ error: '그룹ID가 비어 있습니다.' });
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+  var gVals = sheet.getRange(first, COL.groupId + 1, n, 1).getValues();
+  var dVals = sheet.getRange(first, COL.dealId + 1, n, 1).getValues();
+  var rows = [], changed = 0;
+  for (var i = 0; i < n; i++) {
+    if (String(gVals[i][0] || '').trim() !== groupId) continue;
+    gVals[i][0] = String(dVals[i][0] || '').trim();
+    rows.push(first + i);
+    changed++;
+  }
+  if (!changed) return _json({ error: '해당 그룹의 행을 찾을 수 없습니다.' });
+  sheet.getRange(first, COL.groupId + 1, n, 1).setValues(gVals);
+  _invalidateDashboardCache();
+  _invalidateDealRowMap();
+  Logger.log('[묶기 해제] 그룹ID ' + groupId + ' / 행 [' + rows.join(', ') + '] 를 각자 dealId로 되돌림');
+  return _json({ success: true, groupId: groupId, rows: rows, count: changed });
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 메인 시트 파싱 (dealId로 그룹핑 → 그룹당 "공구건" 1개) ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2101,6 +2326,8 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'updateChannelFollowers') resp = _updateChannelFollowers(ss, data);
     else if (action === 'writeTiers') resp = _writeTiers(ss, data);
     else if (action === 'updateChannelFields') resp = _updateChannelFields(ss, data);
+    else if (action === 'groupDealRows') resp = _withStructLock(function () { return _groupDealRows(ss, data); });
+    else if (action === 'ungroupDeal') resp = _withStructLock(function () { return _ungroupDeal(ss, data); });
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }

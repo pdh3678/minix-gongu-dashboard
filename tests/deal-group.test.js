@@ -191,5 +191,91 @@ console.log('\n[7] 그룹 저장이 남의 행을 건드리지 않음');
   check('그룹 안 행만 반영', sheet._grid[2][C.qty] === 5, sheet._grid[2][C.qty]);
 }
 
+
+console.log('\n[8] 묶기 후보 진단 — 왜 자동으로 안 묶였는지');
+{
+  const w = HEADERS.length;
+  const row = o => { const r = new Array(w).fill(''); Object.keys(o).forEach(k => { r[k] = o[k]; }); return r; };
+  const g = [new Array(w).fill(''), HEADERS.slice()];
+  // 하늘마켓: 기간 같고 제품만 다름
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'더 플렌더 PRO', [C.channel]:'하늘마켓', [C.code]:'H1',
+    [C.year]:2026, [C.startMD]:'2026-02-01', [C.endMD]:'2026-02-03', [C.dealId]:'H-1', [C.codeSeq]:1 }));
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'더 플렌더 MAX', [C.channel]:'하늘마켓', [C.code]:'H2',
+    [C.year]:2026, [C.startMD]:'2026-02-01', [C.endMD]:'2026-02-03', [C.dealId]:'H-2', [C.codeSeq]:1 }));
+  // 이제이쿡: 제품 같고 종료일만 하루 다름
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'더 시프트', [C.channel]:'이제이쿡', [C.code]:'E1',
+    [C.year]:2026, [C.startMD]:'2026-01-07', [C.endMD]:'2026-01-09', [C.dealId]:'E-1', [C.codeSeq]:1 }));
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'더 시프트', [C.channel]:'이제이쿡', [C.code]:'E2',
+    [C.year]:2026, [C.startMD]:'2026-01-07', [C.endMD]:'2026-01-10', [C.dealId]:'E-2', [C.codeSeq]:1 }));
+  // 채널명 공백만 다른 쌍
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'더 슬림', [C.channel]:'밥심', [C.code]:'B1',
+    [C.year]:2026, [C.startMD]:'2026-03-01', [C.endMD]:'2026-03-02', [C.dealId]:'B-1', [C.codeSeq]:1 }));
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'더 슬림', [C.channel]:'밥 심', [C.code]:'B2',
+    [C.year]:2026, [C.startMD]:'2026-03-01', [C.endMD]:'2026-03-02', [C.dealId]:'B-2', [C.codeSeq]:1 }));
+  // 기간이 멀어 후보가 아닌 쌍(같은 채널)
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'더 슬림', [C.channel]:'먼채널', [C.code]:'F1',
+    [C.year]:2026, [C.startMD]:'2026-01-01', [C.endMD]:'2026-01-02', [C.dealId]:'F-1', [C.codeSeq]:1 }));
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'더 슬림', [C.channel]:'먼채널', [C.code]:'F2',
+    [C.year]:2026, [C.startMD]:'2026-03-01', [C.endMD]:'2026-03-02', [C.dealId]:'F-2', [C.codeSeq]:1 }));
+
+  const sheet = makeSheet('실적통합', g);
+  const ctx = load(sheet);
+  const found = ctx.reportUngroupedCandidates();
+  const byCh = {};
+  found.forEach(f => { byCh[f.channel] = f; });
+  check('하늘마켓 후보 검출', !!byCh['하늘마켓'], Object.keys(byCh));
+  check('하늘마켓 이유 = 제품 다름', byCh['하늘마켓'].reasons.join(' ').indexOf('제품 다름') >= 0, byCh['하늘마켓'].reasons);
+  check('하늘마켓 행 번호 보고', byCh['하늘마켓'].rows.join(',') === '3,4', byCh['하늘마켓'].rows);
+  check('이제이쿡 후보 검출', !!byCh['이제이쿡']);
+  check('이제이쿡 이유 = 종료일 다름', byCh['이제이쿡'].reasons.join(' ').indexOf('종료일 다름') >= 0, byCh['이제이쿡'].reasons);
+  check('채널 공백 차이도 이유로 보고', (byCh['밥심'] || byCh['밥 심']).reasons.join(' ').indexOf('채널명 표기 차이') >= 0);
+  check('기간이 먼 쌍은 후보 아님', !byCh['먼채널'], byCh['먼채널']);
+  check('진단은 시트를 건드리지 않음', sheet._calls.filter(c => c.op === 'setValues').length === 0);
+
+  // 채널 필터
+  const only = ctx.reportUngroupedCandidates(['하늘마켓']);
+  check('채널 필터 동작', only.length === 1 && only[0].channel === '하늘마켓', only.map(x => x.channel));
+}
+
+console.log('\n[9] 수동 묶기 / 해제');
+{
+  const sheet = buildSheet(); const ctx = load(sheet);
+  ctx.applyDealGroupIds();
+  // 6행(단독 D-SOLO)과 7·8행(D-MULTI)을 묶어본다 — 채널이 다르므로 거부돼야 한다
+  let r = act(ctx, 'groupDealRows', { rowIndexes: [6, 7] });
+  check('채널이 다르면 거부', !!r.error && r.error.indexOf('채널이 서로 다릅니다') >= 0, r.error);
+
+  // 같은 채널 두 행을 새로 만들어 묶기
+  const w = HEADERS.length;
+  const mk = o => { const x = new Array(w).fill(''); Object.keys(o).forEach(k => { x[k] = o[k]; }); return x; };
+  sheet._grid.push(mk({ [C.brand]:'미닉스', [C.product]:'P-A', [C.channel]:'수동채널', [C.code]:'MA',
+    [C.year]:2026, [C.startMD]:'2026-07-05', [C.endMD]:'2026-07-07', [C.dealId]:'MAN-1', [C.codeSeq]:1, [C.groupId]:'MAN-1' }));
+  sheet._grid.push(mk({ [C.brand]:'미닉스', [C.product]:'P-B', [C.channel]:'수동채널', [C.code]:'MB',
+    [C.year]:2026, [C.startMD]:'2026-07-03', [C.endMD]:'2026-07-07', [C.dealId]:'MAN-2', [C.codeSeq]:1, [C.groupId]:'MAN-2' }));
+  const rowA = sheet._grid.length - 1, rowB = sheet._grid.length;
+  r = act(ctx, 'groupDealRows', { rowIndexes: [rowA, rowB] });
+  check('같은 채널이면 묶임', r.success === true, r);
+  check('두 행이 같은 그룹ID', sheet._grid[rowA - 1][C.groupId] === sheet._grid[rowB - 1][C.groupId],
+    [sheet._grid[rowA - 1][C.groupId], sheet._grid[rowB - 1][C.groupId]]);
+  check('대표 행은 시작일이 가장 빠른 행', r.primaryRow === rowB, { got: r.primaryRow, want: rowB });
+  check('행을 삭제하지 않음', sheet._grid.length === rowB, sheet._grid.length);
+
+  // 묶인 뒤엔 한 건으로 파싱된다
+  const deals = ctx.parseMainSheet(sheet).deals;
+  const man = deals.filter(d => d.channel === '수동채널');
+  check('한 건으로 묶여 파싱', man.length === 1 && man[0].rowCount === 2, man.map(d => d.rowCount));
+
+  // 해제
+  const gid = sheet._grid[rowA - 1][C.groupId];
+  const u = act(ctx, 'ungroupDeal', { groupId: gid });
+  check('해제 성공', u.success === true && u.count === 2, u);
+  check('그룹ID가 각자 dealId로', sheet._grid[rowA - 1][C.groupId] === 'MAN-1' && sheet._grid[rowB - 1][C.groupId] === 'MAN-2',
+    [sheet._grid[rowA - 1][C.groupId], sheet._grid[rowB - 1][C.groupId]]);
+  const deals2 = ctx.parseMainSheet(sheet).deals;
+  check('다시 2건으로 분리', deals2.filter(d => d.channel === '수동채널').length === 2);
+  check('해제해도 행은 그대로', sheet._grid.length === rowB, sheet._grid.length);
+
+  check('1개만 선택하면 거부', !!act(ctx, 'groupDealRows', { rowIndexes: [rowA] }).error);
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);
