@@ -287,5 +287,58 @@ console.log('\n[16] 임베드가 숨기는 요소를 회고 에디터가 참조�
   ['hdr', 'sidebar', 'app-main', 'app-shell', 'innerHeight'].forEach(t =>
     check('마운트 코드가 ' + t + '를 참조하지 않음', mountFn.indexOf(t) < 0));
 }
+
+console.log('\n[17] DOM 참조 무결성 — 코드가 부르는 id가 실제로 존재하는가');
+{
+  /* ⚠ 이 검사가 있는 이유: 테스트 샌드박스의 getElementById는 어떤 id에도 스텁을 돌려주기 때문에,
+     "마크업에서 지운 요소를 코드가 아직 참조하는" 실수를 절대 잡지 못한다. 실제로 2026-09-15에
+     mChannelId를 mIgId/mYtId로 교체하면서 참조 두 곳이 남아, 공구건 상세 모달이 열리는 즉시
+     null.placeholder로 던지며 **모든 페이지에서 모달이 안 열렸다**. 런타임 스텁으로는 못 잡으니
+     마크업을 직접 대조하는 정적 검사로 막는다. */
+  const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
+  const ids = new Set();
+  for (const m of scripts.matchAll(/getElementById\(\s*'([^']+)'\s*\)/g)) ids.add(m[1]);
+  for (const m of scripts.matchAll(/getElementById\(\s*"([^"]+)"\s*\)/g)) ids.add(m[1]);
+  const missing = [...ids].filter(id => html.indexOf('id="' + id + '"') < 0);
+  check('getElementById로 참조하는 id를 실제로 수집함(' + ids.size + '개)', ids.size > 100, ids.size);
+  check('마크업에 없는 id를 참조하지 않음', missing.length === 0, missing);
+
+  // 이번 회귀의 구체적 고정 — 교체 전 id가 코드 어디에도 남아 있으면 안 된다
+  const codeOnly = scripts.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  check('제거된 mChannelId를 코드가 더 이상 참조하지 않음', codeOnly.indexOf('mChannelId') < 0);
+  check('새 입력칸 mIgId/mYtId가 마크업에 존재',
+    html.indexOf('id="mIgId"') > 0 && html.indexOf('id="mYtId"') > 0);
+}
+
+console.log('\n[18] 공구건 상세 모달이 열리는 경로가 끊기지 않는가');
+{
+  /* openM → _openRegisteredModal 전체를 실제로 태운다. DOM은 스텁이지만, 이 경로에서
+     "정의되지 않은 함수 호출"이나 로직 예외가 나면 여기서 잡힌다. */
+  const { ctx, X } = loadFrontend(PROJ, null, { search: '', runHeadScripts: true });
+  const DATA = X.DATA;
+  DATA.splice(0, DATA.length, ...ctx.adaptGAS({ purchases: [
+    { id:3, dealId:'D1', brand:'Minix', product:'더 플렌더', channel:'채널A', platform:'인스타그램',
+      link:'https://www.instagram.com/minnie.life', start:'2026-01-10', end:'2026-01-15',
+      status:'완료', qty:10, sale:1000, revenue:10000, codes:['C1'], rowCount:1, tierRows:[[3,'','']] }
+  ], calendarEvents: [] }));
+  ctx.invalidateChannelInfo();
+  let opened = null;
+  const realOpen = ctx._openRegisteredModal;
+  ctx._openRegisteredModal = d => { opened = d; return realOpen(d); };
+  let threw = null;
+  try { ctx.openM('D1', null); } catch (e) { threw = e; }
+  check('모달 열기 경로가 예외 없이 끝남', threw === null, threw && threw.message);
+  check('해당 공구건으로 열림', opened && opened.dealId === 'D1', opened && opened.dealId);
+
+  // 저장 중 잠금이 걸린 건은 열리지 않아야 하고, 풀리면 다시 열려야 한다
+  opened = null;
+  X.savingDeals.set('D1', {});
+  ctx.showToast = () => {};
+  ctx.openM('D1', null);
+  check('저장 중에는 열지 않음', opened === null);
+  X.savingDeals.delete('D1');
+  ctx.openM('D1', null);
+  check('잠금 해제 후 다시 열림', opened && opened.dealId === 'D1');
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);
