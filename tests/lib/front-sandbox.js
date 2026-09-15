@@ -120,7 +120,22 @@ function loadFrontend(projectPath, extraShimBody, opts) {
   get REQUIRED_SCRIPT_VERSION(){return REQUIRED_SCRIPT_VERSION;},
   get IS_EMBED(){return IS_EMBED;},
   get savingDeals(){return _savingDeals;},
-  setSyncReady(v){_tierSyncReady=v;}${extraShimBody ? ',\n  ' + extraShimBody : ''}
+  setSyncReady(v){_tierSyncReady=v;},
+  /* 모달 상태는 전부 let 선언이라 vm 컨텍스트 프로퍼티로 노출되지 않는다.
+     저장 함수를 통으로 실행해 보려면 밖에서 이 값들을 세팅할 수 있어야 하므로 세터를 둔다. */
+  setModalState(st){
+    if(st.dealId!==undefined)_modalDealId=st.dealId;
+    if(st.channel!==undefined)_modalChannel=st.channel;
+    if(st.codeRows!==undefined)_modalCodeRows=st.codeRows;
+    if(st.codes!==undefined)_modalCodes=st.codes;
+    if(st.gifts!==undefined)_modalGifts=st.gifts;
+    if(st.reels!==undefined)_modalReels=st.reels;
+    if(st.hadReels!==undefined)_modalHadReels=st.hadReels;
+  },
+  setFormState(st){
+    if(st.codes!==undefined)_formCodes=st.codes;
+    if(st.gifts!==undefined)_formGifts=st.gifts;
+  }${extraShimBody ? ',\n  ' + extraShimBody : ''}
 };`;
 
   const ctx = vm.createContext(sandbox);
