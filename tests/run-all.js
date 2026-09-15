@@ -12,9 +12,7 @@ const SUITES = [
   ['embed.test.js',      '임베드 모드 — 셸 숨김, 쿼리 보존, 프레임 허용 헤더'],
   ['channel-fields.test.js','채널 필드 전파(GAS) — fillEmpty/overwrite, 열 없을 때 안전'],
   ['channel-front.test.js', '채널 필드(프론트) — 불일치 판정, 확인 팝업, 로컬 전파'],
-  ['deal-group.test.js',   '공구그룹ID — 상품코드별 행 묶기, 마이그레이션, 그룹 저장'],
-  ['save-flow.test.js',    '저장 흐름 — saveSchemeModal/saveDeal을 끝까지 실행'],
-  ['group-manual.test.js',  '수동 묶기 — 후보 제안, 확인 팝업, 묶기/해제, 자동 기준 고정']
+  ['save-flow.test.js',    '저장 흐름 — saveSchemeModal/saveDeal을 끝까지 실행']
 ];
 
 let failed = 0;

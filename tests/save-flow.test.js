@@ -55,7 +55,7 @@ function setup(dealOverrides, fieldOverrides) {
     id: 3, dealId: 'D1', groupId: 'D1', brand: 'Minix', product: '더 시프트', ch: '채널A',
     influencer: '채널A', platform: '인스타그램', start: '2026-04-06', end: '2026-04-08',
     status: '완료', qty: 100, rev: 1000000, codes: ['C1'], reels: [], rowCount: 1,
-    _tierRows: [[3, '', '']], codeRows: [{ rowIndex: 3, code: 'C1', qty: 100, revenue: 1000000, status: '완료', views: null }],
+    _tierRows: [[3, '', '']],
     s: { sale: 10000, comm: 10, note: '' }
   }, dealOverrides || {});
 
@@ -73,7 +73,6 @@ function setup(dealOverrides, fieldOverrides) {
   ctx._openRegisteredModal = () => {}; ctx.confirm = () => true; ctx.alert = () => {};
   // 모달 편집 버퍼는 _renderCodeRowsPanel이 채우는 값이라 여기서 직접 세팅
   X.setModalState({
-    codeRows: (deal.codeRows || []).map(r => Object.assign({}, r)),
     codes: (deal.codes || []).slice(), gifts: [], reels: [], hadReels: false
   });
   return { ctx, X, deal, sent, dom };
@@ -93,25 +92,20 @@ function setup(dealOverrides, fieldOverrides) {
       dom.els.mSaveErr && dom.els.mSaveErr.textContent);
   }
 
-  console.log('\n[2] 그룹 건 — 상품코드별 실적이 payload에 실린다');
+  console.log('\n[2] 여러 행 건(같은 dealId + codeSeq) — 한 번의 요청으로 저장');
   {
     const { ctx, sent } = setup({
-      rowCount: 3, groupId: 'G-LZ', ch: '러브지나', influencer: '러브지나',
+      rowCount: 3, ch: '러브지나', influencer: '러브지나',
       codes: ['LZ-A', 'LZ-B', 'LZ-C'],
-      _tierRows: [[3, '', ''], [4, '', ''], [5, '', '']],
-      codeRows: [
-        { rowIndex: 3, code: 'LZ-A', qty: 100, revenue: 1000000, status: '완료', views: null },
-        { rowIndex: 4, code: 'LZ-B', qty: 50, revenue: 500000, status: '완료', views: null },
-        { rowIndex: 5, code: 'LZ-C', qty: 20, revenue: 200000, status: '완료', views: null }
-      ]
+      _tierRows: [[3, '', ''], [4, '', ''], [5, '', '']]
     }, { mInfluencer: '러브지나' });
     let threw = null;
     try { await ctx.saveSchemeModal(); } catch (e) { threw = e; }
     await new Promise(r => setTimeout(r, 0));
     check('예외 없이 완료', threw === null, threw && threw.message);
     check('요청 1회', sent.length === 1, sent.length);
-    check('groupId 전달', sent[0].data.groupId === 'G-LZ', sent[0].data.groupId);
-    check('codeRows 3행 전달', (sent[0].data.codeRows || []).length === 3, sent[0].data.codeRows);
+    check('dealId 전달', sent[0].data.dealId === 'D1', sent[0].data.dealId);
+    check('상품코드 3개 전달', (sent[0].data.codes || []).length === 3, sent[0].data.codes);
     check('tiers 전달', !!sent[0].data.tiers, sent[0].data.tiers);
   }
 

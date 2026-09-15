@@ -126,7 +126,6 @@ function loadFrontend(projectPath, extraShimBody, opts) {
   setModalState(st){
     if(st.dealId!==undefined)_modalDealId=st.dealId;
     if(st.channel!==undefined)_modalChannel=st.channel;
-    if(st.codeRows!==undefined)_modalCodeRows=st.codeRows;
     if(st.codes!==undefined)_modalCodes=st.codes;
     if(st.gifts!==undefined)_modalGifts=st.gifts;
     if(st.reels!==undefined)_modalReels=st.reels;

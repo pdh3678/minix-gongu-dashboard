@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'ungroup-2026-09-15-18';
+var SCRIPT_VERSION = 'codeseq-2026-09-15-19';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -97,13 +97,7 @@ var COL_HEADER_SPECS = [
      시트에 열을 추가하는 건 사람이 하는 일이고, 그 전에 배포가 나가도 대시보드가 멈추면 안 된다.
      열이 없으면 -1이 되어 관련 기능만 조용히 꺼지고, 열을 만드는 순간 재배포 없이 켜진다. */
   ['igId',          ['인스타 ID', '인스타그램 ID', '인스타그램ID'], true],
-  ['ytId',          ['유튜브 ID', '유튜브ID'], true],
-  /* 2026-09-15 신규 — 같은 공구건을 상품코드별로 여러 행에 나눠 적은 경우를 묶는 정식 키.
-     그 전에는 "제품·채널·기간이 같으면 같은 건"이라는 내용 기준 추측으로 화면에서만 합쳐 보여줬고,
-     추측이라 저장은 막아뒀었다(어느 행에 써야 할지 보장할 수 없어서). 이 열이 그 추측을 대체한다.
-     값 규칙: 여러 행이 한 건이면 공통 UUID, 그렇지 않은 행은 자기 dealId.
-     선택 열이라 아직 없어도 동작한다 — 그 경우 dealId 기준 그룹핑으로 자동 폴백. */
-  ['groupId',       ['공구그룹ID', '공구 그룹ID', '그룹ID'], true]
+  ['ytId',          ['유튜브 ID', '유튜브ID'], true]
 ];
 
 /* 채널 단위 필드 정의 — "이 값은 공구건이 아니라 채널에 속한다"는 것들.
@@ -1158,433 +1152,6 @@ function _debugRawDump(ss, sheet) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ── 공구그룹ID: 상품코드별로 나뉜 행을 한 건으로 묶는 정식 키 (2026-09-15) ──
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/* 그룹 키 계산 — 이 함수 하나가 "무엇이 한 건인가"의 유일한 기준이다.
-   우선순위: 공구그룹ID > dealId > 행 번호(단독)
-   그룹ID가 비어 있어도 dealId로 폴백하므로, 열을 추가하거나 마이그레이션을 돌리기 전에
-   배포가 나가도 화면은 지금과 똑같이 동작한다(한 건이던 게 갑자기 쪼개지지 않음). */
-function _groupKeyOf(row, rowIdx) {
-  var gid = (COL.groupId >= 0) ? String(row[COL.groupId] || '').trim() : '';
-  if (gid) return gid;
-  var dealId = String(row[COL.dealId] || '').trim();
-  return dealId || ('__ROW' + rowIdx);
-}
-
-// 내용 기준 비교용 제품명 정규화 — 공백/대소문자 차이만 무시(프론트 normP와 같은 취지)
-function _normProductForGroup(v) {
-  return String(v == null ? '' : v).replace(/\s+/g, '').toLowerCase();
-}
-
-/* ── 1회성 마이그레이션 ─────────────────────────────────────────────────────
-   Apps Script 편집기에서 함수를 골라 "▶ 실행"으로 수동 실행할 것.
-     1) previewDealGroupIds()  — 아무것도 쓰지 않고, 묶일 행 목록을 로그로 보여준다. 먼저 이걸 실행.
-     2) applyDealGroupIds()    — 확인 후 실제 기록. 시트 행은 절대 삭제하지 않는다.
-
-   묶는 기준은 지금까지 프론트가 쓰던 내용 기준 병합과 **똑같다**(제품·채널·시작일·종료일 일치).
-   즉 지금 화면에서 한 건으로 보이던 것들이 그대로 한 그룹이 되고, 그 외에는 아무것도 바뀌지 않는다.
-   묶이지 않는 행도 그룹ID를 자기 dealId로 채워서, 이후 "그룹ID가 비어 있음 = 아직 정리 안 됨"이
-   명확한 신호가 되게 한다. */
-function previewDealGroupIds() { return _migrateDealGroupIds(true); }
-function applyDealGroupIds() { return _migrateDealGroupIds(false); }
-
-function _migrateDealGroupIds(dryRun) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = _mainSheet(ss);
-  if (!sheet) { Logger.log('[그룹ID] 실적통합 시트를 찾을 수 없어 중단'); return null; }
-  if (COL.groupId < 0) {
-    Logger.log("[그룹ID] 시트 2행에 '공구그룹ID' 헤더가 없습니다 — 맨 끝 열에 추가한 뒤 다시 실행하세요.");
-    return null;
-  }
-
-  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
-  if (lastRow <= DATA_START_ROW) { Logger.log('[그룹ID] 데이터 행이 없습니다'); return null; }
-  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
-  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
-
-  // 내용 키 → 해당 행들. parseMainSheet와 같은 필터(제품 있음 + Minix)만 대상으로 한다.
-  var byContent = {}, order = [];
-  for (var i = 0; i < n; i++) {
-    var row = vals[i];
-    var product = String(row[COL.product] || '').trim();
-    if (!product) continue;
-    if (!MINIX_ALIASES[String(row[COL.brand] || '').trim()]) continue;
-    var year = _numOrNull(row[COL.year]);
-    var key = [
-      _normProductForGroup(product),
-      String(row[COL.channel] || '').trim(),
-      _parseDate(row[COL.startMD], year) || '',
-      _parseDate(row[COL.endMD], year) || ''
-    ].join('|');
-    if (!byContent[key]) { byContent[key] = []; order.push(key); }
-    byContent[key].push({ rowIdx: i, row: row, sheetRow: first + i });
-  }
-
-  var colVals = sheet.getRange(first, COL.groupId + 1, n, 1).getValues();
-  var groupsFormed = [], singles = 0, changed = 0;
-
-  for (var k = 0; k < order.length; k++) {
-    var members = byContent[order[k]];
-    var dealIds = {};
-    for (var m = 0; m < members.length; m++) {
-      var did = String(members[m].row[COL.dealId] || '').trim();
-      if (did) dealIds[did] = true;
-    }
-    var distinct = Object.keys(dealIds).length;
-    // 여러 행인데 dealId가 둘 이상 = 지금까지 "내용 기준 병합"으로만 한 건처럼 보이던 묶음
-    var isMerged = members.length > 1 && distinct > 1;
-    var gid;
-    if (isMerged) {
-      // 이미 그룹ID가 붙어 있으면 그대로 재사용(재실행해도 안전)
-      var existing = '';
-      for (var e = 0; e < members.length; e++) {
-        var cur = String(colVals[members[e].rowIdx][0] || '').trim();
-        if (cur) { existing = cur; break; }
-      }
-      gid = existing || Utilities.getUuid();
-      groupsFormed.push({
-        groupId: gid,
-        channel: String(members[0].row[COL.channel] || '').trim(),
-        product: String(members[0].row[COL.product] || '').trim(),
-        start: _parseDate(members[0].row[COL.startMD], _numOrNull(members[0].row[COL.year])) || '',
-        end: _parseDate(members[0].row[COL.endMD], _numOrNull(members[0].row[COL.year])) || '',
-        rows: members.map(function (x) { return x.sheetRow; }),
-        codes: members.map(function (x) { return String(x.row[COL.code] || '').trim(); }),
-        dealIds: Object.keys(dealIds)
-      });
-    } else {
-      gid = null; // 아래에서 행마다 자기 dealId로 채움
-      singles += members.length;
-    }
-    for (var w = 0; w < members.length; w++) {
-      var want = gid || String(members[w].row[COL.dealId] || '').trim();
-      if (!want) continue; // dealId조차 없는 행 — doGet의 자동 백필이 채운 뒤 다시 실행하면 된다
-      if (String(colVals[members[w].rowIdx][0] || '').trim() === want) continue;
-      colVals[members[w].rowIdx][0] = want;
-      changed++;
-    }
-  }
-
-  Logger.log('[그룹ID] ' + (dryRun ? '미리보기' : '실제 기록') + ' — 여러 행이 한 건인 묶음 ' +
-    groupsFormed.length + '개 / 단독 행 ' + singles + '개 / 기록할 셀 ' + changed + '개');
-  for (var g = 0; g < groupsFormed.length; g++) {
-    var f = groupsFormed[g];
-    Logger.log('  · ' + f.channel + ' / ' + f.product + ' / ' + f.start + '~' + f.end +
-      ' — 시트 행 [' + f.rows.join(', ') + '] / 상품코드 [' + f.codes.join(', ') + ']' +
-      ' / 기존 dealId ' + f.dealIds.length + '개');
-  }
-
-  if (dryRun) {
-    Logger.log('[그룹ID] 미리보기만 했습니다. 위 목록이 맞으면 applyDealGroupIds()를 실행하세요.');
-  } else if (changed) {
-    sheet.getRange(first, COL.groupId + 1, n, 1).setValues(colVals); // 열 전체를 한 번에
-    _invalidateDashboardCache();
-    _invalidateDealRowMap();
-    Logger.log('[그룹ID] 기록 완료 — 시트 행은 하나도 삭제/이동하지 않았습니다.');
-  } else {
-    Logger.log('[그룹ID] 이미 모두 정리돼 있어 기록할 것이 없습니다.');
-  }
-  return { dryRun: !!dryRun, groups: groupsFormed, singles: singles, changed: changed };
-}
-
-/* ── 묶이지 않은 후보 진단 (2026-09-15) ────────────────────────────────────
-   자동 묶기는 "채널·제품·시작일·종료일 완전 일치"라는 좁은 기준을 쓴다(느슨하게 바꾸면 서로 다른
-   공구건을 합쳐버릴 위험이 커서 의도적으로 좁게 뒀다). 그래서 실제로는 한 건인데 필드가 조금씩
-   달라 안 묶인 건들이 남는다 — 이 함수가 그런 후보를 찾아 "왜 안 묶였는지"를 필드 단위로 알려준다.
-
-   후보 기준: 같은 채널(공백·대소문자 무시) + 기간이 겹치거나 3일 이내로 인접.
-   이 함수는 아무것도 쓰지 않는다. 묶는 것은 사람이 대시보드에서 확인 후 결정한다.
-
-   Apps Script 편집기에서 reportUngroupedCandidates()를 골라 실행. */
-var GROUP_CANDIDATE_GAP_DAYS = 3;
-
-function _normChannelLoose(v) {
-  return String(v == null ? '' : v).replace(/\s+/g, '').toLowerCase();
-}
-function _daysBetweenISO(a, b) {
-  if (!a || !b) return null;
-  var da = new Date(a + 'T00:00:00'), db = new Date(b + 'T00:00:00');
-  if (isNaN(da.getTime()) || isNaN(db.getTime())) return null;
-  return Math.round((db - da) / 86400000);
-}
-/* 두 기간이 겹치거나 gap일 이내로 인접한가 */
-function _periodsNear(s1, e1, s2, e2, gap) {
-  if (!s1 || !s2) return false;
-  var a1 = s1, b1 = e1 || s1, a2 = s2, b2 = e2 || s2;
-  if (a1 <= b2 && a2 <= b1) return true;                 // 겹침
-  var d = (b1 < a2) ? _daysBetweenISO(b1, a2) : _daysBetweenISO(b2, a1);
-  return d != null && d <= gap;
-}
-
-/* 한 쌍이 왜 자동으로 안 묶였는지 — 자동 기준과 다른 지점을 전부 열거한다.
-   "이유가 하나도 없다"면 이미 자동으로 묶였어야 하므로 후보에 오르지 않는다. */
-function _whyNotGrouped(a, b) {
-  var reasons = [];
-  if (String(a.channel).trim() !== String(b.channel).trim()) {
-    reasons.push("채널명 표기 차이('" + a.channel + "' vs '" + b.channel + "')");
-  }
-  if (_normProductForGroup(a.product) !== _normProductForGroup(b.product)) {
-    reasons.push('제품 다름(' + a.product + ' vs ' + b.product + ')');
-  }
-  if (a.start !== b.start) reasons.push('시작일 다름(' + a.start + ' vs ' + b.start + ')');
-  if (a.end !== b.end) reasons.push('종료일 다름(' + a.end + ' vs ' + b.end + ')');
-  return reasons;
-}
-
-/* 진단에 쓸 행 목록을 만든다 — parseMainSheet와 같은 필터(제품 있음 + Minix)를 쓴다.
-   반환 원소: {sheetRow, channel, product, start, end, code, dealId, groupId} */
-function _groupCandidateRows(sheet) {
-  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
-  if (lastRow <= DATA_START_ROW) return [];
-  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
-  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
-  var out = [];
-  for (var i = 0; i < n; i++) {
-    var row = vals[i];
-    var product = String(row[COL.product] || '').trim();
-    if (!product) continue;
-    if (!MINIX_ALIASES[String(row[COL.brand] || '').trim()]) continue;
-    var year = _numOrNull(row[COL.year]);
-    out.push({
-      sheetRow: first + i,
-      channel: String(row[COL.channel] || '').trim(),
-      product: product,
-      start: _parseDate(row[COL.startMD], year) || '',
-      end: _parseDate(row[COL.endMD], year) || '',
-      code: String(row[COL.code] || '').trim(),
-      dealId: String(row[COL.dealId] || '').trim(),
-      groupId: (COL.groupId >= 0 ? String(row[COL.groupId] || '').trim() : '')
-    });
-  }
-  return out;
-}
-
-function reportUngroupedCandidates(onlyChannels) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = _mainSheet(ss);
-  if (!sheet) { Logger.log('[묶기 후보] 실적통합 시트를 찾을 수 없어 중단'); return null; }
-  var rows = _groupCandidateRows(sheet);
-
-  // 채널(느슨한 비교)별로 모아서 쌍을 본다
-  var byCh = {};
-  for (var i = 0; i < rows.length; i++) {
-    var k = _normChannelLoose(rows[i].channel);
-    if (!k) continue;
-    if (!byCh[k]) byCh[k] = [];
-    byCh[k].push(rows[i]);
-  }
-  var filter = null;
-  if (onlyChannels && onlyChannels.length) {
-    filter = {};
-    for (var f = 0; f < onlyChannels.length; f++) filter[_normChannelLoose(onlyChannels[f])] = true;
-  }
-
-  var found = [];
-  for (var ck in byCh) {
-    if (filter && !filter[ck]) continue;
-    var list = byCh[ck];
-    for (var a = 0; a < list.length; a++) {
-      for (var b = a + 1; b < list.length; b++) {
-        var ra = list[a], rb = list[b];
-        // 이미 같은 그룹이면 후보가 아니다
-        if (ra.groupId && ra.groupId === rb.groupId) continue;
-        if (!ra.groupId && !rb.groupId && ra.dealId && ra.dealId === rb.dealId) continue;
-        if (!_periodsNear(ra.start, ra.end, rb.start, rb.end, GROUP_CANDIDATE_GAP_DAYS)) continue;
-        var reasons = _whyNotGrouped(ra, rb);
-        if (!reasons.length) continue; // 이유가 없으면 자동으로 이미 묶였을 것
-        found.push({ channel: ra.channel, rows: [ra.sheetRow, rb.sheetRow], reasons: reasons,
-          detail: [ra, rb].map(function (x) {
-            return { row: x.sheetRow, product: x.product, period: x.start + '~' + x.end, code: x.code };
-          }) });
-      }
-    }
-  }
-
-  Logger.log('[묶기 후보] 같은 채널 + 기간 겹침/' + GROUP_CANDIDATE_GAP_DAYS + '일 이내 인접인데 안 묶인 쌍: ' + found.length + '건'
-    + (filter ? ' (채널 필터 적용)' : ''));
-  for (var r = 0; r < found.length; r++) {
-    var it = found[r];
-    Logger.log('  · ' + it.channel + ' / 행 ' + it.rows.join('·') + ' — ' + it.reasons.join(' / '));
-    for (var d2 = 0; d2 < it.detail.length; d2++) {
-      var dd = it.detail[d2];
-      Logger.log('        행 ' + dd.row + ': ' + dd.product + ' · ' + dd.period + ' · 코드 ' + (dd.code || '(없음)'));
-    }
-  }
-  if (!found.length) Logger.log('  (후보 없음 — 같은 채널에서 기간이 가까운 미묶음 행이 없습니다)');
-  return found;
-}
-// 보고된 두 채널부터 바로 보기 위한 단축 함수
-function reportHaneulAndEjcook() { return reportUngroupedCandidates(['하늘마켓', '이제이쿡']); }
-
-/* ── 수동 묶기 / 해제 ───────────────────────────────────────────────────────
-   자동 기준(완전 일치)은 그대로 두고, 나머지는 사람이 대시보드에서 확인 후 묶는다.
-   채널이 다르면 거부한다 — 채널은 이 시스템에서 "같은 건"의 최소 전제이고, 서로 다른 채널을
-   한 건으로 합치면 채널별 집계·등급이 통째로 어긋나기 때문(제품·기간 차이는 경고만 하고 허용). */
-function _groupDealRows(ss, data) {
-  var sheet = _mainSheet(ss);
-  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
-  if (COL.groupId < 0) return _json({ error: "시트 2행에 '공구그룹ID' 헤더가 없습니다. 열을 추가한 뒤 다시 시도해주세요." });
-
-  var want = {};
-  var list = (data && data.rowIndexes) || [];
-  for (var i = 0; i < list.length; i++) {
-    var r = _numOrNull(list[i]);
-    if (r != null && r > DATA_START_ROW) want[r] = true;
-  }
-  var rowNums = Object.keys(want).map(Number).sort(function (a, b) { return a - b; });
-  if (rowNums.length < 2) return _json({ error: '묶으려면 2개 이상의 행이 필요합니다.' });
-
-  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
-  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
-  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
-
-  // 채널 일치 검증 + 대표 행(시작일이 가장 빠른 행) 결정
-  var picked = [], channel = null, earliest = null, earliestRow = null;
-  for (var k = 0; k < rowNums.length; k++) {
-    var idx = rowNums[k] - first;
-    if (idx < 0 || idx >= n) return _json({ error: '데이터 범위를 벗어난 행이 있습니다: ' + rowNums[k] });
-    var row = vals[idx];
-    if (!MINIX_ALIASES[String(row[COL.brand] || '').trim()]) {
-      return _json({ error: 'Minix 건이 아닌 행이 포함돼 있습니다: ' + rowNums[k] });
-    }
-    var ch = String(row[COL.channel] || '').trim();
-    if (channel === null) channel = ch;
-    else if (ch !== channel) {
-      return _json({ error: "채널이 서로 다릅니다: '" + channel + "' vs '" + ch + "' — 같은 채널의 행만 묶을 수 있습니다." });
-    }
-    var st = _parseDate(row[COL.startMD], _numOrNull(row[COL.year])) || '';
-    if (earliest === null || (st && st < earliest)) { earliest = st; earliestRow = rowNums[k]; }
-    picked.push({ row: rowNums[k], idx: idx, dealId: String(row[COL.dealId] || '').trim() });
-  }
-
-  // 이미 그룹인 행이 섞여 있으면 그 그룹 전체를 함께 끌어온다 — 일부만 옮기면 남은 행이 고아가 된다
-  var existing = {};
-  for (var p = 0; p < picked.length; p++) {
-    var g = String(vals[picked[p].idx][COL.groupId] || '').trim();
-    if (g) existing[g] = true;
-  }
-  for (var gi = 0; gi < n; gi++) {
-    var gv = String(vals[gi][COL.groupId] || '').trim();
-    if (gv && existing[gv] && !want[first + gi]) {
-      want[first + gi] = true;
-      picked.push({ row: first + gi, idx: gi, dealId: String(vals[gi][COL.dealId] || '').trim() });
-    }
-  }
-
-  var groupId = Utilities.getUuid();
-  var colVals = sheet.getRange(first, COL.groupId + 1, n, 1).getValues();
-  for (var w = 0; w < picked.length; w++) colVals[picked[w].idx][0] = groupId;
-  sheet.getRange(first, COL.groupId + 1, n, 1).setValues(colVals);
-
-  _invalidateDashboardCache();
-  _invalidateDealRowMap();
-  var rowsOut = picked.map(function (x) { return x.row; }).sort(function (a, b) { return a - b; });
-  Logger.log('[수동 묶기] 채널=' + channel + ' / 행 [' + rowsOut.join(', ') + '] → 그룹ID ' + groupId +
-    ' / 대표 행(시작일 최소)=' + earliestRow);
-  return _json({ success: true, groupId: groupId, channel: channel, rows: rowsOut, primaryRow: earliestRow });
-}
-
-/* 묶기 해제 — 그룹ID를 각 행의 dealId로 되돌린다(= 그 행 하나짜리 건으로 분리).
-   dealId가 비어 있는 행은 doGet의 자동 백필이 새 UUID를 채우므로 비워둔다. */
-function _ungroupDeal(ss, data) {
-  var sheet = _mainSheet(ss);
-  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
-  if (COL.groupId < 0) return _json({ error: "시트에 '공구그룹ID' 헤더가 없습니다." });
-  var groupId = String((data && data.groupId) || '').trim();
-  if (!groupId) return _json({ error: '그룹ID가 비어 있습니다.' });
-
-  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
-  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
-  var gVals = sheet.getRange(first, COL.groupId + 1, n, 1).getValues();
-  var dVals = sheet.getRange(first, COL.dealId + 1, n, 1).getValues();
-  var rows = [], changed = 0;
-  for (var i = 0; i < n; i++) {
-    if (String(gVals[i][0] || '').trim() !== groupId) continue;
-    gVals[i][0] = String(dVals[i][0] || '').trim();
-    rows.push(first + i);
-    changed++;
-  }
-  if (!changed) return _json({ error: '해당 그룹의 행을 찾을 수 없습니다.' });
-  sheet.getRange(first, COL.groupId + 1, n, 1).setValues(gVals);
-  _invalidateDashboardCache();
-  _invalidateDealRowMap();
-  Logger.log('[묶기 해제] 그룹ID ' + groupId + ' / 행 [' + rows.join(', ') + '] 를 각자 dealId로 되돌림');
-  return _json({ success: true, groupId: groupId, rows: rows, count: changed });
-}
-/* 부분 해제 — 그룹에서 고른 행만 빼낸다(나머지는 묶인 채로 둔다).
-
-   "행 하나가 잘못 들어갔다"가 실제로 가장 흔한 상황인데, 전체 해제 후 다시 묶으면
-   남은 행들의 그룹ID가 통째로 바뀐다. 그래서 빼낼 행만 건드린다.
-
-   dealId 처리가 까다롭다. 그룹ID를 그 행의 dealId로 되돌리는 게 기본이지만, 한 dealId가
-   여러 행에 걸쳐 있던 그룹(= 예전부터 dealId로 묶여 있던 건)에서는 되돌려도 남는 행과
-   같은 값이라 분리가 되지 않는다. 그럴 때만 새 dealId를 발급한다. */
-function _ungroupRows(ss, data) {
-  var sheet = _mainSheet(ss);
-  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
-  if (COL.groupId < 0) return _json({ error: "시트에 '공구그룹ID' 헤더가 없습니다." });
-  var want = {}, asked = 0;
-  ((data && data.rowIndexes) || []).forEach(function (r) {
-    var v = Number(r);
-    if (v > DATA_START_ROW) { want[v] = true; asked++; }
-  });
-  if (!asked) return _json({ error: '빼낼 행이 지정되지 않았습니다.' });
-
-  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
-  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
-  var gVals = sheet.getRange(first, COL.groupId + 1, n, 1).getValues();
-  var dVals = sheet.getRange(first, COL.dealId + 1, n, 1).getValues();
-
-  // 빼낼 행이 속한 그룹들과, 그 그룹에 남게 될 행을 먼저 파악한다
-  var groups = {};
-  for (var i = 0; i < n; i++) {
-    var g = String(gVals[i][0] || '').trim();
-    if (!g) continue;
-    if (!groups[g]) groups[g] = { out: [], stay: [] };
-    (want[first + i] ? groups[g].out : groups[g].stay).push(i);
-  }
-  /* 실제로 여러 행이 묶인 그룹만 대상이다. 단독 건도 자기 dealId를 그룹ID로 갖고 있어서
-     행 수를 보지 않으면 "빼낼 게 없는 행"까지 성공으로 보고하게 된다. */
-  var touched = Object.keys(groups).filter(function (g) {
-    return groups[g].out.length && (groups[g].out.length + groups[g].stay.length) > 1;
-  });
-  if (!touched.length) return _json({ error: '지정한 행이 다른 행과 묶여 있지 않습니다.' });
-
-  var moved = [], freed = [];
-  for (var t = 0; t < touched.length; t++) {
-    var grp = groups[touched[t]];
-    /* 이미 쓰인 dealId — 남는 행들의 것에서 시작해, 빼낸 행에 배정한 것도 더해 나간다.
-       그룹 전체를 한 번에 빼는 경우(= 전체 해제와 같다) 빼낸 행들끼리도 겹칠 수 있다. */
-    var usedIds = {};
-    for (var s = 0; s < grp.stay.length; s++) usedIds[String(dVals[grp.stay[s]][0] || '').trim()] = true;
-    for (var o = 0; o < grp.out.length; o++) {
-      var idx = grp.out[o];
-      var did = String(dVals[idx][0] || '').trim();
-      if (!did || usedIds[did]) { did = Utilities.getUuid(); dVals[idx][0] = did; }
-      usedIds[did] = true;
-      gVals[idx][0] = did;
-      moved.push(first + idx);
-    }
-    // 한 행만 남으면 더는 그룹이 아니다 — 자기 dealId로 정리한다
-    if (grp.stay.length === 1) {
-      var only = grp.stay[0];
-      var oid = String(dVals[only][0] || '').trim();
-      if (oid && gVals[only][0] !== oid) { gVals[only][0] = oid; freed.push(first + only); }
-    }
-  }
-
-  sheet.getRange(first, COL.groupId + 1, n, 1).setValues(gVals);
-  sheet.getRange(first, COL.dealId + 1, n, 1).setValues(dVals);
-  _invalidateDashboardCache();
-  _invalidateDealRowMap();
-  Logger.log('[부분 해제] 행 [' + moved.join(', ') + '] 를 그룹에서 빼냄' +
-    (freed.length ? ' / 한 행만 남아 정리된 행 [' + freed.join(', ') + ']' : ''));
-  return _json({ success: true, rows: moved, freed: freed, count: moved.length });
-}
-
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 메인 시트 파싱 (dealId로 그룹핑 → 그룹당 "공구건" 1개) ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 상품코드가 여러 개인 공구건은 같은 dealId를 공유하는 여러 행(코드순번 1~5)으로 저장됨.
@@ -1654,11 +1221,10 @@ function parseMainSheet(sheet) {
     if (!product) { skippedNoProduct++; continue; } // 빈 행/구분용 행("2025년" 등) 제외
     if (!MINIX_ALIASES[brand]) { skippedNonMinix++; continue; } // Minix 전용 대시보드
 
-    // 그룹 키는 _groupKeyOf 하나로만 정한다(공구그룹ID > dealId > 행 단독).
-    // 그룹ID 열이 없거나 비어 있으면 예전과 똑같이 dealId로 묶이므로, 마이그레이션 전에도 안전.
-    var key = _groupKeyOf(row, i);
+    var dealId = String(row[COL.dealId] || '').trim();
+    var key = dealId || ('__ROW' + i);
     if (!groups[key]) { groups[key] = []; groupOrder.push(key); }
-    groups[key].push({ rowIdx: i, row: row, explicitGroup: (COL.groupId >= 0 && String(row[COL.groupId] || '').trim() !== '') });
+    groups[key].push({ rowIdx: i, row: row });
   }
 
   // 방어 로직: 같은 dealId를 공유하는 그룹인데 제품명/채널명이 서로 다른 행이 섞여 있으면
@@ -1671,10 +1237,6 @@ function parseMainSheet(sheet) {
     var gk = groupOrder[gi];
     var mem = groups[gk];
     if (mem.length <= 1) continue;
-    /* 공구그룹ID로 사람이 명시적으로 묶은 그룹은 이 방어 로직을 태우지 않는다.
-       이 방어는 "dealId가 실수로 복사됐을 때"를 위한 것인데, 그룹ID는 마이그레이션이 의도적으로
-       부여한 값이라 제품·채널이 조금 다르더라도 쪼개면 안 된다(쪼개는 순간 그룹ID를 붙인 의미가 사라짐). */
-    if (mem[0].explicitGroup) continue;
     var refProduct = String(mem[0].row[COL.product] || '').trim();
     var refChannel = String(mem[0].row[COL.channel] || '').trim();
     var consistent = [mem[0]];
@@ -1727,24 +1289,6 @@ function parseMainSheet(sheet) {
       if (c) codes.push(c);
     }
 
-    /* 상품코드별 행 정보 — 한 건이 여러 행에 나뉘어 있을 때 모달이 행마다 실적을 보여주고
-       고칠 수 있게 하려면, 행 번호와 그 행의 값이 그대로 필요하다.
-       단독 행 건도 원소 1개짜리 배열로 내려보내서 프론트가 분기 없이 같은 코드로 다룰 수 있게 한다. */
-    var codeRows = [];
-    for (var cr = 0; cr < members.length; cr++) {
-      var crRow = members[cr].row;
-      codeRows.push({
-        rowIndex: members[cr].rowIdx + 1,
-        dealId: String(crRow[COL.dealId] || '').trim(),
-        codeSeq: _numOrNull(crRow[COL.codeSeq]),
-        code: String(crRow[COL.code] || '').trim(),
-        qty: _numOrNull(crRow[COL.qty]),
-        revenue: _numOrNull(crRow[COL.revenue]),
-        views: _numOrNull(crRow[COL.views]),
-        status: String(crRow[COL.status] || '').trim()
-      });
-    }
-
     /* 등급 결과 열(매출등급/팔로워 등급)을 프론트가 되기록할 때 쓰는 행 목록 (2026-09-14).
        원소 하나가 [시트 행 번호(1-based), 현재 매출등급 셀값, 현재 팔로워등급 셀값].
        · 등급은 채널 속성이라 그 채널이 등장하는 **모든 물리 행**에 같은 값을 써야 하는데, 공구건
@@ -1768,17 +1312,8 @@ function parseMainSheet(sheet) {
     var product    = String(pRow[COL.product]  || '').trim();
     var platform   = String(pRow[COL.platform] || '').trim();
     var salePrice  = _numOrNull(pRow[COL.salePrice]);
-    /* 판매수량·총매출은 **그룹의 모든 행 합산**이다.
-       기존 dealId 그룹은 실적을 대표 행에만 적는 규칙이라 합산해도 결과가 같고(나머지는 빈칸),
-       상품코드별로 실적을 따로 적는 그룹에서는 합산이 곧 그 건의 실적이 된다.
-       → 이 한 줄 덕분에 "건수 1건, 매출은 행 합산"이라는 집계 규칙이 서버에서 한 번에 지켜진다. */
-    var qty = null, revenue = null;
-    for (var sm = 0; sm < members.length; sm++) {
-      var mq = _numOrNull(members[sm].row[COL.qty]);
-      var mr = _numOrNull(members[sm].row[COL.revenue]);
-      if (mq != null) qty = (qty || 0) + mq;
-      if (mr != null) revenue = (revenue || 0) + mr;
-    }
+    var qty        = _numOrNull(pRow[COL.qty]);
+    var revenue    = _numOrNull(pRow[COL.revenue]);
     var commission = _numOrNull(pRow[COL.commission]);
     if (commission != null && commission <= 1) commission = Math.round(commission * 1000) / 10;
     var year       = _numOrNull(pRow[COL.year]);
@@ -1916,10 +1451,7 @@ function parseMainSheet(sheet) {
       igId: COL.igId >= 0 ? String(pRow[COL.igId] || '').trim() : '',
       ytId: COL.ytId >= 0 ? String(pRow[COL.ytId] || '').trim() : '',
       tierRows:    tierRows,
-      codeRows:    codeRows,
-      // 공구그룹ID로 묶인 건인지 — 빈 값이면 아직 정리되지 않은 것이라 프론트가 경고 배지로 알린다
-      groupId:     (COL.groupId >= 0 ? String(pRow[COL.groupId] || '').trim() : ''),
-      rowCount:    members.length // 이 그룹이 시트에서 실제로 몇 개 물리 행을 차지하는지 — 프론트가 "N행" 안내에 사용
+      rowCount:    members.length // 이 그룹(dealId)이 시트에서 실제로 몇 개 물리 행을 차지하는지 — 프론트가 "N행" 안내에 사용
     });
   }
 
@@ -2397,9 +1929,6 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'updateChannelFollowers') resp = _updateChannelFollowers(ss, data);
     else if (action === 'writeTiers') resp = _writeTiers(ss, data);
     else if (action === 'updateChannelFields') resp = _updateChannelFields(ss, data);
-    else if (action === 'groupDealRows') resp = _withStructLock(function () { return _groupDealRows(ss, data); });
-    else if (action === 'ungroupDeal') resp = _withStructLock(function () { return _ungroupDeal(ss, data); });
-    else if (action === 'ungroupRows') resp = _withStructLock(function () { return _ungroupRows(ss, data); });
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
@@ -2612,10 +2141,6 @@ function _addDeal(ss, data) {
     row[COL.code]    = codes[i];
     row[COL.dealId]  = dealId;
     row[COL.codeSeq] = i + 1;
-    /* 신규 등록도 처음부터 그룹ID를 남긴다 — 상품코드가 여러 개면 코드 수만큼 행이 생기고,
-       그 행들은 같은 dealId를 공유하므로 그룹ID도 dealId와 같은 값이면 그대로 한 건이 된다.
-       나중에 마이그레이션을 다시 돌릴 필요가 없고, "그룹ID 없음" 경고에도 걸리지 않는다. */
-    if (COL.groupId >= 0) row[COL.groupId] = dealId;
     if (i === 0) {
       // 실적/조회 필드는 대표 행(첫 행)에만 — 등록 시점에 값이 있는 경우에만 기록(보통은 비어 있음).
       // 총매출(COL.revenue)은 여기서 값을 넣지 않음 — 아래에서 그 행 기준 수식(=판매수량×공구가)을
@@ -2690,67 +2215,6 @@ function _addDeal(ss, data) {
   });
 }
 
-/* 공구그룹ID로 묶인 행 전체를 찾는다. 그룹ID가 없으면 예전대로 dealId 기준.
-   저장은 "이 건이 차지하는 모든 행"에 써야 하므로, 화면에서 한 건으로 보이는 것과 시트에서 찾는
-   행 목록이 반드시 같은 기준이어야 한다 — 그 기준이 _groupKeyOf이고 여기가 그 짝이다. */
-function _findRowsByGroup(sheet, groupId, dealId) {
-  if (groupId && COL.groupId >= 0) {
-    var maxRows = sheet.getMaxRows();
-    if (maxRows <= DATA_START_ROW) return [];
-    var n = maxRows - DATA_START_ROW, first = DATA_START_ROW + 1;
-    var gv = sheet.getRange(first, COL.groupId + 1, n, 1).getValues();
-    var sv = sheet.getRange(first, COL.codeSeq + 1, n, 1).getValues();
-    var out = [];
-    for (var i = 0; i < n; i++) {
-      if (String(gv[i][0] || '').trim() !== groupId) continue;
-      var seq = _numOrNull(sv[i][0]);
-      out.push({ row: first + i, codeSeq: seq == null ? 999 : seq });
-    }
-    out.sort(function (a, b) { return a.codeSeq - b.codeSeq || a.row - b.row; });
-    if (out.length) return out;
-    // 그룹ID로 못 찾으면(아직 마이그레이션 전 등) dealId로 폴백 — 저장이 조용히 실패하지 않게
-    Logger.log('[그룹 저장] 그룹ID로 행을 찾지 못해 dealId로 폴백합니다: ' + groupId);
-  }
-  return _findGroupRows(sheet, dealId);
-}
-
-/* 상품코드별 실적을 각 행에 기록 (2026-09-15).
-   codeRows: [{rowIndex, code, qty, status, views}] — 총매출은 값이 아니라 그 행 기준 수식으로 심는다
-   (판매수량×공구가). 값으로 박으면 나중에 수량이나 공구가가 바뀌어도 재계산되지 않는다.
-   rowIndex가 그룹에 속하지 않으면 건너뛴다 — 프론트가 잘못된 행을 보내도 남의 행을 안 건드리게. */
-function _applyCodeRows(sheet, groupRows, codeRows, pending) {
-  if (!codeRows || !codeRows.length) return 0;
-  var allowed = {};
-  for (var g = 0; g < groupRows.length; g++) allowed[groupRows[g].row] = true;
-  var applied = 0, formulaRows = [];
-  for (var i = 0; i < codeRows.length; i++) {
-    var cr = codeRows[i] || {};
-    var rowIndex = _numOrNull(cr.rowIndex);
-    if (rowIndex == null || !allowed[rowIndex]) continue;
-    if (!pending[rowIndex]) pending[rowIndex] = {};
-    if (cr.code !== undefined) pending[rowIndex][COL.code] = String(cr.code || '').trim();
-    if (cr.qty !== undefined) pending[rowIndex][COL.qty] = (cr.qty == null || cr.qty === '') ? '' : Number(cr.qty);
-    if (cr.views !== undefined) pending[rowIndex][COL.views] = (cr.views == null || cr.views === '') ? '' : Number(cr.views);
-    if (cr.status !== undefined) pending[rowIndex][COL.status] = String(cr.status || '').trim();
-    if (cr.qty !== undefined) formulaRows.push(rowIndex);
-    applied++;
-  }
-  // 총매출 수식은 값 쓰기와 섞이면 안 되므로(배치 setValues가 수식을 값으로 덮어씀) 별도로 심는다
-  for (var f = 0; f < formulaRows.length; f++) {
-    sheet.getRange(formulaRows[f], COL.revenue + 1).setFormula(_revenueFormula(formulaRows[f]));
-  }
-  return applied;
-}
-
-/* 그룹 저장에서 "공통 필드"로 취급해 모든 행에 같이 쓰는 키 목록.
-   단독 행 건에서는 대표 행 전용이던 것들이지만, 한 건이 여러 행에 나뉘면 각 행이 그 자체로
-   완전한 정보를 담고 있어야 시트를 직접 보는 사람이 헷갈리지 않는다(_addDeal이 쓰던 원칙과 동일).
-   실적 계열(qty/revenue/views/status/code)은 행마다 다르므로 여기 없다 — 그건 codeRows가 담당. */
-var GROUP_COMMON_KEYS = ['platform', 'link', 'format', 'composition', 'targetQty', 'marketingLink',
-  'option1', 'option2', 'firstCome', 'extraQty', 'note',
-  'giftItem1', 'giftQty1', 'giftItem2', 'giftQty2', 'giftItem3', 'giftQty3',
-  'firstComeQty', 'note2', 'followers', 'igId', 'ytId'];
-
 // 공구건 상세 모달 저장 — dealId 그룹 전체에 반영.
 // data.changes: 공통 필드(GROUP_MIRROR_KEYS)는 그룹의 모든 행에 동일 반영, 나머지(PRIMARY_ONLY_KEYS +
 // sale/comm/start/end/status)는 대표 행에만 반영.
@@ -2759,14 +2223,10 @@ function _updateDeal(ss, data) {
   var sheet = _mainSheet(ss);
   if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
 
-  // 그룹 건이면 공구그룹ID로, 아니면 예전대로 dealId로 행을 찾는다
-  var groupRows = _findRowsByGroup(sheet, String(data.groupId || '').trim(), data.dealId);
+  var groupRows = _findGroupRows(sheet, data.dealId);
   if (!groupRows.length) return _json({ error: '해당 공구 행을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
 
   var primaryRow = groupRows[0].row;
-  /* codeRows가 실려 오면 "상품코드별 실적을 각 행에 쓰는 그룹 저장"이다.
-     안 실려 오면 기존 단일 건 경로가 그대로 돌아간다 — 잘 돌던 길을 건드리지 않기 위한 분기. */
-  var isGroupSave = !!(data.codeRows && data.codeRows.length && groupRows.length > 1);
   var brandCell = String(sheet.getRange(primaryRow, COL.brand + 1).getValue() || '').trim();
   if (!MINIX_ALIASES[brandCell]) {
     return _json({ error: '해당 행이 더 이상 유효한 공구 행이 아닙니다. 새로고침 후 다시 시도해주세요.' });
@@ -2800,48 +2260,32 @@ function _updateDeal(ss, data) {
     }
   }
 
-  /* 대표 행 전용 필드 — 단, 그룹 저장에서는 "공통 필드"에 해당하는 것들을 모든 행에 쓴다.
-     한 건이 여러 행에 나뉘면 각 행이 그 자체로 완전한 정보를 담고 있어야 시트를 직접 보는 사람이
-     헷갈리지 않기 때문(_addDeal이 신규 등록에서 쓰던 원칙과 같다).
-     실적 계열(판매수량/총매출/조회수/진행상태/상품코드)은 행마다 다르므로 여기 없고, codeRows가 담당. */
+  // 대표 행 전용 필드
   for (var k2i = 0; k2i < PRIMARY_ONLY_KEYS.length; k2i++) {
     var k2 = PRIMARY_ONLY_KEYS[k2i];
     if (COL[k2] == null || COL[k2] < 0) continue; // 시트에 없는 선택 열 — 쓰면 A열을 덮어쓴다
     if (c[k2] !== undefined) {
-      var k2Rows = (isGroupSave && GROUP_COMMON_KEYS.indexOf(k2) !== -1)
-        ? groupRows.map(function (x) { return x.row; }) : [primaryRow];
-      for (var k2r = 0; k2r < k2Rows.length; k2r++) {
-        // option2(오픈시간, "10:00")를 구글 시트가 시간 값으로 자동 인식하는 문제 방지 — 값을 쓰기
-        // 전에 이 열만 일반 텍스트로 고정(REVIEW_COL.ym에 이미 쓰던 setNumberFormat('@') 패턴 재사용)
-        if (k2 === 'option2') sheet.getRange(k2Rows[k2r], COL.option2 + 1).setNumberFormat('@');
-        stage(k2Rows[k2r], COL[k2], c[k2] != null ? c[k2] : '');
-      }
+      // option2(오픈시간, "10:00")를 구글 시트가 시간 값으로 자동 인식하는 문제 방지 — 값을 쓰기
+      // 전에 이 열만 일반 텍스트로 고정(REVIEW_COL.ym에 이미 쓰던 setNumberFormat('@') 패턴 재사용)
+      if (k2 === 'option2') sheet.getRange(primaryRow, COL.option2 + 1).setNumberFormat('@');
+      stage(primaryRow, COL[k2], c[k2] != null ? c[k2] : '');
     }
   }
 
-  // 공구가·수수료율·기간도 건 단위 값이라 그룹 저장에서는 모든 행에 같이 쓴다
-  var commonRows = isGroupSave ? groupRows.map(function (x) { return x.row; }) : [primaryRow];
-  for (var cri = 0; cri < commonRows.length; cri++) {
-    var crRow2 = commonRows[cri];
-    if (c.sale !== undefined) stage(crRow2, COL.salePrice, c.sale != null ? c.sale : '');
-    if (c.comm !== undefined) stage(crRow2, COL.commission, c.comm != null ? c.comm / 100 : '');
-  }
-  // 판매수량은 그룹 저장에서 행마다 다르므로 codeRows가 담당한다(여기서 대표 행에 쓰면 덮어써짐)
-  if (c.qty !== undefined && !isGroupSave) stage(primaryRow, COL.qty, c.qty != null ? c.qty : '');
+  if (c.sale !== undefined) stage(primaryRow, COL.salePrice, c.sale != null ? c.sale : '');
+  if (c.comm !== undefined) stage(primaryRow, COL.commission, c.comm != null ? c.comm / 100 : '');
+  if (c.qty  !== undefined) stage(primaryRow, COL.qty, c.qty != null ? c.qty : '');
 
   var newStart = c.start !== undefined ? _toDateOnly(c.start) : undefined;
   var newEnd   = c.end   !== undefined ? _toDateOnly(c.end)   : undefined;
-  for (var dri = 0; dri < commonRows.length; dri++) {
-    var drRow = commonRows[dri];
-    if (newStart !== undefined) {
-      sheet.getRange(drRow, COL.startMD + 1).setNumberFormat('yyyy-mm-dd');
-      stage(drRow, COL.startMD, newStart || '');
-      if (newStart) stage(drRow, COL.year, newStart.getFullYear());
-    }
-    if (newEnd !== undefined) {
-      sheet.getRange(drRow, COL.endMD + 1).setNumberFormat('yyyy-mm-dd');
-      stage(drRow, COL.endMD, newEnd || '');
-    }
+  if (newStart !== undefined) {
+    sheet.getRange(primaryRow, COL.startMD + 1).setNumberFormat('yyyy-mm-dd');
+    stage(primaryRow, COL.startMD, newStart || '');
+    if (newStart) stage(primaryRow, COL.year, newStart.getFullYear());
+  }
+  if (newEnd !== undefined) {
+    sheet.getRange(primaryRow, COL.endMD + 1).setNumberFormat('yyyy-mm-dd');
+    stage(primaryRow, COL.endMD, newEnd || '');
   }
 
   // 등급 결과 열(G·H)을 같은 묶음에 태움 — 예전엔 저장이 끝난 뒤 프론트가 writeTiers를 따로
@@ -2854,9 +2298,6 @@ function _updateDeal(ss, data) {
        ⚠ 전파는 이 시점보다 뒤에서 실행되므로, 대상 행 목록은 아래에서 다시 한 번 반영한다. */
     _stageTiers(pending, tierTargets, data.tiers);
   }
-
-  // 상품코드별 실적을 각 행에 — 같은 pending 묶음에 얹어 한 번의 배치로 나간다(왕복 1회 유지)
-  var codeRowsApplied = isGroupSave ? _applyCodeRows(sheet, groupRows, data.codeRows, pending) : 0;
 
   var writeCalls = _writeCellsBatched(sheet, pending);
 
@@ -2995,8 +2436,6 @@ function _updateDeal(ss, data) {
     tierRows: tierRows,
     writeCalls: writeCalls,
     reelsSaved: reelsSaved,
-    codeRowsApplied: codeRowsApplied,
-    groupId: String(data.groupId || '').trim(),
     // 프론트가 로컬 모델을 맞추고 사용자에게 "몇 건에 반영됐는지" 알릴 수 있게
     channelFields: channelProp ? {
       channel: channelProp.channel, mode: channelProp.mode,
@@ -3008,8 +2447,7 @@ function _updateDeal(ss, data) {
       ? _buildChannelFieldPatches(channelProp, data.dealId) : null,
     // 행 구성이 그대로일 때만 캐시 부분 갱신 시도(아니면 _handleWriteAction이 전체 무효화로 감)
     // 릴스를 건드렸으면 조회수 합계·썸네일이 바뀌므로 필드 덮어쓰기로는 못 맞춤 → 전체 무효화로
-    // 그룹 저장은 행마다 실적이 달라져 건 단위 집계(합산)가 바뀌므로 필드 덮어쓰기로는 못 맞춘다 → 전체 무효화
-    cachePatch: (rowSetChanged || data.reels != null || isGroupSave) ? null : _buildCachePatch(data.dealId, c, tierRows)
+    cachePatch: (rowSetChanged || data.reels != null) ? null : _buildCachePatch(data.dealId, c, tierRows)
   });
 }
 
