@@ -9,7 +9,9 @@ const SUITES = [
   ['write-paths.test.js','쓰기 경로 — 등록/수정/실적/팔로워/등급이 올바른 열에 들어감'],
   ['frontend.test.js',   '프론트 — 응답 변환·등급 산정·시트 기록 payload'],
   ['save-path.test.js',  '저장 통합 — 프론트+GAS 실코드로 낙관적 저장 왕복'],
-  ['embed.test.js',      '임베드 모드 — 셸 숨김, 쿼리 보존, 프레임 허용 헤더']
+  ['embed.test.js',      '임베드 모드 — 셸 숨김, 쿼리 보존, 프레임 허용 헤더'],
+  ['channel-fields.test.js','채널 필드 전파(GAS) — fillEmpty/overwrite, 열 없을 때 안전'],
+  ['channel-front.test.js', '채널 필드(프론트) — 불일치 판정, 확인 팝업, 로컬 전파']
 ];
 
 let failed = 0;

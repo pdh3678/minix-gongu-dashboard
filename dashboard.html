@@ -547,6 +547,30 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .fg-3{grid-template-columns:1fr 1fr 1fr}
 .fg-4{grid-template-columns:repeat(4,1fr)}
 .fg-5{grid-template-columns:repeat(5,1fr)}
+/* 채널 단위 필드(플랫폼 ID) — 좁은 그리드 칸 하나에 인스타/유튜브 두 줄을 넣는다.
+   열을 하나 더 늘리면 5칸이 6칸이 되어 모달의 다른 행과 폭이 어긋나므로, 칸 안에서 쌓는 쪽을 택함. */
+.chid-pair{display:flex;flex-direction:column;gap:5px}
+.chid-row{display:flex;align-items:center;gap:5px}
+.chid-tag{flex-shrink:0;width:16px;font-size:10px;font-weight:800;color:var(--text-3);letter-spacing:.3px}
+.chid-row .f-inp{flex:1;min-width:0}
+.f-badge.chf-help{background:var(--minix-lt);color:var(--minix);border-color:#C7D2FE;cursor:help}
+/* 같은 채널의 다른 공구건에서 자동으로 끌어온 값 — 사용자가 이번에 직접 넣은 값과 구분해준다.
+   "내가 입력한 적 없는데 값이 있네"에서 오는 불신을 없애는 게 목적. */
+.f-inp.chf-auto{background:var(--minix-lt)}
+.chf-badge{margin-left:6px;padding:1px 7px;border-radius:999px;border:1px solid #FDE68A;background:#FEF3C7;color:#92400E;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+.chf-badge:hover{background:#FDE68A}
+#chMismatchPop{position:fixed;z-index:1800;display:none;width:340px;max-height:60vh;overflow-y:auto;background:#fff;border:1px solid var(--border-s);border-radius:10px;box-shadow:0 12px 32px rgba(17,24,39,.22);padding:14px}
+#chMismatchPop h4{font-size:13px;margin-bottom:10px}
+.chf-block{margin-bottom:12px}
+.chf-field{font-size:11px;font-weight:800;color:var(--text);margin-bottom:5px;display:flex;justify-content:space-between;gap:8px}
+.chf-latest{font-weight:600;color:var(--minix)}
+.chf-row{display:grid;grid-template-columns:auto 1fr auto;gap:8px;font-size:11px;color:var(--text-2);padding:3px 0;border-top:1px solid var(--surface-2)}
+.chf-row.odd{background:#FFFBEB}
+.chf-period{color:var(--text-3);white-space:nowrap}
+.chf-prod{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chf-val{font-weight:700;color:var(--text);white-space:nowrap}
+.chf-empty{color:var(--text-3);font-weight:400}
+.chf-actions{display:flex;gap:6px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:10px}
 .fg .full{grid-column:1/-1}
 .fg+.fg,.fg+.f-sec{margin-top:10px}
 .f-grp{display:flex;flex-direction:column;gap:4px}
@@ -619,6 +643,14 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 })();
 </script>
 
+<div id="chMismatchPop">
+  <h4 id="chMismatchTitle"></h4>
+  <div id="chMismatchBody"></div>
+  <div class="chf-actions">
+    <button type="button" class="btn-cancel" onclick="closeChMismatch()">닫기</button>
+    <button type="button" class="btn-save" onclick="unifyChannelFields()">최근 건 값으로 통일</button>
+  </div>
+</div>
 <div id="loginScreen">
   <div class="login-card">
     <div class="login-logo">Minix <em>공동구매 대시보드</em></div>
@@ -1140,11 +1172,14 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             </select>
           </div>
           <div class="f-grp">
-            <label class="f-lbl" id="mChIdLbl">채널 ID</label>
-            <input class="f-inp" type="text" id="mChannelId" placeholder="입력 시 링크 자동 생성" oninput="mOnChannelIdChange()">
+            <label class="f-lbl" id="mChIdLbl">플랫폼 ID <span class="f-badge chf-help" id="mChIdHelp" title="채널에 속한 값입니다. 저장 시 같은 채널명의 다른 공구건에도 반영됩니다.">채널 공통</span></label>
+            <div class="chid-pair">
+              <div class="chid-row"><span class="chid-tag">IG</span><input class="f-inp" type="text" id="mIgId" placeholder="인스타 ID" oninput="mOnChannelIdChange('ig')"></div>
+              <div class="chid-row"><span class="chid-tag">YT</span><input class="f-inp" type="text" id="mYtId" placeholder="유튜브 ID" oninput="mOnChannelIdChange('yt')"></div>
+            </div>
           </div>
           <div class="f-grp">
-            <label class="f-lbl">팔로워 수 <span class="f-badge tier-help" id="mFollowerHelp">기준 ?</span></label>
+            <label class="f-lbl">팔로워 수 <span class="f-badge tier-help" id="mFollowerHelp">기준 ?</span><span class="f-badge chf-help" title="채널에 속한 값입니다. 저장 시 같은 채널명의 다른 공구건에도 반영됩니다.">채널 공통</span></label>
             <div class="fol-inwrap"><input class="f-inp" type="text" id="mFollowers" inputmode="decimal" placeholder="예: 44.3" oninput="_onFollowerInput(this)"><span class="fol-unit">만</span></div>
             <div class="fol-conv" id="mFollowersConv"></div>
           </div>
@@ -1562,7 +1597,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-embed-2026-09-15-08';
+const DASHBOARD_VERSION='dash-chfields-2026-09-15-09';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1575,7 +1610,7 @@ if(IS_EMBED)console.log('[dashboard] 임베드 모드 — 사이드바/헤더 �
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='fastsave-2026-09-15-04';
+const REQUIRED_SCRIPT_VERSION='chfields-2026-09-15-09';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2070,6 +2105,266 @@ async function syncTiersToSheet(){
   }
 }
 
+/* ── 채널 단위 필드 (2026-09-15) ────────────────────────────────────────────
+   플랫폼 ID·팔로워 수는 공구건이 아니라 채널에 속한 값이다. 시트는 공구건(행) 단위라 같은 채널이
+   여러 행에 흩어져 있고, 한 건에서 고친 값이 나머지에 반영되지 않으면 행마다 값이 다른 상태가 쌓인다.
+
+   채널 판정은 **앞뒤 공백만 제거한 완전 일치**. 대소문자·띄어쓰기 변형을 묶지 않는 건 의도된
+   보수적 선택이다 — 다른 채널을 같은 채널로 오인해 덮어쓰면 되돌리기 어렵다. */
+const CHANNEL_FIELDS=[
+  {key:'igId',      label:'인스타 ID', input:'mIgId'},
+  {key:'ytId',      label:'유튜브 ID', input:'mYtId'},
+  {key:'followers', label:'팔로워 수', input:'mFollowers'}
+];
+const CHANNEL_FIELD_KEYS=CHANNEL_FIELDS.map(f=>f.key);
+function _chKey(ch){return String(ch||'').trim();}
+// 화면 표시용 — 팔로워는 만 단위로, ID는 그대로
+function _chFieldText(key,v){
+  if(v==null||v==='')return '';
+  return key==='followers'?formatMan(Number(v)):String(v);
+}
+// 비교용 정규화(시트에 들어가는 값과 같은 기준이어야 "바뀌었는지" 판정이 어긋나지 않음)
+function _chFieldNorm(key,v){
+  if(v==null||v==='')return '';
+  if(key==='followers'){const n=Number(String(v).replace(/[,\s]/g,''));return isFinite(n)&&n>=0?String(Math.round(n)):'';}
+  return String(v).trim().replace(/^@+/,'');
+}
+
+/* 채널별 현황 — DATA를 훑어 채널마다 필드별로
+     latest   : 가장 최근 공구건(시작일 기준)의 값 = "통일 기준값"
+     rows     : 값이 들어 있는 건들의 (기간, 값) 목록 — 확인 팝업·불일치 팝오버에서 보여줌
+     empty    : 값이 비어 있는 건 수
+     conflict : latest와 다른 값을 가진 건들
+   tierStats와 같은 이유로 DATA가 바뀔 때만 다시 계산한다(render()에서 무효화). */
+let _chInfoCache=null;
+function invalidateChannelInfo(){_chInfoCache=null;}
+function channelInfo(){
+  if(!_chInfoCache)_chInfoCache=_computeChannelInfo(DATA);
+  return _chInfoCache;
+}
+function _computeChannelInfo(deals){
+  const byCh=new Map();
+  (deals||[]).forEach(d=>{
+    const ch=_chKey(d.ch||d.influencer);
+    if(!ch)return;
+    if(!byCh.has(ch))byCh.set(ch,[]);
+    byCh.get(ch).push(d);
+  });
+  const map=new Map();
+  byCh.forEach((items,ch)=>{
+    // 최근 건이 뒤로 오도록 — 시작일이 같으면 시트에서 아래쪽(id 큰) 행이 최신
+    const sorted=items.slice().sort((a,b)=>String(a.start||'').localeCompare(String(b.start||''))||((a.id||0)-(b.id||0)));
+    const info={channel:ch,total:items.length,fields:{}};
+    CHANNEL_FIELD_KEYS.forEach(key=>{
+      const withVal=sorted.filter(d=>_chFieldNorm(key,d[key])!=='');
+      const latestDeal=withVal.length?withVal[withVal.length-1]:null;
+      const latest=latestDeal?_chFieldNorm(key,latestDeal[key]):'';
+      const rows=sorted.map(d=>({
+        dealId:d.dealId,product:d.product,start:d.start,end:d.end,
+        value:_chFieldNorm(key,d[key]),
+        rowCount:d._rowCount||d.rowCount||1
+      }));
+      info.fields[key]={
+        latest,latestDealId:latestDeal?latestDeal.dealId:'',
+        rows,
+        filled:rows.filter(r=>r.value!=='').length,
+        empty:rows.filter(r=>r.value==='').length,
+        conflicts:rows.filter(r=>r.value!==''&&r.value!==latest)
+      };
+    });
+    // 불일치 = 값이 하나라도 있는데, 서로 다르거나 일부가 비어 있음
+    info.mismatch=CHANNEL_FIELD_KEYS.some(k=>{
+      const f=info.fields[k];
+      return f.filled>0&&(f.conflicts.length>0||f.empty>0);
+    });
+    map.set(ch,info);
+  });
+  return map;
+}
+function channelInfoOf(ch){return channelInfo().get(_chKey(ch))||null;}
+
+/* 모달 입력값에서 채널 필드를 읽어 "이번에 바뀐 것"만 추린다.
+   반환: {changed:{key:value}, plan:{key:{empty,conflicts}}} — plan은 확인 팝업 문구에 쓰임 */
+function _collectChannelFieldChanges(d,channel){
+  const changed={},plan={};
+  const info=channelInfoOf(channel);
+  CHANNEL_FIELDS.forEach(f=>{
+    const el=document.getElementById(f.input);
+    if(!el)return;
+    const raw=f.key==='followers'?_followerInputValue(f.input):el.value;
+    const next=_chFieldNorm(f.key,raw);
+    const cur=_chFieldNorm(f.key,d[f.key]);
+    if(next===cur)return;          // 이 건 기준으로 안 바뀜
+    if(next==='')return;           // 값을 지우는 건 전파하지 않음(이 건에서만 비움)
+    changed[f.key]=next;
+    const fi=info&&info.fields[f.key];
+    plan[f.key]={
+      empty:fi?fi.rows.filter(r=>r.value===''&&r.dealId!==d.dealId).length:0,
+      conflicts:fi?fi.rows.filter(r=>r.value!==''&&r.value!==next&&r.dealId!==d.dealId):[]
+    };
+  });
+  return {changed,plan};
+}
+
+/* 확인 팝업 — 다른 값이 있는 건이 하나라도 있으면 저장 직전에 띄운다.
+   "몇 건에 반영되는지"와 "덮어쓰게 될 건이 무엇인지"를 같이 보여줘야 사용자가 판단할 수 있다.
+   반환: 'fillEmpty' | 'overwrite' | 'thisOnly' | null(취소) */
+function _askChannelPropagateMode(channel,plan,total){
+  let emptyN=0;const conflictRows=new Map();
+  Object.keys(plan).forEach(k=>{
+    emptyN=Math.max(emptyN,plan[k].empty);
+    plan[k].conflicts.forEach(r=>{
+      const key=r.dealId||(r.product+r.start);
+      if(!conflictRows.has(key))conflictRows.set(key,{row:r,fields:[]});
+      conflictRows.get(key).fields.push({key:k,value:r.value});
+    });
+  });
+  const conflicts=[...conflictRows.values()];
+  if(!conflicts.length)return 'fillEmpty'; // 충돌 없음 — 물어볼 것 없이 빈 칸만 채움
+  const lines=conflicts.map(c=>{
+    const f=c.fields.map(x=>{
+      const label=(CHANNEL_FIELDS.find(y=>y.key===x.key)||{}).label||x.key;
+      return `${label} ${_chFieldText(x.key,x.value)}`;
+    }).join(' · ');
+    return `  · ${fmtS(c.row.start)}~${fmtS(c.row.end)}  ${c.row.product||''}  (${f})`;
+  }).join('\n');
+  const msg=`같은 채널 공구건 ${total}건 중 빈 칸 ${emptyN}건에 반영됩니다.\n`+
+    `다른 값이 있는 ${conflicts.length}건도 덮어쓸까요?\n\n${lines}\n\n`+
+    `[확인] 전체 덮어쓰기   [취소] 빈 칸만 채우기`;
+  // 세 갈래는 confirm 두 번으로 — 기존 모달 스택 위에 또 오버레이를 쌓으면 포커스/스크롤이 꼬인다
+  if(confirm(msg))return 'overwrite';
+  return confirm('빈 칸만 채울까요?\n\n[확인] 빈 칸만 채우기   [취소] 이 공구건에만 저장')?'fillEmpty':'thisOnly';
+}
+
+/* 모달을 열 때, 이 건이 비어 있고 같은 채널의 다른 건에 값이 있으면 끌어와 채운다.
+   자동으로 채운 칸은 옅은 배경(.chf-auto)으로 표시 — 사용자가 직접 넣은 값과 구분되어야 한다. */
+function _autofillChannelFields(channel,d){
+  const info=channelInfoOf(channel);
+  CHANNEL_FIELDS.forEach(f=>{
+    const el=document.getElementById(f.input);
+    if(!el)return;
+    el.classList.remove('chf-auto');
+    const own=_chFieldNorm(f.key,d&&d[f.key]);
+    if(own!=='')return;                       // 이 건에 이미 값이 있음
+    const latest=info&&info.fields[f.key]?info.fields[f.key].latest:'';
+    if(!latest)return;
+    if(f.key==='followers')_setFollowerInput(f.input,Number(latest));
+    else el.value=latest;
+    el.classList.add('chf-auto');
+  });
+}
+function _clearChannelFieldAuto(){
+  CHANNEL_FIELDS.forEach(f=>{
+    const el=document.getElementById(f.input);
+    if(el)el.classList.remove('chf-auto');
+  });
+}
+
+/* 전파 결과를 로컬 DATA에도 그대로 반영 — 서버 응답을 기다리지 않고 화면이 먼저 맞아야
+   낙관적 저장의 의미가 있다. 서버와 같은 규칙(fillEmpty는 빈 칸만)을 써야 나중에 어긋나지 않는다. */
+function _applyChannelFieldsLocally(channel,fields,mode,selfDealId){
+  const ch=_chKey(channel);
+  DATA.forEach(d=>{
+    if(_chKey(d.ch||d.influencer)!==ch)return;
+    Object.keys(fields).forEach(k=>{
+      const cur=_chFieldNorm(k,d[k]);
+      if(mode==='fillEmpty'&&cur!==''&&d.dealId!==selfDealId)return;
+      d[k]=k==='followers'?Number(fields[k]):fields[k];
+    });
+  });
+}
+/* 같은 채널의 모든 건에 대해 로컬 _tierRows를 지금 보낼 등급으로 맞춰둔다.
+   서버가 전파 행의 G·H를 같은 실행에서 쓰기 때문에, 로컬만 옛 값이면 syncTiersToSheet가
+   "시트와 다르다"고 판단해 방금 없앤 왕복을 되살린다. */
+function _presetChannelTierRows(channel,tiers){
+  const ch=_chKey(channel);
+  DATA.forEach(d=>{
+    if(_chKey(d.ch||d.influencer)!==ch)return;
+    _presetTierRows(d,tiers);
+  });
+}
+
+/* ── 채널 정보 불일치 점검 (2026-09-15) ───────────────────────────────────────
+   같은 채널명인데 행마다 플랫폼 ID·팔로워 수가 다르거나 일부만 비어 있으면 배지를 띄운다.
+   전파 기능이 생겨도 과거에 쌓인 불일치는 저절로 정리되지 않기 때문에, "지금 어긋나 있다"를
+   눈에 보이게 하고 한 번에 맞출 수단을 같이 준다. */
+function _chMismatchBadge(ch){
+  const info=channelInfoOf(ch);
+  if(!info||!info.mismatch)return '';
+  return `<button type="button" class="chf-badge" onclick="event.stopPropagation();openChMismatch(event,'${_escAttr(ch)}')" title="같은 채널인데 공구건마다 채널 정보가 다릅니다. 클릭해서 확인·통일">채널 정보 불일치</button>`;
+}
+function _chMismatchRowsHtml(info){
+  return CHANNEL_FIELDS.map(f=>{
+    const fi=info.fields[f.key];
+    if(!fi||(fi.filled===0))return ''; // 아무 데도 값이 없으면 불일치가 아니라 그냥 미입력
+    if(fi.conflicts.length===0&&fi.empty===0)return '';
+    const rows=fi.rows.map(r=>{
+      const v=r.value===''?'<span class="chf-empty">비어 있음</span>':_escHtml(_chFieldText(f.key,r.value));
+      const odd=r.value!==''&&r.value!==fi.latest;
+      return `<div class="chf-row${odd?' odd':''}">
+        <span class="chf-period">${fmtS(r.start)}~${fmtS(r.end)}</span>
+        <span class="chf-prod">${_escHtml(r.product||'')}</span>
+        <span class="chf-val">${v}</span></div>`;
+    }).join('');
+    return `<div class="chf-block">
+      <div class="chf-field">${f.label} <span class="chf-latest">최근 값: ${_escHtml(_chFieldText(f.key,fi.latest))||'—'}</span></div>
+      ${rows}</div>`;
+  }).join('');
+}
+let _chMismatchCh=null;
+function openChMismatch(ev,ch){
+  const info=channelInfoOf(ch);
+  if(!info)return;
+  _chMismatchCh=ch;
+  const pop=document.getElementById('chMismatchPop');
+  document.getElementById('chMismatchTitle').textContent=`${ch} · 공구건 ${info.total}건`;
+  document.getElementById('chMismatchBody').innerHTML=_chMismatchRowsHtml(info);
+  pop.style.display='block';
+  // 화면 밖으로 나가지 않게 클릭 위치 기준으로 배치
+  const r=ev.currentTarget.getBoundingClientRect();
+  const w=pop.offsetWidth||340;
+  pop.style.left=Math.max(8,Math.min(window.innerWidth-w-8,r.left))+'px';
+  pop.style.top=(r.bottom+6)+'px';
+}
+function closeChMismatch(){document.getElementById('chMismatchPop').style.display='none';_chMismatchCh=null;}
+/* "최근 건 값으로 통일" — 각 필드의 최근 값으로 채널 전체를 덮어쓴다.
+   기준을 "최근 건"으로 잡은 이유는 팔로워 수와 같다: 채널 정보는 시점이 곧 의미라 최신이 정답이다. */
+async function unifyChannelFields(){
+  const ch=_chMismatchCh;
+  if(!ch)return;
+  const info=channelInfoOf(ch);
+  if(!info)return;
+  const fields={};
+  CHANNEL_FIELDS.forEach(f=>{
+    const fi=info.fields[f.key];
+    if(fi&&fi.latest!=='')fields[f.key]=fi.latest;
+  });
+  if(!Object.keys(fields).length){showToast('통일할 값이 없습니다');return;}
+  closeChMismatch();
+  const url=_getGasUrl();
+  try{
+    if(url){
+      const j=await _gasWrite(url,'updateChannelFields',{channel:ch,mode:'overwrite',fields});
+      if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'updateChannelFields 응답에 success:true가 없습니다');
+      if((j.skippedFields||[]).length){
+        console.warn('[채널 정보 통일] 시트에 열이 없어 건너뛴 필드:',j.skippedFields,
+          "— 2행에 '인스타 ID'/'유튜브 ID' 헤더를 추가하면 활성화됩니다");
+      }
+    }
+    _applyChannelFieldsLocally(ch,fields,'overwrite',null);
+    render();
+    showToast(`${ch} 채널 정보를 최근 건 값으로 통일했습니다`,{type:'success'});
+    if(url)fetchLive();
+  }catch(e){
+    console.error('[채널 정보 통일 실패]',e);
+    showToast('통일 실패: '+_friendlySaveError(e.message),{type:'error'});
+  }
+}
+document.addEventListener('click',e=>{
+  const pop=document.getElementById('chMismatchPop');
+  if(pop&&pop.style.display==='block'&&!pop.contains(e.target))closeChMismatch();
+});
+
 /* ── 저장 낙관적 반영 (2026-09-15) ────────────────────────────────────────────
    예전 저장은 "요청 → 응답 → 전체 재조회(fetchLive) → 등급 기록"을 직렬로 기다린 뒤에야 모달이
    닫혔다. HTTP 왕복 3~4회 + 시트 6.7만 셀 읽기라 수 초가 걸렸고, 그동안 화면은 로딩 오버레이로
@@ -2114,6 +2409,7 @@ function _dealFieldsFromNext(next, codes, codesChanged, reels, touchReels, total
     giftItem2:next.giftItem2, giftQty2:next.giftQty2,
     giftItem3:next.giftItem3, giftQty3:next.giftQty3,
     extraQty:next.extraQty, tier:next.tier, followers:next.followers,
+    igId:next.igId, ytId:next.ytId,
     status:_calcStatus(next.start, next.end)
   };
   if(codesChanged) f.codes = codes;
@@ -4005,7 +4301,7 @@ function renderDashChannelAnalytics(){
   const trendIcon={up:'▲',down:'▼',flat:'–'};
   body.innerHTML=shown.map(r=>`
     <tr>
-      <td>${r.ch}</td>
+      <td>${r.ch}${_chMismatchBadge(r.ch)}</td>
       <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat,r.scopedDone))}">${tierBadgeWithFlags(r.tierStat,true)}${tierDeltaHtml(r.tierStat)}</td>
       <td class="tier-help" title="${_escAttr(followerEvidence(r.tierStat))}">${tierBadge(r.followerTier)}</td>
       <td>${gapBadge(r.gap)}</td>
@@ -4078,15 +4374,16 @@ async function _saveChannelFollowers(ch,followers){
   const url=_getGasUrl();
   try{
     if(url){
-      const j=await _gasWrite(url,'updateChannelFollowers',{channel:ch,followers:followers==null?'':followers});
-      if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'updateChannelFollowers 응답에 success:true가 없습니다');
+      /* ⚠ 2026-09-15: 예전엔 updateChannelFollowers로 "그 채널의 가장 최근 공구건 행" 하나에만 썼다.
+         그래서 표에서 고친 값이 나머지 행에는 반영되지 않아, 같은 채널인데 행마다 팔로워 수가
+         다른 상태가 계속 쌓였다. 이 표의 편집은 애초에 채널 단위 행위이므로 전체 덮어쓰기가 맞고,
+         모달과 달리 "이 건만" 같은 선택지가 없으므로 확인 팝업도 두지 않는다. */
+      const j=await _gasWrite(url,'updateChannelFields',
+        {channel:ch,mode:'overwrite',fields:{followers:followers==null?'':followers}});
+      if(!j||j.success!==true||j.error)throw new Error((j&&j.error)||'updateChannelFields 응답에 success:true가 없습니다');
     }
-    // 로컬 반영 — GAS와 같은 기준(그 채널의 가장 최근 공구건)으로 한 건에만 씀
-    const key=_dashInfluencerNorm(ch);
-    const mine=DATA.filter(d=>_dashInfluencerNorm(d.ch||d.influencer||'')===key)
-      .sort((a,b)=>String(a.start||'').localeCompare(String(b.start||''))||((a.id||0)-(b.id||0)));
-    const target=mine[mine.length-1];
-    if(target)target.followers=followers;
+    // 로컬 반영도 같은 규칙(채널명 완전 일치의 모든 건)으로
+    _applyChannelFieldsLocally(ch,{followers:followers==null?'':followers},'overwrite',null);
     render(); // 등급 캐시가 무효화되며 팔로워등급·갭·교차 분석이 한 번에 재집계됨
     const stat=tierStatOf(ch);
     showToast(followers==null
@@ -4743,6 +5040,8 @@ function renderTbl(){
 }
 // 속성값에 쓰인 큰따옴표가 HTML을 깨뜨리지 않도록 최소 이스케이프(진단용 data-* 속성 전용)
 function _escAttr(s){return String(s||'').replace(/"/g,'&quot;');}
+// 텍스트를 HTML 본문에 넣을 때 — 채널명·제품명에 <, & 가 섞여 있어도 마크업이 깨지지 않게
+function _escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 /* ── 공구 관리 페이지: 실적 미기입 목록 ── */
 // 판매수량과 총매출이 둘 다 비어있거나 0인 건(전체 공구건 대상, 상태 무관)
@@ -5089,10 +5388,11 @@ function _openRegisteredModal(d){
   document.getElementById('mTier').value=manualTierOf(d);
   _setFollowerInput('mFollowers',d.followers!=null?d.followers:null);
   // 이 건에 팔로워 수가 없으면 같은 채널의 최근 값으로 채워줌(비어 있는 칸에만 — 아래 함수가 판정)
-  _autofillFollowers('mInfluencer','mFollowers');
+  _autofillChannelFields(d.ch||d.influencer,d); // 팔로워 포함 — 채널 필드 자동 채움을 한 곳에서 처리
   _refreshTierAutoLine('mInfluencer','mTier','mTierAuto');
   document.getElementById('mPlatform').value=d.platform||'';
-  document.getElementById('mChannelId').value='';
+  document.getElementById('mIgId').value=d.igId||'';
+  document.getElementById('mYtId').value=d.ytId||'';
   mOnPlatformChange(); // 라벨/placeholder만 갱신(채널ID가 비어있어 링크는 안 건드림)
   document.getElementById('mVendor').value=d.vendor||'';
   document.getElementById('mLinkInput').value=d.link||'';
@@ -5188,10 +5488,16 @@ function mOnPlatformChange(){
 }
 // 기존 데이터는 채널ID를 따로 저장하지 않으므로, 비어있으면 기존 링크를 그대로 두고
 // 실제로 뭔가 입력했을 때만 링크를 새로 생성함(새 공구건 폼과 다른 점)
-function mOnChannelIdChange(){
+/* 플랫폼 ID를 입력하면 링크를 만들어준다. 어느 쪽 ID를 건드렸는지(which)와 이 행의 플랫폼이
+   맞을 때만 링크를 덮어쓴다 — 인스타 행에서 유튜브 ID를 적었다고 링크가 유튜브로 바뀌면 안 된다. */
+function mOnChannelIdChange(which){
+  const el=document.getElementById(which==='yt'?'mYtId':'mIgId');
+  if(el)el.classList.remove('chf-auto'); // 사용자가 직접 손댄 순간 '자동 채움' 표시는 떼어낸다
   const p=document.getElementById('mPlatform').value;
-  const id=document.getElementById('mChannelId').value;
-  if(id.trim())document.getElementById('mLinkInput').value=buildChannelLink(p,id);
+  const platformMatches=(which==='yt'&&p==='유튜브')||(which==='ig'&&p==='인스타그램');
+  if(!platformMatches)return;
+  const id=(el&&el.value||'').trim();
+  if(id)document.getElementById('mLinkInput').value=buildChannelLink(p,id);
 }
 // 링크를 직접 붙여넣거나 수정했을 때, 인식 가능한 형식이면 인스타그램/유튜브 ID도 같이 맞춰줌
 // (반대 방향은 mOnChannelIdChange가 이미 처리) — 인식 못 하는 링크는 ID를 건드리지 않음
@@ -5200,7 +5506,9 @@ function mOnLinkInputChange(){
   const link=document.getElementById('mLinkInput').value.trim();
   if(!link)return;
   const id=_extractChannelIdFromLink(p,link);
-  if(id)document.getElementById('mChannelId').value=id;
+  if(!id)return;
+  const target=document.getElementById(p==='유튜브'?'mYtId':'mIgId');
+  if(target){target.value=id;target.classList.remove('chf-auto');}
 }
 function mOnDateChange(){
   const s=document.getElementById('mStart').value;
@@ -5504,13 +5812,16 @@ function _collectModalChanges(d){
     giftItem2:d.giftItem2||'',giftQty2:d.giftQty2!=null?String(d.giftQty2):'',
     giftItem3:d.giftItem3||'',giftQty3:d.giftQty3!=null?String(d.giftQty3):'',
     extraQty:d.extraQty!=null?d.extraQty:null,note2:s.note!=null?s.note:'',tier:manualTierOf(d),
-    followers:d.followers!=null?d.followers:null
+    followers:d.followers!=null?d.followers:null,
+    igId:d.igId||'',ytId:d.ytId||''
   };
   const next={
     product,channel:influencer,platform,vendor,link,marketingLink,start,end,sale,comm,format,composition,targetQty,qty,
     option2,firstCome,firstComeQty,note,
     giftItem1,giftQty1,giftItem2,giftQty2,giftItem3,giftQty3,
-    extraQty,note2:noteText,tier,followers
+    extraQty,note2:noteText,tier,followers,
+    igId:_chFieldNorm('igId',document.getElementById('mIgId').value),
+    ytId:_chFieldNorm('ytId',document.getElementById('mYtId').value)
   };
 
   const changes={};
@@ -5565,6 +5876,21 @@ async function saveSchemeModal(){
     if(Object.keys(changes).length===0 && !touchReels && !codesChanged){closeSchModal();showToast('변경된 내용이 없습니다');return;}
     if(isDealSaving(d.dealId)){showToast('이 공구건은 아직 저장 중입니다. 잠시 후 다시 시도해주세요.');return;}
 
+    /* 채널 단위 필드(플랫폼 ID·팔로워 수)는 같은 채널의 다른 공구건에도 반영한다.
+       다른 값이 들어 있는 건이 있으면 저장 직전에 물어본다 — 남의 입력을 말없이 덮어쓰지 않기 위함.
+       ⚠ 반드시 낙관적 반영(모달 닫기) **전에** 물어야 한다. 모달을 먼저 닫고 물으면
+       사용자가 방금 뭘 저장하려던 건지 화면에서 사라진 뒤에 질문을 받게 된다. */
+    const chInfo=channelInfoOf(next.channel);
+    const {changed:chChanged,plan:chPlan}=_collectChannelFieldChanges(d,next.channel);
+    let chMode=null;
+    if(Object.keys(chChanged).length){
+      chMode=_askChannelPropagateMode(next.channel,chPlan,chInfo?chInfo.total:1);
+      if(chMode===null)return; // 취소 — 저장 자체를 하지 않음
+    }
+    // 'thisOnly'면 전파하지 않고 이 건에만 쓴다(changes에 이미 들어 있음)
+    const channelFields=(chMode&&chMode!=='thisOnly')
+      ? {channel:next.channel,mode:chMode,fields:chChanged} : null;
+
     // ── 낙관적 반영: 요청을 보내기 전에 화면부터 끝낸다 ──
     console.time('[저장] 낙관적 반영→모달 닫힘');
     const snapshot=_snapshotDeal(d);
@@ -5574,9 +5900,14 @@ async function saveSchemeModal(){
     if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
     d._saving=true;
     // 등급은 방금 반영한 값 기준으로 다시 산정해야 시트에 맞는 값이 나감
-    invalidateTierStats();
+    // 전파 대상 건들에도 새 값을 미리 반영 — 화면과 시트가 같은 상태에서 출발해야 한다
+    if(channelFields)_applyChannelFieldsLocally(next.channel,chChanged,chMode,d.dealId);
+    invalidateTierStats();invalidateChannelInfo();
     const tiers=_tiersForSave(next.channel);
+    /* 전파된 건들의 등급 행도 미리 맞춘다 — 서버가 같은 실행에서 G·H를 써주므로, 로컬만 옛 값으로
+       남아 있으면 다음 렌더에서 불필요한 writeTiers가 한 번 더 나간다. */
     _presetTierRows(d,tiers);
+    if(channelFields)_presetChannelTierRows(next.channel,tiers);
     closeSchModal();
     render();
     console.timeEnd('[저장] 낙관적 반영→모달 닫힘');
@@ -5591,6 +5922,7 @@ async function saveSchemeModal(){
       // (302 리다이렉트 구조상 줄일 수 없음) 요청 수가 곧 저장 시간이다.
       const payload={dealId:d.dealId,changes,codes,tiers};
       if(touchReels)payload.reels=reels;
+      if(channelFields)payload.channelFields=channelFields; // 같은 실행에서 전파 — 왕복 1회 유지
       const r1=await _gasLeg(_legs,'updateDeal',()=>_gasWrite(url,'updateDeal',payload));
       if(!r1||r1.success!==true||r1.error)throw new Error((r1&&r1.error)||'updateDeal 응답에 success:true가 없습니다');
       return r1;
@@ -5973,6 +6305,8 @@ function adaptGAS(j){
     giftItem2:p.giftItem2||'',giftQty2:p.giftQty2!=null?String(p.giftQty2):'',
     giftItem3:p.giftItem3||'',giftQty3:p.giftQty3!=null?String(p.giftQty3):'',
     extraQty:p.extraQty!=null?Number(p.extraQty):null,
+    // 채널 단위 속성(플랫폼 ID) — 시트에 열이 없으면 서버가 빈 문자열로 내려줌
+    igId:p.igId||'',ytId:p.ytId||'',
     tier:p.tier||'', // 인플루언서 등급(빈 문자열=미분류) — 기존 건은 계속 빈 값으로 들어옴
     // 팔로워 수(공구 당시) — 미입력은 null. 0은 실제 값이므로 null로 뭉개지 않게 !=null로 판정
     followers:p.followers!=null?Number(p.followers):null,
@@ -6242,7 +6576,7 @@ function navSales(el,prod){
 // 시트 G·H열 되기록(syncTiersToSheet)도 같은 이유로 여기 한 곳에만 걸어둠 — 초기 로드/공구건 저장/
 // 수동 지정 변경/팔로워 수 편집/완료 전환이 전부 이 경로를 지나므로 시점을 따로 챙길 필요가 없다.
 // 값이 안 바뀌었으면 내부에서 즉시 빠져나가므로(요청 자체가 안 나감) 매 렌더 호출해도 부담 없음.
-function render(){invalidateTierStats();renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();syncTiersToSheet();}
+function render(){invalidateTierStats();invalidateChannelInfo();renderDashboard();renderTbl();renderCalendarPage();renderMgmtPage();syncTiersToSheet();}
 document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.getMonth()+1)+'월 '+_NOW.getDate()+'일';
 
 /* ── 사은품/오픈시간/선착순/적립금 공용 상수 + 구성 자동생성 (공구건 모달 드롭다운 개편, 2026-08-18) ──
@@ -6411,6 +6745,7 @@ function countToMan(n){return n==null?'':String(parseFloat((Math.round(n)/10000)
 // 입력칸 아래 환산줄 문구 — 저장될 명 단위 숫자를 그대로 보여줌
 function _folConvText(count){return count==null?'':`= ${count.toLocaleString('ko-KR')}명`;}
 function _onFollowerInput(el){
+  el.classList.remove('chf-auto'); // 직접 입력한 순간 '자동 채움' 표시 제거
   const clean=_sanitizeManInput(el.value);
   if(clean!==el.value){
     // 허용 문자만 남기고 커서는 지운 글자 수만큼만 뒤로 — 항상 끝으로 튀지 않게

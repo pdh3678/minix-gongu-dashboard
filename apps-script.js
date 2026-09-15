@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'fastsave-2026-09-15-04';
+var SCRIPT_VERSION = 'chfields-2026-09-15-09';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -92,8 +92,36 @@ var COL_HEADER_SPECS = [
   ['firstComeQty',  ['선착순 수량']],
   ['note2',         ['비고']],
   ['tier',          ['등급(수동)', '등급']],   // 자동 산정을 덮어쓸 때만 값을 넣는 '수동 지정' 열
-  ['followers',     ['팔로워 수']]
+  ['followers',     ['팔로워 수']],
+  /* 2026-09-15 신규 — 채널 단위 속성(플랫폼 ID). 선택 열로 둔 이유:
+     시트에 열을 추가하는 건 사람이 하는 일이고, 그 전에 배포가 나가도 대시보드가 멈추면 안 된다.
+     열이 없으면 -1이 되어 관련 기능만 조용히 꺼지고, 열을 만드는 순간 재배포 없이 켜진다. */
+  ['igId',          ['인스타 ID', '인스타그램 ID', '인스타그램ID'], true],
+  ['ytId',          ['유튜브 ID', '유튜브ID'], true]
 ];
+
+/* 채널 단위 필드 정의 — "이 값은 공구건이 아니라 채널에 속한다"는 것들.
+   같은 채널명(앞뒤 공백만 제거한 완전 일치)의 모든 행에 같은 값이 유지돼야 하며,
+   전파·자동 채움·불일치 검사가 전부 이 목록 하나를 기준으로 돈다.
+   col이 -1(시트에 열 없음)인 필드는 모든 경로에서 자동으로 건너뛴다. */
+var CHANNEL_FIELD_KEYS = ['igId', 'ytId', 'followers'];
+function _channelFieldCols() {
+  var out = [];
+  for (var i = 0; i < CHANNEL_FIELD_KEYS.length; i++) {
+    var k = CHANNEL_FIELD_KEYS[i];
+    if (COL[k] != null && COL[k] >= 0) out.push(k);
+  }
+  return out;
+}
+// 채널 단위 필드 값 정규화 — 시트에 들어가기 직전에 항상 통과시킨다
+function _normalizeChannelFieldValue(key, v) {
+  if (key === 'followers') {
+    var n = _normalizeFollowers(v);
+    return n == null ? '' : n;
+  }
+  // 플랫폼 ID: 앞의 @와 공백만 정리(대소문자는 플랫폼에 따라 의미가 있으므로 건드리지 않음)
+  return String(v == null ? '' : v).trim().replace(/^@+/, '');
+}
 
 // 해석 결과가 담기는 객체 — 코드 전체는 예전과 똑같이 COL.xxx로 참조함(바뀐 건 "값이 어디서
 // 오는가"뿐이라 호출부는 한 줄도 안 바뀜). _resolveCols 전에는 비어 있으므로, 메인 시트를 만지는
@@ -809,7 +837,12 @@ function _cacheGetJSON(cache, key) {
      · 파생값이 걸린 변경 (공구가·판매수량 → 총매출은 시트 수식, 시작일·종료일 → 연도/진행상태)
      · 캐시 자체가 없거나 그 dealId가 캐시에 없을 때 */
 function _patchDashboardCache(resp) {
-  if (!resp || !resp.cachePatch) return false;
+  if (!resp) return false;
+  var extra = resp.cachePatches || null;
+  if (!resp.cachePatch) {
+    // 본문 변경 없이 전파만 일어난 경우도 캐시를 살려둘 수 있다
+    return extra ? _patchCacheMany(extra) : false;
+  }
   var p = resp.cachePatch;
   if (!p.dealId) return false;
   try {
@@ -823,12 +856,48 @@ function _patchDashboardCache(resp) {
     if (hit < 0) return false;
     for (var k in p.fields) list[hit][k] = p.fields[k];
     if (p.tierRows) list[hit].tierRows = p.tierRows;
+    if (resp.cachePatches) {
+      for (var e = 0; e < resp.cachePatches.length; e++) {
+        var ep = resp.cachePatches[e];
+        for (var ei = 0; ei < list.length; ei++) {
+          if (String(list[ei].dealId || '') !== ep.dealId) continue;
+          for (var ek in ep.fields) list[ei][ek] = ep.fields[ek];
+          break;
+        }
+      }
+    }
     payload.updatedAt = new Date().toISOString();
     _cachePutJSON(cache, _dashboardCacheKey(), payload, DASHBOARD_CACHE_TTL_SEC);
-    Logger.log('[캐시 부분 갱신] dealId=' + p.dealId + ' / 필드 ' + Object.keys(p.fields || {}).length + '개');
+    Logger.log('[캐시 부분 갱신] dealId=' + p.dealId + ' / 필드 ' + Object.keys(p.fields || {}).length +
+      '개' + (resp.cachePatches ? ' / 전파 ' + resp.cachePatches.length + '건' : ''));
     return true;
   } catch (e) {
     Logger.log('캐시 부분 갱신 실패 → 전체 무효화로 대체: ' + e);
+    return false;
+  }
+}
+
+// 본문 변경 없이 전파만 있었던 경우 — 해당 건들만 갈아끼운다
+function _patchCacheMany(patches) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var payload = _cacheGetJSON(cache, _dashboardCacheKey());
+    if (!payload || !payload.purchases) return false;
+    var list = payload.purchases, hit = 0;
+    for (var e = 0; e < patches.length; e++) {
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].dealId || '') !== patches[e].dealId) continue;
+        for (var k in patches[e].fields) list[i][k] = patches[e].fields[k];
+        hit++; break;
+      }
+    }
+    if (!hit) return false;
+    payload.updatedAt = new Date().toISOString();
+    _cachePutJSON(cache, _dashboardCacheKey(), payload, DASHBOARD_CACHE_TTL_SEC);
+    Logger.log('[캐시 부분 갱신] 전파 ' + hit + '건');
+    return true;
+  } catch (e) {
+    Logger.log('캐시 전파 갱신 실패 → 전체 무효화로 대체: ' + e);
     return false;
   }
 }
@@ -848,6 +917,24 @@ var CACHE_PATCH_FIELDS = {
   giftItem3: 'giftItem3', giftQty3: 'giftQty3',
   status: 'status', tier: 'tier', followers: 'followers'
 };
+
+/* 전파로 값이 바뀐 다른 공구건들의 캐시 패치 목록.
+   전파는 "모든 대상 행에 같은 값"을 쓰므로 필드값이 전부 동일해서, dealId만 갈아끼우면 된다.
+   편집 중인 건 자신은 별도 cachePatch가 이미 담당하므로 제외한다. */
+function _buildChannelFieldPatches(prop, selfDealId) {
+  var fields = {};
+  for (var k in prop.byField) {
+    if (!prop.byField[k]) continue; // 실제로 바뀐 게 없는 필드는 캐시도 건드릴 필요 없음
+    fields[k] = prop.appliedValues ? prop.appliedValues[k] : undefined;
+  }
+  if (!Object.keys(fields).length) return null;
+  var out = [];
+  for (var i = 0; i < prop.dealIds.length; i++) {
+    if (prop.dealIds[i] === selfDealId) continue;
+    out.push({ dealId: prop.dealIds[i], fields: fields });
+  }
+  return out.length ? out : null;
+}
 
 function _buildCachePatch(dealId, changes, tierRows) {
   var fields = {};
@@ -1365,6 +1452,9 @@ function parseMainSheet(sheet) {
       note2: note2,
       tier: tier,
       followers: followers,
+      // 채널 단위 속성(플랫폼 ID) — 열이 없으면 빈 문자열. 대표 행 값을 그대로 내려보낸다.
+      igId: COL.igId >= 0 ? String(pRow[COL.igId] || '').trim() : '',
+      ytId: COL.ytId >= 0 ? String(pRow[COL.ytId] || '').trim() : '',
       tierRows:    tierRows,
       rowCount:    members.length // 이 그룹(dealId)이 시트에서 실제로 몇 개 물리 행을 차지하는지 — 프론트가 "N행" 안내에 사용
     });
@@ -1713,7 +1803,9 @@ var PRIMARY_ONLY_KEYS = [
   'giftItem2', 'giftQty2',
   'giftItem3', 'giftQty3',
   'firstComeQty', 'note2',
-  'followers'
+  // 채널 단위 필드지만 "이 건만 저장"을 고를 수 있어야 하므로 대표 행 전용 경로에도 둔다.
+  // 채널 전체 전파는 data.channelFields가 따로 담당한다(둘은 서로 배타적으로 쓰임).
+  'followers', 'igId', 'ytId'
 ];
 
 // 채널명(E열) 셀의 텍스트는 그대로 두고 하이퍼링크만 걸거나 제거함 — 별도 링크 열(COL.link)과
@@ -1841,6 +1933,7 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'clearChannelTier') resp = _clearChannelTier(ss, data);
     else if (action === 'updateChannelFollowers') resp = _updateChannelFollowers(ss, data);
     else if (action === 'writeTiers') resp = _writeTiers(ss, data);
+    else if (action === 'updateChannelFields') resp = _updateChannelFields(ss, data);
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
     else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
@@ -2163,6 +2256,7 @@ function _updateDeal(ss, data) {
   // 공통 필드 — 그룹의 모든 행에 동일 반영
   for (var ki = 0; ki < GROUP_MIRROR_KEYS.length; ki++) {
     var k = GROUP_MIRROR_KEYS[ki];
+    if (COL[k] == null || COL[k] < 0) continue; // 시트에 없는 선택 열 — 쓰면 A열을 덮어쓴다
     if (c[k] !== undefined) {
       for (var g = 0; g < groupRows.length; g++) stage(groupRows[g].row, COL[k], c[k] || '');
     }
@@ -2171,6 +2265,7 @@ function _updateDeal(ss, data) {
   // 대표 행 전용 필드
   for (var k2i = 0; k2i < PRIMARY_ONLY_KEYS.length; k2i++) {
     var k2 = PRIMARY_ONLY_KEYS[k2i];
+    if (COL[k2] == null || COL[k2] < 0) continue; // 시트에 없는 선택 열 — 쓰면 A열을 덮어쓴다
     if (c[k2] !== undefined) {
       // option2(오픈시간, "10:00")를 구글 시트가 시간 값으로 자동 인식하는 문제 방지 — 값을 쓰기
       // 전에 이 열만 일반 텍스트로 고정(REVIEW_COL.ym에 이미 쓰던 setNumberFormat('@') 패턴 재사용)
@@ -2200,6 +2295,9 @@ function _updateDeal(ss, data) {
   if (data.tiers) {
     var tierTargets = [];
     for (var tg = 0; tg < groupRows.length; tg++) tierTargets.push(groupRows[tg].row);
+    /* 채널 필드를 전파한 행들도 같은 채널이므로 등급이 동일하다 — G·H를 함께 맞춰두지 않으면
+       다음 렌더에서 프론트가 그 차이를 발견해 writeTiers를 한 번 더 쏜다(없앤 왕복이 되살아남).
+       ⚠ 전파는 이 시점보다 뒤에서 실행되므로, 대상 행 목록은 아래에서 다시 한 번 반영한다. */
     _stageTiers(pending, tierTargets, data.tiers);
   }
 
@@ -2212,6 +2310,34 @@ function _updateDeal(ss, data) {
      슬롯 10칸을 헛되이 다시 쓰게 되고(쓰기 RPC 20여 회), 그게 합친 이득을 도로 까먹는다. */
   var reelsSaved = null;
   if (data.reels != null) reelsSaved = _applyReels(sheet, primaryRow, data.reels);
+
+  /* 채널 단위 필드(플랫폼 ID·팔로워 수) 전파 — 같은 실행 안에서 끝낸다.
+     별도 액션으로 빼면 HTTP 왕복이 하나 늘고, Apps Script는 왕복당 고정비가 1.7~2초라
+     그게 곧 저장 시간이 된다. 프론트가 모드(fillEmpty/overwrite)까지 정해서 보낸다. */
+  var channelProp = null;
+  if (data.channelFields && data.channelFields.fields) {
+    var propChannel = String(data.channelFields.channel || c.channel || '').trim();
+    if (!propChannel) propChannel = String(sheet.getRange(primaryRow, COL.channel + 1).getValue() || '').trim();
+    channelProp = _propagateChannelFields(sheet, propChannel, data.channelFields.fields,
+      data.channelFields.mode === 'fillEmpty' ? 'fillEmpty' : 'overwrite');
+  }
+
+  /* 전파로 건드린 "다른 공구건의 행"에도 G·H 등급을 맞춰둔다.
+     위의 배치 쓰기는 이미 끝난 뒤라 별도 묶음으로 처리한다. 이걸 빼먹으면 같은 채널인데 행마다
+     등급 칸이 달라지고, 다음 렌더에서 프론트가 그 차이를 발견해 writeTiers를 한 번 더 쏜다. */
+  if (data.tiers && channelProp && channelProp.rows.length) {
+    var known = {};
+    for (var gk = 0; gk < groupRows.length; gk++) known[groupRows[gk].row] = true;
+    var extraRows = [];
+    for (var pr = 0; pr < channelProp.rows.length; pr++) {
+      if (!known[channelProp.rows[pr]]) extraRows.push(channelProp.rows[pr]);
+    }
+    if (extraRows.length) {
+      var extraPending = {};
+      _stageTiers(extraPending, extraRows, data.tiers);
+      writeCalls += _writeCellsBatched(sheet, extraPending);
+    }
+  }
 
   // 채널명 셀의 하이퍼링크도 함께 갱신 — 위 링크 열(COL.link)과 어긋나지 않게, 그룹의 모든 행에
   // 반영함(채널명 텍스트는 위 값 쓰기가 이미 끝난 뒤라 최신 텍스트를 그대로 씀).
@@ -2312,6 +2438,15 @@ function _updateDeal(ss, data) {
     tierRows: tierRows,
     writeCalls: writeCalls,
     reelsSaved: reelsSaved,
+    // 프론트가 로컬 모델을 맞추고 사용자에게 "몇 건에 반영됐는지" 알릴 수 있게
+    channelFields: channelProp ? {
+      channel: channelProp.channel, mode: channelProp.mode,
+      written: channelProp.written, rowIndexes: channelProp.rows,
+      byField: channelProp.byField, skippedFields: channelProp.skipped
+    } : null,
+    // 전파된 다른 공구건들도 캐시에서 같이 갱신 — 안 하면 다음 조회에서 옛 값이 잠깐 보인다
+    cachePatches: (channelProp && channelProp.dealIds && channelProp.dealIds.length)
+      ? _buildChannelFieldPatches(channelProp, data.dealId) : null,
     // 행 구성이 그대로일 때만 캐시 부분 갱신 시도(아니면 _handleWriteAction이 전체 무효화로 감)
     // 릴스를 건드렸으면 조회수 합계·썸네일이 바뀌므로 필드 덮어쓰기로는 못 맞춤 → 전체 무효화로
     cachePatch: (rowSetChanged || data.reels != null) ? null : _buildCachePatch(data.dealId, c, tierRows)
@@ -2514,6 +2649,110 @@ function _writeTiers(ss, data) {
   Logger.log('[등급 기록] 요청 ' + rows.length + '행 / 갱신 ' + changed + '행 / 건너뜀 ' + skipped +
     '행 / 블록=' + minRow + '~' + maxRow);
   return _json({ success: true, written: changed, skipped: skipped });
+}
+
+/* ━━━ 채널 단위 필드 전파 (2026-09-15) ━━━
+   플랫폼 ID·팔로워 수는 공구건이 아니라 채널에 속한 값인데, 시트는 공구건(행) 단위라 같은 채널이
+   여러 행에 흩어져 있다. 그래서 한 건에서 고친 값이 나머지 행에 반영되지 않으면 같은 채널인데
+   행마다 값이 다른 상태가 쌓인다. 이 함수가 그 전파를 담당한다.
+
+   채널 판정은 **앞뒤 공백만 제거한 완전 일치**다. 대소문자·띄어쓰기 변형을 묶지 않는 건 의도된
+   보수적 선택 — '민이'와 '민 이'를 같은 채널로 합쳤다가 실제로 다른 채널이면 남의 데이터를
+   덮어쓰게 되고, 그건 되돌리기 어렵다.
+
+   mode
+     'fillEmpty' — 비어 있는 칸만 채움(기본). 이미 값이 있는 행은 건드리지 않는다.
+     'overwrite' — 대상 행 전부를 덮어씀.
+   어느 쪽이든 Minix 행만 대상으로 하고, 값이 실제로 달라지는 행이 없으면 아무것도 쓰지 않는다.
+
+   읽기는 필요한 열만 한 번씩, 쓰기는 **필드(열)마다 한 번의 setValues**로 끝낸다. */
+function _propagateChannelFields(sheet, channelName, fields, mode) {
+  var result = { channel: channelName, mode: mode, written: 0, rows: [], byField: {}, skipped: [] };
+  var ch = String(channelName || '').trim();
+  if (!ch || !fields) return result;
+
+  var keys = [];
+  for (var k in fields) {
+    if (CHANNEL_FIELD_KEYS.indexOf(k) === -1) continue;
+    if (COL[k] == null || COL[k] < 0) { result.skipped.push(k); continue; } // 시트에 열이 아직 없음
+    keys.push(k);
+  }
+  if (!keys.length) return result;
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastRow <= DATA_START_ROW) return result;
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+
+  var chVals = sheet.getRange(first, COL.channel + 1, n, 1).getValues();
+  var brandVals = sheet.getRange(first, COL.brand + 1, n, 1).getValues();
+  var dealIdVals = sheet.getRange(first, COL.dealId + 1, n, 1).getValues();
+
+  // 이 채널에 속한 행 인덱스(0-based, first 기준)
+  var targets = [];
+  for (var i = 0; i < n; i++) {
+    if (String(chVals[i][0] || '').trim() !== ch) continue;
+    if (!MINIX_ALIASES[String(brandVals[i][0] || '').trim()]) continue;
+    targets.push(i);
+  }
+  if (!targets.length) return result;
+
+  var touched = {}; // 실제로 값이 바뀐 행 번호
+  for (var ki = 0; ki < keys.length; ki++) {
+    var key = keys[ki];
+    var col = COL[key];
+    var want = _normalizeChannelFieldValue(key, fields[key]);
+    var colVals = sheet.getRange(first, col + 1, n, 1).getValues();
+    var changed = 0;
+    for (var t = 0; t < targets.length; t++) {
+      var idx = targets[t];
+      var cur = colVals[idx][0];
+      var curStr = String(cur == null ? '' : cur).trim();
+      if (mode === 'fillEmpty' && curStr !== '') continue; // 빈 칸만 채우기
+      if (curStr === String(want)) continue;               // 이미 같은 값
+      colVals[idx][0] = want;
+      touched[first + idx] = true;
+      changed++;
+    }
+    result.byField[key] = changed;
+    if (!result.appliedValues) result.appliedValues = {};
+    result.appliedValues[key] = (key === 'followers') ? (want === '' ? null : want) : want;
+    if (changed) sheet.getRange(first, col + 1, n, 1).setValues(colVals); // 열당 쓰기 1회
+  }
+
+  for (var r in touched) result.rows.push(Number(r));
+  result.rows.sort(function (a, b) { return a - b; });
+  result.written = result.rows.length;
+  // 전파된 행이 속한 공구건들 — 호출부가 캐시 부분 갱신/등급 재기록 대상으로 쓴다
+  var ids = {};
+  for (var q = 0; q < result.rows.length; q++) {
+    var did = String(dealIdVals[result.rows[q] - first][0] || '').trim();
+    if (did) ids[did] = true;
+  }
+  result.dealIds = Object.keys(ids);
+  Logger.log('[채널 필드 전파] 채널=' + ch + ' mode=' + mode + ' / 대상 ' + targets.length +
+    '행 중 ' + result.written + '행 갱신 / 필드별=' + JSON.stringify(result.byField) +
+    (result.skipped.length ? ' / 열없음=' + result.skipped.join(',') : ''));
+  return result;
+}
+
+/* 채널 단위 필드 단독 갱신 액션 — 채널별 성과 표의 인라인 편집이 쓴다.
+   (공구건 모달 저장은 updateDeal에 실려 같은 실행에서 처리되므로 이 액션을 쓰지 않는다 — 왕복 1회 유지) */
+function _updateChannelFields(ss, data) {
+  var sheet = _mainSheet(ss);
+  if (!sheet) return _json({ error: '실적통합 시트를 찾을 수 없습니다.' });
+  var channel = String((data && data.channel) || '').trim();
+  if (!channel) return _json({ error: '채널명이 비어 있습니다.' });
+  var mode = data.mode === 'fillEmpty' ? 'fillEmpty' : 'overwrite';
+  var res = _propagateChannelFields(sheet, channel, data.fields || {}, mode);
+  if (res.skipped.length) {
+    Logger.log('[채널 필드] 시트에 열이 없어 건너뜀: ' + res.skipped.join(',') +
+      " — 2행에 '인스타 ID' / '유튜브 ID' 헤더를 추가하면 활성화됨");
+  }
+  return _json({
+    success: true, channel: channel, mode: mode,
+    written: res.written, rowIndexes: res.rows, byField: res.byField,
+    skippedFields: res.skipped, dealIds: res.dealIds
+  });
 }
 
 // 공구건 삭제 — dealId 그룹의 모든 행을 하드 삭제(릴스 데이터도 대표 행에 같이 있어 함께 삭제됨)
