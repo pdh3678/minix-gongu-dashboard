@@ -587,6 +587,12 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .f-lbl{white-space:nowrap}
 .f-info{cursor:help;font-size:11px;font-weight:700;color:var(--text-3)}
 .f-opt{font-size:9px;font-weight:700;letter-spacing:.3px;color:var(--text-3)}
+/* 저장 검증 실패 표시 — 예전엔 alert() 후 조용히 return이라, 알림을 닫는 순간 어디가 문제인지
+   화면에 아무 단서도 남지 않았다. 필드 자체에 표시를 남겨야 사용자가 고칠 곳을 찾는다. */
+.f-inp.f-err{border-color:#DC2626;background:#FEF2F2}
+.f-inp.f-err:focus{outline-color:#DC2626}
+.f-err-msg{font-size:10.5px;font-weight:600;color:#DC2626;line-height:1.4}
+.save-err{font-size:11.5px;font-weight:700;color:#DC2626;margin-right:auto;text-align:left;line-height:1.5}
 /* 등급 상태 박스를 그리드 칸 안에 넣을 때 — 원래 여백은 그리드 바깥에 홀로 있을 때 기준이라 제거 */
 .f-grp .tier-auto-line{margin-top:0;flex:1}
 /* 대시보드 분석 섹션의 단일 드롭다운(예: 채널별 성과의 제품 필터) — 기간 필터(.ym-dd-btn)와
@@ -1324,6 +1330,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     <div class="form-footer">
       <button type="button" class="btn-cancel" id="mCopyBtn" style="margin-right:auto" onclick="copyDealToNew()">📋 복사하여 새 공구건 만들기</button>
       <button class="btn-cancel" onclick="closeSchModal()">닫기</button>
+      <span class="save-err" id="mSaveErr" style="display:none"></span>
       <button class="btn-primary" id="mSaveBtn" onclick="saveSchemeModal()">저장</button>
     </div>
   </div>
@@ -1566,6 +1573,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
     <div class="form-footer">
       <button class="btn-cancel" onclick="closeDealForm()">취소</button>
+      <span class="save-err" id="fSaveErr" style="display:none"></span>
       <button class="btn-primary" onclick="saveDeal()">저장</button>
     </div>
   </div>
@@ -1621,7 +1629,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-chlayout-2026-09-15-12';
+const DASHBOARD_VERSION='dash-savefix-2026-09-15-13';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -2402,8 +2410,20 @@ document.addEventListener('click',e=>{
    "저장된 줄 알았는데 아니었다"가 가장 나쁜 결과라, 실패는 반드시 눈에 띄게 만든다. */
 
 // 저장 진행 중인 건들 — 같은 건을 두 번 저장하거나, 저장 중인 건을 다시 편집하는 것을 막는다.
-const _savingDeals = new Map(); // dealId -> 저장 직전 스냅샷
-function isDealSaving(dealId){ return _savingDeals.has(dealId); }
+const _savingDeals = new Map(); // dealId -> {snap, at}
+/* 저장 잠금 상한. 정상 저장은 수 초면 끝나므로 이보다 오래 남아 있다면 이전 시도가 예외로
+   끊긴 것이다 — 그대로 두면 그 공구건은 영영 못 열고 못 고친다. 스스로 풀리게 한다. */
+const SAVE_LOCK_MAX_MS = 60000;
+function isDealSaving(dealId){
+  const e=_savingDeals.get(dealId);
+  if(!e)return false;
+  if(Date.now()-(e.at||0)>SAVE_LOCK_MAX_MS){
+    _savingDeals.delete(dealId);
+    console.warn('[저장] 오래 남아 있던 저장 잠금을 해제했습니다 — 이전 저장이 비정상 종료된 것으로 보입니다:',dealId);
+    return false;
+  }
+  return true;
+}
 function _savingChip(d){
   return d && d._saving ? ' <span class="bdg bdg-p" style="opacity:.7">저장 중</span>' : '';
 }
@@ -5064,6 +5084,50 @@ function renderTbl(){
 }
 // 속성값에 쓰인 큰따옴표가 HTML을 깨뜨리지 않도록 최소 이스케이프(진단용 data-* 속성 전용)
 function _escAttr(s){return String(s||'').replace(/"/g,'&quot;');}
+
+/* ── 저장 검증 실패를 화면에 남기기 (2026-09-15) ────────────────────────────
+   예전에는 alert() 하나 띄우고 조용히 return 했다. 알림을 닫으면 어느 필드가 문제인지 화면에
+   아무 단서도 없어서, 사용자는 "저장을 눌렀는데 아무 일도 안 일어난다"로 받아들이게 된다.
+   이제는 해당 필드에 빨간 테두리 + 아래 이유를 남기고, 저장 버튼 옆에도 요약을 띄운다. */
+function _saveErrHost(scope){return document.getElementById(scope==='m'?'mSaveErr':'fSaveErr');}
+function _clearFieldErrors(scope){
+  const root=document.getElementById(scope==='m'?'schOv':'dealOv');
+  // 오버레이가 아직 없거나 조회를 지원하지 않는 경우에도 요약 정리는 계속돼야 한다
+  if(root&&typeof root.querySelectorAll==='function'){
+    Array.prototype.forEach.call(root.querySelectorAll('.f-inp.f-err')||[],el=>{if(el.classList)el.classList.remove('f-err');});
+    Array.prototype.forEach.call(root.querySelectorAll('.f-err-msg')||[],el=>{if(el.remove)el.remove();});
+  }
+  const sum=_saveErrHost(scope);
+  if(sum){sum.textContent='';sum.style.display='none';}
+}
+function _setFieldError(inputId,msg){
+  const el=document.getElementById(inputId);
+  if(!el)return;
+  if(el.classList)el.classList.add('f-err');
+  const grp=(el.closest&&el.closest('.f-grp'))||el.parentElement;
+  if(grp&&grp.querySelector&&!grp.querySelector('.f-err-msg')&&document.createElement){
+    const box=document.createElement('div');
+    box.className='f-err-msg';box.textContent=msg;
+    if(grp.appendChild)grp.appendChild(box);
+  }
+}
+// errors: [{id, msg}] — 첫 항목으로 포커스를 옮겨 바로 고칠 수 있게 함
+function _showSaveErrors(scope,errors){
+  _clearFieldErrors(scope);
+  errors.forEach(e=>{ if(e.id)_setFieldError(e.id,e.msg); });
+  const sum=_saveErrHost(scope);
+  if(sum){
+    sum.textContent=errors.length===1?errors[0].msg:('입력을 확인해주세요 — '+errors.map(e=>e.msg).join(' / '));
+    sum.style.display='';
+  }
+  const first=errors[0]&&errors[0].id?document.getElementById(errors[0].id):null;
+  if(first&&first.focus){try{first.focus();}catch(e){}}
+}
+// 필드와 무관한 실패(서버 오류, 화면 반영 오류 등)를 저장 버튼 옆에 남긴다
+function _showSaveSummary(scope,msg){
+  const sum=_saveErrHost(scope);
+  if(sum){sum.textContent=msg;sum.style.display='';}
+}
 // 텍스트를 HTML 본문에 넣을 때 — 채널명·제품명에 <, & 가 섞여 있어도 마크업이 깨지지 않게
 function _escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
@@ -5545,7 +5609,15 @@ function mOnLinkInputChange(){
 function mOnDateChange(){
   const s=document.getElementById('mStart').value;
   const e=document.getElementById('mEnd').value;
-  if(s)document.getElementById('mYear').value=new Date(s+'T00:00:00').getFullYear();
+  /* ⚠ 월은 그동안 어디서도 채워지지 않아 모든 건에서 "선택"으로 비어 있었다(헤더엔 "4월"이
+     보이는데 필드는 비는 상태). 연과 마찬가지로 시작일에서 파생되는 값이므로 같이 계산한다.
+     연은 readonly지만 월은 예외적으로 다른 달로 잡는 경우가 있어 수정 가능하게 둔다 —
+     대신 날짜를 다시 건드리면 시작일 기준으로 되돌아간다(파생값이라는 성격을 유지). */
+  if(s){
+    const sd=new Date(s+'T00:00:00');
+    document.getElementById('mYear').value=sd.getFullYear();
+    document.getElementById('mMonth').value=String(sd.getMonth()+1);
+  }
   if(s&&e){
     const d=durDays(s,e);
     document.getElementById('mDuration').value=d&&d>0?`${d}일`:'—';
@@ -5868,17 +5940,30 @@ function _collectModalChanges(d){
 }
 
 async function saveSchemeModal(){
-  const d=DATA.find(x=>x.dealId===_modalDealId);if(!d)return;
-  if(!document.getElementById('mLine').value){alert('품목군을 선택하세요.');return;}
-  if(LINE_HAS_MODELS[document.getElementById('mLine').value]&&!document.getElementById('mModel').value){alert('제품을 선택하세요.');return;}
-  if(!document.getElementById('mInfluencer').value.trim()){alert('채널명을 입력하세요.');return;}
-  if(!document.getElementById('mPlatform').value){alert('플랫폼을 선택하세요.');return;}
+  const d=DATA.find(x=>x.dealId===_modalDealId);
+  if(!d){_showSaveSummary('m','이 공구건을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.');return;}
+
+  /* 검증 결과를 한 번에 모아서 보여준다 — 예전처럼 첫 실패에서 alert 하나 띄우고 끝내면
+     문제가 여러 개일 때 저장을 누를 때마다 하나씩 튀어나오고, 알림을 닫는 순간 화면엔 단서가 없다. */
+  const mLine=document.getElementById('mLine').value;
   const mStart=document.getElementById('mStart').value,mEnd=document.getElementById('mEnd').value;
-  if(!mStart||!mEnd){alert('시작일과 마감일을 입력하세요.');return;}
-  if(new Date(mStart)>new Date(mEnd)){alert('마감일이 시작일보다 빠릅니다.');return;}
+  const errs=[];
+  if(!mLine)errs.push({id:'mLine',msg:'품목군을 선택해주세요'});
+  else if(LINE_HAS_MODELS[mLine]&&!document.getElementById('mModel').value)errs.push({id:'mModel',msg:'제품을 선택해주세요'});
+  if(!document.getElementById('mInfluencer').value.trim())errs.push({id:'mInfluencer',msg:'채널명을 입력해주세요'});
+  if(!document.getElementById('mPlatform').value)errs.push({id:'mPlatform',msg:'플랫폼을 선택해주세요'});
+  if(!document.getElementById('mMonth').value)errs.push({id:'mMonth',msg:'월을 선택해주세요'});
+  if(!mStart)errs.push({id:'mStart',msg:'시작일을 입력해주세요'});
+  if(!mEnd)errs.push({id:'mEnd',msg:'마감일을 입력해주세요'});
+  if(mStart&&mEnd&&new Date(mStart)>new Date(mEnd))errs.push({id:'mEnd',msg:'마감일이 시작일보다 빠릅니다'});
+  if(errs.length){_showSaveErrors('m',errs);return;}
+  _clearFieldErrors('m');
 
   const {changes,next,codes,codesChanged,productInvalid}=_collectModalChanges(d);
-  if(productInvalid){showToast('제품명 표기가 시트 규칙과 일치하지 않습니다. 관리자에게 문의해주세요.');return;}
+  if(productInvalid){
+    _showSaveErrors('m',[{id:'mModel',msg:'제품명 표기가 시트 규칙과 맞지 않습니다 — 관리자에게 문의해주세요'}]);
+    return;
+  }
 
   let reels=_modalReels.filter(r=>r.url||r.views!=null||r.thumb).slice(0,10);
   /* ⚠ 2026-09-15: 예전엔 "릴스가 있기만 하면"(reels.length>0||_modalHadReels) 무조건 릴스를
@@ -5899,7 +5984,13 @@ async function saveSchemeModal(){
         if(j.error)throw new Error(j.error);
         r.thumb=j.url;
       }
-    }catch(e){alert('썸네일 업로드 실패: '+e.message);setLoad(false);return;}
+    }catch(e){
+      // 저장 실패는 전부 같은 자리(저장 버튼 옆)에 사유를 남긴다 — alert는 닫으면 단서가 사라진다
+      console.error('[저장] 썸네일 업로드 실패:',e);
+      _showSaveSummary('m','썸네일 업로드 실패: '+((e&&e.message)||String(e)));
+      showToast('썸네일 업로드 실패: '+((e&&e.message)||String(e)),{type:'error'});
+      setLoad(false);return;
+    }
   }
   reels=reels.map(r=>({url:r.url,views:r.views,thumb:r.thumb})); // 내부 전용 필드(_pendingUpload) 제거
   const totalViews=reels.length?reels.reduce((s,r)=>s+(r.views||0),0):null;
@@ -5926,7 +6017,11 @@ async function saveSchemeModal(){
     // ── 낙관적 반영: 요청을 보내기 전에 화면부터 끝낸다 ──
     console.time('[저장] 낙관적 반영→모달 닫힘');
     const snapshot=_snapshotDeal(d);
-    _savingDeals.set(d.dealId,snapshot);
+    _savingDeals.set(d.dealId,{snap:snapshot,at:Date.now()});
+    /* ⚠ 여기서부터 요청을 띄우기 전까지 예외가 나면 잠금이 그대로 남아, 그 공구건은 이후 영영
+       "저장 중인 공구건입니다"만 뜨고 열리지도 저장되지도 않는다(실제로 겪은 증상). 렌더가
+       던질 수 있으므로 반드시 감싸고, 실패하면 되돌린 뒤 이유를 화면에 남긴다. */
+    try{
     Object.assign(d,_dealFieldsFromNext(next,codes,codesChanged,reels,touchReels,totalViews));
     d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
     if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
@@ -5942,6 +6037,16 @@ async function saveSchemeModal(){
     if(channelFields)_presetChannelTierRows(next.channel,tiers);
     closeSchModal();
     render();
+    }catch(pre){
+      _restoreDeal(d,snapshot);
+      _savingDeals.delete(d.dealId);
+      delete d._saving;
+      invalidateTierStats();invalidateChannelInfo();
+      console.error('[저장] 화면 반영 중 오류 — 저장을 중단하고 되돌렸습니다:',pre);
+      _openRegisteredModal(d);
+      _showSaveSummary('m','화면 반영 중 오류가 발생해 저장하지 못했습니다: '+((pre&&pre.message)||String(pre)));
+      return;
+    }
     console.timeEnd('[저장] 낙관적 반영→모달 닫힘');
     showToast('저장 중…');
 
@@ -5980,6 +6085,8 @@ async function saveSchemeModal(){
       render();
       showToast('저장 실패: '+_friendlySaveError(e.message)+' — 입력값을 그대로 다시 열었습니다',{type:'error'});
       _openRegisteredModal(attempted);
+      // 토스트는 몇 초 뒤 사라지므로, 모달 안에도 실제 사유를 남겨 사용자가 다시 읽을 수 있게 함
+      _showSaveSummary('m','저장 실패: '+((e&&e.message)||String(e)));
     });
   } else {
     Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,followers:next.followers,status:_calcStatus(next.start,next.end)});
@@ -7147,6 +7254,7 @@ function onDateChange(){
   if(s){
     const sd=new Date(s+'T00:00:00');
     document.getElementById('fYear').value=sd.getFullYear();
+    document.getElementById('fMonth').value=String(sd.getMonth()+1); // 모달과 같은 이유로 월도 파생
   }
   if(s&&e){
     const sd=new Date(s+'T00:00:00'),ed=new Date(e+'T00:00:00');
@@ -7169,14 +7277,20 @@ function saveDeal(){
   const ytId=document.getElementById('fYtId').value.trim().replace(/^@+/,'');
   const start=document.getElementById('fStart').value;
   const end=document.getElementById('fEnd').value;
-  if(!line){alert('품목군을 선택하세요.');return;}
-  if(LINE_HAS_MODELS[line]&&!model){alert('제품을 선택하세요.');return;}
-  if(!product){showToast('제품명 표기가 시트 규칙과 일치하지 않습니다. 관리자에게 문의해주세요.');return;}
-  if(!influencer){alert('채널명을 입력하세요.');return;}
-  if(!platform){alert('플랫폼을 선택하세요.');return;}
-  if((platform==='인스타그램'||platform==='유튜브')&&!channelId){alert(`${platform} ID를 입력하세요.`);return;}
-  if(!start||!end){alert('시작일과 마감일을 입력하세요.');return;}
-  if(new Date(start)>new Date(end)){alert('마감일이 시작일보다 빠릅니다.');return;}
+  const fErrs=[];
+  if(!line)fErrs.push({id:'fLine',msg:'품목군을 선택해주세요'});
+  else if(LINE_HAS_MODELS[line]&&!model)fErrs.push({id:'fModel',msg:'제품을 선택해주세요'});
+  else if(!product)fErrs.push({id:'fModel',msg:'제품명 표기가 시트 규칙과 맞지 않습니다 — 관리자에게 문의해주세요'});
+  if(!influencer)fErrs.push({id:'fInfluencer',msg:'채널명을 입력해주세요'});
+  if(!platform)fErrs.push({id:'fPlatform',msg:'플랫폼을 선택해주세요'});
+  if(platform==='인스타그램'&&!channelId)fErrs.push({id:'fIgId',msg:'인스타그램 ID를 입력해주세요'});
+  if(platform==='유튜브'&&!channelId)fErrs.push({id:'fYtId',msg:'유튜브 ID를 입력해주세요'});
+  if(!document.getElementById('fMonth').value)fErrs.push({id:'fMonth',msg:'월을 선택해주세요'});
+  if(!start)fErrs.push({id:'fStart',msg:'시작일을 입력해주세요'});
+  if(!end)fErrs.push({id:'fEnd',msg:'마감일을 입력해주세요'});
+  if(start&&end&&new Date(start)>new Date(end))fErrs.push({id:'fEnd',msg:'마감일이 시작일보다 빠릅니다'});
+  if(fErrs.length){_showSaveErrors('f',fErrs);return;}
+  _clearFieldErrors('f');
 
   const formGifts=_formGifts.filter(g=>g.item);
   const noteText=document.getElementById('fNote').value.trim(); // 신규 비고(서버 note2 / 클라 s.note)

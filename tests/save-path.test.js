@@ -81,7 +81,7 @@ function check(l, c, extra) {
 
   // saveSchemeModal 내부가 실제로 수행하는 순서를 그대로 재현(DOM 의존부만 제외)
   const snap = front._snapshotDeal(d);
-  X.savingDeals.set(d.dealId, snap);
+  X.savingDeals.set(d.dealId, { snap, at: Date.now() }); // 잠금 값은 {snap, at} 형태
   Object.assign(d, front._dealFieldsFromNext(next, d.codes, false, d.reels, false, null));
   d._saving = true;
   front.invalidateTierStats();
@@ -115,7 +115,7 @@ function check(l, c, extra) {
   console.log('\n[3] 실패 시 롤백 + 입력값 유지 재오픈');
   const d2 = DATA[0];
   const before = front._snapshotDeal(d2);
-  X.savingDeals.set(d2.dealId, before);
+  X.savingDeals.set(d2.dealId, { snap: before, at: Date.now() });
   Object.assign(d2, front._dealFieldsFromNext({ ...next, product:'더 시프트' }, d2.codes, false, d2.reels, false, null));
   d2._saving = true;
   const attempted = Object.assign({}, d2, { codes:d2.codes, reels:d2.reels });

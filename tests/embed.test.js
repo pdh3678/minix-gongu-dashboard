@@ -332,7 +332,7 @@ console.log('\n[18] 공구건 상세 모달이 열리는 경로가 끊기지 않
 
   // 저장 중 잠금이 걸린 건은 열리지 않아야 하고, 풀리면 다시 열려야 한다
   opened = null;
-  X.savingDeals.set('D1', {});
+  X.savingDeals.set('D1', { at: Date.now() }); // at이 있어야 유효한 잠금
   ctx.showToast = () => {};
   ctx.openM('D1', null);
   check('저장 중에는 열지 않음', opened === null);
@@ -383,6 +383,81 @@ console.log('\n[20] 플랫폼에 따라 필수(*) 표시가 옮겨감');
 
   ctx._syncPlatformIdMarks('f', '유튜브');
   check('등록 폼도 같은 규칙', shown('fYtReq') && !shown('fIgReq'));
+}
+
+console.log('\n[21] 월 필드 — 시작일에서 자동 계산');
+{
+  const { ctx } = loadFrontend(PROJ, null, { search: '', runHeadScripts: true });
+  const els = {};
+  ctx.document.getElementById = id => (els[id] = els[id] || { value: '', style: {}, classList: { add(){}, remove(){}, contains: () => false } });
+
+  els.mStart = { value: '2026-04-06', style: {}, classList: { add(){}, remove(){} } };
+  els.mEnd = { value: '2026-04-08', style: {}, classList: { add(){}, remove(){} } };
+  ctx.mOnDateChange();
+  check('모달 연 = 2026', els.mYear.value === 2026, els.mYear.value);
+  check('모달 월 = 4 (select value와 같은 형식의 문자열)', els.mMonth.value === '4', els.mMonth.value);
+
+  els.fStart = { value: '2026-11-02', style: {}, classList: { add(){}, remove(){} } };
+  els.fEnd = { value: '2026-11-05', style: {}, classList: { add(){}, remove(){} } };
+  ctx.onDateChange();
+  check('등록 폼 월 = 11', els.fMonth.value === '11', els.fMonth.value);
+  check('등록 폼 연 = 2026', els.fYear.value === 2026, els.fYear.value);
+
+  // 옵션 value가 '4월'이나 4(숫자)가 아니라 '4' 문자열이어야 select가 매칭된다
+  check('월 옵션 value 형식이 숫자 문자열', html.indexOf('<option value="4">4월</option>') > 0);
+}
+
+console.log('\n[22] 저장 검증 실패가 화면에 남는가');
+{
+  const { ctx, X } = loadFrontend(PROJ, null, { search: '', runHeadScripts: true });
+  const els = {}, created = [];
+  const mkEl = id => ({
+    id, value: '', style: {}, className: '',
+    classList: { _s: new Set(), add(c){ this._s.add(c); }, remove(c){ this._s.delete(c); }, contains(c){ return this._s.has(c); } },
+    closest: () => ({ querySelector: () => null, appendChild: e => created.push(e) }),
+    parentElement: { querySelector: () => null, appendChild: e => created.push(e) },
+    focus(){}
+  });
+  ctx.document.getElementById = id => (els[id] = els[id] || mkEl(id));
+  ctx.document.createElement = () => ({ className: '', textContent: '' });
+  ctx.document.querySelectorAll = () => [];
+  els.schOv = Object.assign(mkEl('schOv'), { querySelectorAll: () => [] });
+
+  ctx._showSaveErrors('m', [{ id: 'mMonth', msg: '월을 선택해주세요' }]);
+  check('해당 필드에 오류 표시(f-err)', els.mMonth.classList.contains('f-err'));
+  check('필드 아래 이유 문구 생성', created.length === 1 && created[0].textContent === '월을 선택해주세요', created);
+  check('저장 버튼 옆 요약 노출', els.mSaveErr.textContent === '월을 선택해주세요' && els.mSaveErr.style.display === '',
+    [els.mSaveErr.textContent, els.mSaveErr.style.display]);
+
+  // 여러 건이면 요약에 모두 나열
+  ctx._showSaveErrors('m', [{ id: 'mMonth', msg: '월을 선택해주세요' }, { id: 'mStart', msg: '시작일을 입력해주세요' }]);
+  check('여러 건은 요약에 함께 표시',
+    els.mSaveErr.textContent.indexOf('월을 선택해주세요') > 0 && els.mSaveErr.textContent.indexOf('시작일') > 0,
+    els.mSaveErr.textContent);
+
+  // 필드와 무관한 실패도 같은 자리에
+  ctx._showSaveSummary('m', '저장 실패: 헤더를 찾을 수 없습니다');
+  check('서버 오류도 모달에 남음', els.mSaveErr.textContent.indexOf('헤더를 찾을 수 없습니다') > 0, els.mSaveErr.textContent);
+
+  // 조용히 return 하던 alert 검증이 사라졌는지
+  // 저장 경로 전체에서 alert를 쓰지 않는다 — 닫는 순간 단서가 사라지므로 전부 화면에 남기는 방식으로 바꿨다
+  /* 검증 + 실서버 저장 구간에는 alert를 쓰지 않는다 — 닫는 순간 단서가 사라지므로 전부 화면에 남긴다.
+     (그 뒤의 샘플 모드 분기는 GAS URL이 없을 때의 성공 안내라 alert 그대로 둔다 — 실패 경로가 아님) */
+  const saveStart = html.indexOf('async function saveSchemeModal');
+  const sampleBranch = html.indexOf('alert(\'샘플 모드', saveStart);
+  const save = html.slice(saveStart, sampleBranch);
+  check('모달 검증·저장 구간에 alert 없음', save.indexOf('alert(') < 0, save.match(/alert\([^)]*\)/g));
+}
+
+console.log('\n[23] 저장 잠금이 영구히 남지 않는가');
+{
+  const { ctx, X } = loadFrontend(PROJ, null, { search: '', runHeadScripts: true });
+  X.savingDeals.set('STUCK', { at: Date.now() - 120000 }); // 2분 전에 걸린 잠금
+  check('오래된 잠금은 자동 해제', ctx.isDealSaving('STUCK') === false);
+  check('해제되면 목록에서도 제거', X.savingDeals.has('STUCK') === false);
+  X.savingDeals.set('FRESH', { at: Date.now() });
+  check('방금 걸린 잠금은 유지', ctx.isDealSaving('FRESH') === true);
+  check('상한이 정의돼 있음', html.indexOf('SAVE_LOCK_MAX_MS') > 0);
 }
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);
