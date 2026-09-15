@@ -15,11 +15,13 @@ const BASE_HEADERS = require(path.join(__dirname, 'lib', 'real-headers.js'));
 
 const GAS_PATH = process.argv[2] || path.join(__dirname, '..', 'apps-script.js');
 
-// 운영 시트 헤더 + 이번에 추가하는 채널 속성 열 2개
-const HEADERS = BASE_HEADERS.concat(['인스타 ID', '유튜브 ID']);
+/* 운영 시트 헤더(실제 값) — 2026-09-15에 AN/AO의 레거시 중복 헤더를 채널 속성 열로 교체했다.
+   ID 열이 "아직 없는" 시트를 재현할 때는 아래 WITHOUT_ID를 쓴다. */
+const HEADERS = BASE_HEADERS;
+const WITHOUT_ID = BASE_HEADERS.map(h => (h === '인스타 ID' || h === '유튜브 ID') ? '' : h);
 const C = { brand:1, product:2, channel:4, platform:5, salesTier:6, followerTier:7, code:9,
   salePrice:10, qty:11, year:14, startMD:15, endMD:16, status:17,
-  dealId:44, codeSeq:45, followers:55, igId:56, ytId:57 };
+  igId:39, ytId:40, dealId:44, codeSeq:45, followers:55 };
 
 function mkRow(o){ const r = new Array(HEADERS.length).fill(''); Object.keys(o).forEach(k => { r[k] = o[k]; }); return r; }
 
@@ -114,7 +116,7 @@ console.log('\n[5] 바뀔 값이 없으면 아무것도 쓰지 않음');
 
 console.log('\n[6] ID 열이 아직 없는 시트 — 그 필드만 건너뛰고 나머지는 동작');
 {
-  const sheet = buildSheet(BASE_HEADERS); // 인스타/유튜브 ID 열 없음
+  const sheet = buildSheet(WITHOUT_ID); // 인스타/유튜브 ID 열 없음
   const ctx = load(sheet);
   check('igId 미해석(-1)', ctx.COL.igId === -1, ctx.COL.igId);
   const r = act(ctx, 'updateChannelFields', { channel:'채널A', mode:'overwrite', fields:{ igId:'x', followers:123000 } });

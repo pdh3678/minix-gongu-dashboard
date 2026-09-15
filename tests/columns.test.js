@@ -161,5 +161,27 @@ console.log('\n[8] 열이 또 밀려도 코드 수정 없이 따라감');
   check('밀린 시트에서도 매출등급 열 인식', ctx2.COL.salesTier === shifted.indexOf('매출등급'), ctx2.COL.salesTier);
 }
 
+
+console.log('\n[9] 중복 헤더 "왼쪽 우선" 규칙 (합성)');
+{
+  /* 운영 시트의 레거시 중복 헤더(AN 목표수량 / AO 구성)는 2026-09-15에 채널 속성 열로 교체돼
+     실데이터에서는 사라졌다. 하지만 규칙 자체는 여전히 '비고'(적립금 자리 / 신규 비고) 두 열을
+     가르는 근거이고, 앞으로 또 중복이 생길 수 있으므로 합성 시트로 계속 지킨다. */
+  const dup = HEADERS.slice();
+  dup.push('목표수량', '구성');           // 오른쪽에 중복 헤더를 일부러 심는다
+  const g2 = [new Array(dup.length).fill(''), dup];
+  const r = new Array(dup.length).fill('');
+  r[1] = '미닉스'; r[2] = '더 플렌더'; r[4] = '채널A';
+  g2.push(r);
+  const sheet2 = makeSheet('실적통합', g2);
+  const ctx2 = loadGas({ '실적통합': sheet2 });
+  ctx2._resolveCols(sheet2);
+  check('목표수량은 왼쪽(X=23) 선택', ctx2.COL.targetQty === 23, ctx2.COL.targetQty);
+  check('구성은 왼쪽(T=19) 선택', ctx2.COL.composition === 19, ctx2.COL.composition);
+  check('오른쪽 중복은 아무 논리열도 차지하지 않음',
+    Object.keys(ctx2.COL).every(k => ctx2.COL[k] !== dup.length - 1 && ctx2.COL[k] !== dup.length - 2));
+  check("'비고' 두 열은 여전히 갈림 (적립금 자리 / 신규 비고)",
+    ctx2.COL.note === 25 && ctx2.COL.note2 === 53, { note: ctx2.COL.note, note2: ctx2.COL.note2 });
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);
