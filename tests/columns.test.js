@@ -183,5 +183,57 @@ console.log('\n[9] 중복 헤더 "왼쪽 우선" 규칙 (합성)');
   check("'비고' 두 열은 여전히 갈림 (적립금 자리 / 신규 비고)",
     ctx2.COL.note === 25 && ctx2.COL.note2 === 53, { note: ctx2.COL.note, note2: ctx2.COL.note2 });
 }
+
+console.log('\n[10] 열 이동 — 개수가 그대로여도 즉시 반영돼야 함');
+{
+  /* ⚠ 이 검사가 있는 이유: 예전엔 열 매핑을 CacheService에 캐시하면서 "열 개수가 같으면 히트"로
+     판정했다. 열을 **옮기는** 경우 개수가 그대로라 최대 60초 동안 옛 위치로 읽고 썼다 —
+     값이 엉뚱한 열에 저장되는 사고다. 캐시를 없앴으므로 같은 시트/같은 캐시 저장소로 다시 해석해도
+     항상 현재 헤더를 따라야 한다. */
+  const moved = HEADERS.slice();
+  // '채널 링크'를 두 칸 왼쪽으로 옮기고, 사이 두 열을 오른쪽으로 민다(열 개수는 그대로)
+  const from = moved.indexOf('채널 링크');
+  const to = from - 2;
+  moved.splice(from, 1);
+  moved.splice(to, 0, '채널 링크');
+
+  const cacheStore = {}; // 두 시트가 같은 캐시 저장소를 공유하게 해서 오염 여부를 본다
+  const g1 = [new Array(HEADERS.length).fill(''), HEADERS.slice()];
+  const s1 = makeSheet('실적통합', g1);
+  installGlobals({ '실적통합': s1 }, { cacheStore });
+  const c1 = vm.createContext(global);
+  vm.runInContext(fs.readFileSync(GAS_PATH, 'utf8'), c1, { filename: 'apps-script.js' });
+  c1._resolveCols(s1);
+  const before = c1.COL.link;
+
+  const g2 = [new Array(moved.length).fill(''), moved.slice()];
+  const s2 = makeSheet('실적통합', g2);
+  installGlobals({ '실적통합': s2 }, { cacheStore }); // 같은 캐시 저장소
+  const c2 = vm.createContext(global);
+  vm.runInContext(fs.readFileSync(GAS_PATH, 'utf8'), c2, { filename: 'apps-script.js' });
+  c2._resolveCols(s2);
+
+  check('열 개수는 그대로', moved.length === HEADERS.length, [moved.length, HEADERS.length]);
+  check('옮긴 열을 새 위치로 해석', c2.COL.link === to, { got: c2.COL.link, want: to, before });
+  check('밀려난 두 열도 제자리', c2.COL.thumbs === moved.indexOf('릴스 썸네일(JSON)') &&
+    c2.COL.source === moved.indexOf('출처(내부용, 수동 수정 금지)'),
+    { thumbs: c2.COL.thumbs, source: c2.COL.source });
+  check('이동과 무관한 열은 그대로', c2.COL.channel === c1.COL.channel && c2.COL.followers === c1.COL.followers);
+  check('릴스 슬롯도 조회수 기준 유지', c2.REEL_COL_START === c2.COL.views + 2);
+  // 캐시가 남아 옛 매핑을 되살리는 일이 없어야 한다
+  check('열 매핑을 캐시에 저장하지 않음',
+    Object.keys(cacheStore).every(k => k.indexOf('cols_') !== 0), Object.keys(cacheStore));
+}
+
+console.log('\n[11] 헤더 문구만 바꿔도 즉시 반영');
+{
+  const renamed = HEADERS.slice();
+  renamed[renamed.indexOf('채널 링크')] = '인플루언서 링크'; // 후보 목록에 있는 다른 표기
+  const g = [new Array(renamed.length).fill(''), renamed.slice()];
+  const sh = makeSheet('실적통합', g);
+  const ctx = loadGas({ '실적통합': sh });
+  ctx._resolveCols(sh);
+  check("'인플루언서 링크'로 바꿔도 같은 논리열", ctx.COL.link === renamed.indexOf('인플루언서 링크'), ctx.COL.link);
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);

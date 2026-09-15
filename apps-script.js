@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'dealgroup-2026-09-15-14';
+var SCRIPT_VERSION = 'colmove-2026-09-15-15';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -229,22 +229,19 @@ function getColIndexByHeader(sheet, header, opts) {
 // 이 함수가 끝나기 전에는 COL이 비어 있으므로, 메인 시트를 만지는 코드는 전부 _mainSheet(ss)
 // (또는 doGet처럼 직접 _resolveCols 호출)를 거쳐야 함.
 var _colsResolved = false;
+/* ⚠ 2026-09-15: 열 매핑을 CacheService에 캐시하던 코드를 **제거**했다.
+
+   그 캐시는 "열 개수가 같으면 히트"로 판정했는데, 열을 **옮기는** 경우 개수가 그대로라
+   최대 60초 동안 옛 위치로 읽고 쓰게 된다 — 값이 엉뚱한 열에 저장되는 종류의 사고다
+   (실제로 '인플루언서 링크' 열을 옮겼을 때 걸릴 수 있던 경로).
+
+   그렇다고 "헤더 해시를 같이 저장해 비교"하는 방식도 답이 아니다. 해시를 구하려면 결국 2행
+   헤더를 읽어야 하는데, 그 읽기 1회가 이 캐시가 아끼던 유일한 비용이다(전체 요청의 0.3%).
+   즉 검증을 붙이는 순간 이득이 0이 되고 복잡성과 실패 지점만 남는다.
+   → 매 실행마다 헤더를 읽어 해석한다. 실행 안에서는 _colsResolved로 한 번만 수행되므로
+     추가 비용은 요청당 헤더 한 줄 읽기 1회뿐이고, 열을 어떻게 옮기든 항상 정확하다. */
 function _resolveCols(sheet) {
   if (_colsResolved) return COL;
-  // 캐시 히트 조건: 같은 스크립트 버전 + 열 개수 동일. 열 개수가 바뀌면(삽입/삭제) 무조건 다시 읽는다.
-  // TTL 60초 — 헤더 "문구"만 바꾼 경우는 열 개수가 그대로라 최대 1분간 옛 매핑이 남을 수 있음.
-  var lastCol = sheet.getLastColumn();
-  try {
-    var cachedStr = CacheService.getScriptCache().get(_colsCacheKey());
-    var cached = cachedStr ? JSON.parse(cachedStr) : null;
-    if (cached && cached.lastCol === lastCol && cached.cols) {
-      for (var ck in cached.cols) COL[ck] = cached.cols[ck];
-      REEL_COL_START = COL.views + 2;
-      _colsResolved = true;
-      return COL;
-    }
-  } catch (e) { Logger.log('열 매핑 캐시 읽기 실패 (무시하고 재해석): ' + e); }
-
   var claimed = {};
   var log = [];
   for (var i = 0; i < COL_HEADER_SPECS.length; i++) {
@@ -259,10 +256,6 @@ function _resolveCols(sheet) {
   // 열이 밀렸을 때 "어느 열로 해석됐는지"를 실행 기록 한 줄로 확인할 수 있게 항상 남김 — 값이
   // 이상해 보이는 문제는 대부분 이 줄과 시트를 나란히 보면 바로 판별됨.
   Logger.log('[열 해석] ' + log.join(', ') + ' / 릴스 슬롯 시작=' + _colLetter(REEL_COL_START - 1));
-  try {
-    CacheService.getScriptCache().put(_colsCacheKey(),
-      JSON.stringify({ lastCol: lastCol, cols: COL }), COLS_CACHE_TTL_SEC);
-  } catch (e) { Logger.log('열 매핑 캐시 저장 실패 (무시): ' + e); }
   return COL;
 }
 
@@ -296,15 +289,17 @@ function _tmReport() {
   return _TM.phases;
 }
 
-// ── 헤더 인덱스 캐시 ──
-// _resolveCols는 헤더 한 줄(수십 셀) 읽기 1회라 원래도 싸지만, 연속 저장 시 그 1회도 아끼려고 캐시.
-// ⚠ 열 위치의 근거가 헤더 텍스트인 구조이므로 staleness는 곧 "엉뚱한 열에 쓰기"다. 그래서
-//   (1) TTL을 60초로 짧게 두고 (2) 열 개수가 달라지면 무조건 다시 읽는다. 헤더 "문구"만 바꾸고
-//   열 개수는 그대로인 경우 최대 60초 동안 옛 매핑이 쓰일 수 있음 — 헤더를 고쳤으면 1분 기다릴 것.
-var COLS_CACHE_TTL_SEC = 60;
-function _colsCacheKey() { return 'cols_' + SCRIPT_VERSION; }
-function _invalidateColsCache() {
-  try { CacheService.getScriptCache().remove(_colsCacheKey()); } catch (e) {}
+/* ── 캐시 일괄 정리 ──
+   열을 옮기거나 헤더를 고친 뒤, 이전 배포가 남겨둔 캐시가 옛 값을 들고 있을 수 있다.
+   Apps Script 편집기에서 이 함수만 골라 실행하면 대시보드 응답 캐시와 행 맵 캐시를 한 번에 비운다.
+   (열 매핑 캐시는 2026-09-15에 제거했다 — 이유는 _resolveCols 주석 참고) */
+function clearAllCaches() {
+  var removed = [];
+  try { CacheService.getScriptCache().remove('cols_' + SCRIPT_VERSION); removed.push('옛 열 매핑'); } catch (e) {}
+  try { _invalidateDashboardCache(); removed.push('대시보드 응답'); } catch (e) {}
+  try { _invalidateDealRowMap(); removed.push('dealId 행 맵'); } catch (e) {}
+  Logger.log('[캐시 정리] ' + removed.join(', ') + ' 비움');
+  return removed;
 }
 
 // ── dealId → 행 목록 맵 ──
