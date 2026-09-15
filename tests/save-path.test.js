@@ -66,7 +66,7 @@ function check(l, c, extra) {
   gas._resolveCols(sheet);
   const parsed = gas.parseMainSheet(sheet);
   const DATA = X.DATA;
-  DATA.splice(0, DATA.length, ...front._mergeDuplicateCodeRows(front.adaptGAS({ purchases: parsed.deals, calendarEvents: [] })));
+  DATA.splice(0, DATA.length, ...(front.adaptGAS({ purchases: parsed.deals, calendarEvents: [] })));
   X.setSyncReady(true);
   front.invalidateTierStats();
 

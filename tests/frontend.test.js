@@ -48,22 +48,30 @@ function check(label, cond, extra) {
   check('tierRows 없는 응답이면 빈 배열',
     JSON.stringify(ctx.adaptGAS({ purchases: [{ id: 1 }] })[0]._tierRows) === '[]');
 
-  console.log('\n[3] 내용 기준으로 병합된 건도 모든 행을 유지');
-  const merged = ctx._mergeDuplicateCodeRows(ctx.adaptGAS({
-    purchases: [
-      { id: 10, dealId: 'X1', brand: 'Minix', product: '더 슬림', channel: '채널C',
-        start: '2026-04-01', end: '2026-04-02', codes: ['A'], rowCount: 1, tierRows: [[10, '', '']] },
-      { id: 11, dealId: 'X2', brand: 'Minix', product: '더 슬림', channel: '채널C',
-        start: '2026-04-01', end: '2026-04-02', codes: ['B'], rowCount: 1, tierRows: [[11, '', '']] }
-    ]
-  }));
-  check('내용 기준 병합 후 1건', merged.length === 1, merged.length);
-  check('두 dealId의 행이 모두 살아남음',
-    JSON.stringify(merged[0]._tierRows) === JSON.stringify([[10, '', ''], [11, '', '']]), merged[0]._tierRows);
+  console.log('\n[3] 그룹은 서버(공구그룹ID)가 묶어서 내려준다 — 프론트는 추측하지 않는다');
+  /* 2026-09-15: 예전엔 프론트가 "제품·채널·기간이 같으면 같은 건"이라고 추측해 한 번 더 합쳤다.
+     추측이라 저장을 막을 수밖에 없었고(어느 행에 쓸지 보장 불가) 실제로 저장 불가 버그가 났다.
+     이제 시트의 공구그룹ID가 정식 기준이고 서버가 그 기준으로 묶어 내려준다. */
+  check('프론트에 내용 기준 병합 로직이 남아 있지 않음', typeof ctx._mergeDuplicateCodeRows === 'undefined');
+  const grouped = ctx.adaptGAS({ purchases: [
+    { id: 10, dealId: 'X1', groupId: 'G1', brand: 'Minix', product: '더 슬림', channel: '채널C',
+      start: '2026-04-01', end: '2026-04-02', qty: 30, revenue: 300000, rowCount: 2,
+      codes: ['A', 'B'], tierRows: [[10, '', ''], [11, '', '']],
+      codeRows: [{ rowIndex: 10, code: 'A', qty: 10, revenue: 100000, status: '완료' },
+                 { rowIndex: 11, code: 'B', qty: 20, revenue: 200000, status: '완료' }] }
+  ] });
+  check('서버가 준 1건을 그대로 사용', grouped.length === 1, grouped.length);
+  check('groupId 전달', grouped[0].groupId === 'G1', grouped[0].groupId);
+  check('codeRows 전달', grouped[0].codeRows.length === 2, grouped[0].codeRows);
+  check('행 수 전달', grouped[0].rowCount === 2, grouped[0].rowCount);
+  check('합산 실적은 서버 값 그대로', grouped[0].qty === 30 && grouped[0].rev === 300000,
+    [grouped[0].qty, grouped[0].rev]);
+  check('그룹 건 판정', ctx.isGroupDeal(grouped[0]) === true);
+  check('단독 건은 그룹 아님', ctx.isGroupDeal(ctx.adaptGAS({ purchases: [{ id: 1, rowCount: 1 }] })[0]) === false);
 
   console.log('\n[4] _collectTierWrites — 채널의 모든 행에 같은 등급');
   const DATA = X.DATA;
-  DATA.splice(0, DATA.length, ...ctx._mergeDuplicateCodeRows(adapted));
+  DATA.splice(0, DATA.length, ...adapted); // 서버가 이미 그룹 단위로 내려준다
   ctx.invalidateTierStats();
   const stA = ctx.tierStatOf('채널A'), stB = ctx.tierStatOf('채널B');
   console.log('    채널A: 매출등급=' + stA.effective + ' 팔로워등급=' + stA.followerTier +
