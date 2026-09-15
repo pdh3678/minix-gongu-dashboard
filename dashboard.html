@@ -1211,9 +1211,9 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <input class="f-inp" type="text" id="mVendor">
           </div>
           <div class="f-grp">
-            <label class="f-lbl">인플루언서 링크</label>
+            <label class="f-lbl">인플루언서 링크 <button type="button" class="chf-badge" id="mLinkAuto" onclick="relinkChannel('m')" title="플랫폼 ID로 링크를 다시 만듭니다">자동</button></label>
             <div style="display:flex;gap:6px">
-              <input class="f-inp" type="url" id="mLinkInput" placeholder="https://..." style="flex:1" onblur="mOnLinkInputChange()">
+              <input class="f-inp" type="url" id="mLinkInput" placeholder="ID 입력 시 자동 생성 (직접 수정 가능)" style="flex:1" oninput="_refreshLinkAutoBadge('m')" onblur="mOnLinkInputChange()">
               <button type="button" class="btn-cancel" style="padding:0 14px;font-size:12px;white-space:nowrap" onclick="openModalLink()">열기</button>
             </div>
           </div>
@@ -1478,8 +1478,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <input class="f-inp" type="text" id="fVendor" placeholder="벤더사명">
       </div>
       <div class="f-grp">
-        <label class="f-lbl">인플루언서 링크 <span class="f-badge">자동</span></label>
-        <input class="f-inp" type="url" id="fLink" placeholder="ID 입력 시 자동 생성 (직접 수정 가능)">
+        <label class="f-lbl">인플루언서 링크 <button type="button" class="chf-badge" id="fLinkAuto" onclick="relinkChannel('f')" title="플랫폼 ID로 링크를 다시 만듭니다">자동</button></label>
+        <input class="f-inp" type="url" id="fLink" placeholder="ID 입력 시 자동 생성 (직접 수정 가능)" oninput="_refreshLinkAutoBadge('f')" onblur="fOnLinkInputChange()">
       </div>
       <div class="f-grp">
         <label class="f-lbl">마케팅 링크</label>
@@ -1631,7 +1631,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-codeseq-2026-09-15-19';
+const DASHBOARD_VERSION='dash-chlink-2026-09-15-20';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1644,7 +1644,7 @@ if(IS_EMBED)console.log('[dashboard] 임베드 모드 — 사이드바/헤더 �
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='codeseq-2026-09-15-19';
+const REQUIRED_SCRIPT_VERSION='chlink-2026-09-15-20';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -1716,12 +1716,37 @@ const fmtF=s=>{const d=new Date(s+'T00:00:00');return`${d.getFullYear()}. ${d.ge
 const yearOf=s=>s?new Date(s+'T00:00:00').getFullYear():null;
 const monthOf=s=>s?new Date(s+'T00:00:00').getMonth()+1:null;
 const durDays=(s,e)=>{if(!s||!e)return null;const sd=new Date(s+'T00:00:00'),ed=new Date(e+'T00:00:00');return Math.round((ed-sd)/86400000)+1;};
+/* 플랫폼 표기를 'ig'/'yt'로 정규화한다. 시트에는 '인스타', 'IG', '인스타그램 릴스'처럼
+   표기가 제각각인 값이 들어 있고, 그대로 비교하면 링크 자동 생성이 통째로 죽는다
+   (select에 없는 값을 넣으면 value가 ''이 되므로 판정이 항상 실패했다 — 2026-09-15 원인). */
+function _platformKind(platform){
+  const t=String(platform||'').trim().toLowerCase().replace(/\s+/g,'');
+  if(!t)return'';
+  if(t.indexOf('인스타')>=0||t.indexOf('instagram')>=0||t==='ig'||t.indexOf('릴스')>=0||t.indexOf('reels')>=0)return'ig';
+  if(t.indexOf('유튜브')>=0||t.indexOf('유툽')>=0||t.indexOf('youtube')>=0||t==='yt'||t.indexOf('쇼츠')>=0||t.indexOf('shorts')>=0)return'yt';
+  return'';
+}
+/* ID 입력값 정규화 — 앞뒤 공백과 앞의 @를 떼고, URL을 통째로 붙여넣은 경우엔 ID만 뽑는다.
+   반환 {id, url}: url은 "붙여넣은 주소를 그대로 링크로 쓸 것"이라는 뜻(없으면 빈 문자열). */
+function _parseChannelIdInput(platform,raw){
+  const t=String(raw==null?'':raw).trim();
+  if(!t)return{id:'',url:''};
+  if(/^(https?:\/\/|www\.|instagram\.com|youtube\.com|youtu\.be)/i.test(t)){
+    const kind=_platformKind(platform);
+    const fromUrl=_extractChannelIdFromLink(kind==='yt'?'유튜브':'인스타그램',t);
+    if(fromUrl)return{id:fromUrl,url:normalizeUrl(t)};
+    // 주소 같긴 한데 ID를 못 뽑으면 링크로만 쓰고 ID 칸은 건드리지 않는다
+    return{id:'',url:normalizeUrl(t)};
+  }
+  return{id:t.replace(/^@+/,''),url:''};
+}
 // 채널 링크: 플랫폼+ID로 프로필 URL 생성 (@ 접두사는 제거)
 function buildChannelLink(platform,id){
-  const v=String(id||'').trim().replace(/^@/,'');
+  const v=_parseChannelIdInput(platform,id).id;
   if(!v)return'';
-  if(platform==='인스타그램')return`https://www.instagram.com/${v}`;
-  if(platform==='유튜브')return`https://www.youtube.com/@${v}`;
+  const kind=_platformKind(platform);
+  if(kind==='ig')return`https://www.instagram.com/${v}`;
+  if(kind==='yt')return`https://www.youtube.com/@${v}`;
   return'';
 }
 // buildChannelLink의 역방향 — 링크에서 플랫폼별 ID를 추출(모달에 기존 링크를 불러올 때
@@ -1733,8 +1758,9 @@ function _extractChannelIdFromLink(platform,url){
     const host=u.hostname.replace(/^www\./,'');
     const path=u.pathname.replace(/^\/+|\/+$/g,'');
     const seg=path.split('/')[0]||'';
-    if(platform==='인스타그램'&&host==='instagram.com')return seg;
-    if(platform==='유튜브'&&host==='youtube.com')return seg.replace(/^@/,'');
+    const kind=_platformKind(platform);
+    if(kind==='ig'&&host==='instagram.com')return seg;
+    if(kind==='yt'&&(host==='youtube.com'||host==='youtu.be'))return seg.replace(/^@/,'');
   }catch(e){}
   return'';
 }
@@ -5495,9 +5521,11 @@ function _openRegisteredModal(d){
      링크에서 뽑아 해당 플랫폼 칸을 채워준다(과거 데이터 이행용). 이미 값이 있으면 건드리지 않는다. */
   const _linkId=_extractChannelIdFromLink(d.platform,d.link);
   if(_linkId){
-    const _idEl=document.getElementById(d.platform==='유튜브'?'mYtId':'mIgId');
+    const _idEl=document.getElementById(_platformKind(d.platform)==='yt'?'mYtId':'mIgId');
     if(_idEl&&!_idEl.value)_idEl.value=_linkId;
   }
+  // ID는 있는데 링크가 비어 있으면 여기서 채워진다(뱃지 상태도 같이 잡힌다)
+  _initLinkAuto('m');
 
   // 일정
   document.getElementById('mStart').value=d.start||'';
@@ -5601,32 +5629,118 @@ function mOnModelChange(){
 function mOnPlatformChange(){
   const p=document.getElementById('mPlatform').value;
   _syncPlatformIdMarks('m',p); // 선택한 플랫폼 쪽에만 필수(*) 표시
-  mOnChannelIdChange(p==='유튜브'?'yt':'ig'); // 플랫폼이 바뀌면 그쪽 ID 기준으로 링크를 다시 만든다
+  mOnChannelIdChange(); // 플랫폼이 바뀌면 그쪽 ID 기준으로 링크를 다시 만든다
 }
-// 기존 데이터는 채널ID를 따로 저장하지 않으므로, 비어있으면 기존 링크를 그대로 두고
-// 실제로 뭔가 입력했을 때만 링크를 새로 생성함(새 공구건 폼과 다른 점)
-/* 플랫폼 ID를 입력하면 링크를 만들어준다. 어느 쪽 ID를 건드렸는지(which)와 이 행의 플랫폼이
-   맞을 때만 링크를 덮어쓴다 — 인스타 행에서 유튜브 ID를 적었다고 링크가 유튜브로 바뀌면 안 된다. */
-function mOnChannelIdChange(which){
-  const el=document.getElementById(which==='yt'?'mYtId':'mIgId');
+/* ── 인플루언서 링크 자동 생성 (모달 'm' / 등록 폼 'f' 공용) ─────────────────────
+   ID를 입력하면 링크를 만들어 준다.
+     · 링크의 근거는 "지금 선택된 플랫폼에 해당하는 ID 칸" 하나뿐이다 — 인스타 건에서 유튜브
+       ID를 적었다고 링크가 유튜브로 바뀌면 안 된다
+     · 사람이 직접 고친 링크는 덮어쓰지 않는다. 판정은 _lastAutoLink(우리가 마지막으로 써 넣은
+       값)와 비교해서 한다. "현재 자동값과 같은가"만으로 보면 ID를 한 글자 고치는 순간 값이
+       달라져 방금 만든 링크까지 '수동'으로 오인한다
+     · ID 칸에 주소를 통째로 붙여넣으면 ID만 뽑아 칸에 넣고, 링크는 붙여넣은 주소를 그대로 쓴다 */
+const LINK_IDS={m:{platform:'mPlatform',ig:'mIgId',yt:'mYtId',link:'mLinkInput',badge:'mLinkAuto'},
+                f:{platform:'fPlatform',ig:'fIgId',yt:'fYtId',link:'fLink',badge:'fLinkAuto'}};
+let _lastAutoLink={m:'',f:''};
+const _sameUrl=(a,b)=>String(a||'').trim().replace(/\/+$/,'').toLowerCase()===String(b||'').trim().replace(/\/+$/,'').toLowerCase();
+function _linkEls(scope){
+  const m=LINK_IDS[scope]||LINK_IDS.m;
+  return{platform:document.getElementById(m.platform),ig:document.getElementById(m.ig),
+    yt:document.getElementById(m.yt),link:document.getElementById(m.link),badge:document.getElementById(m.badge)};
+}
+// 지금 플랫폼 기준으로 만들어질 링크. 플랫폼이나 ID가 없으면 빈 문자열
+function _autoLinkFor(scope){
+  const e=_linkEls(scope);
+  if(!e.platform)return'';
+  const p=e.platform.value;
+  const el=_platformKind(p)==='yt'?e.yt:e.ig;
+  return buildChannelLink(p,el&&el.value||'');
+}
+// 지금 링크 칸을 우리가 채워도 되는가 — 비어 있거나, 우리가 쓴 값이거나, 자동값과 같으면 OK
+function _linkIsOurs(scope){
+  const cur=String((_linkEls(scope).link||{}).value||'').trim();
+  if(!cur)return true;
+  if(_lastAutoLink[scope]&&_sameUrl(cur,_lastAutoLink[scope]))return true;
+  const auto=_autoLinkFor(scope);
+  return !!auto&&_sameUrl(cur,auto);
+}
+function _refreshLinkAutoBadge(scope){
+  const e=_linkEls(scope);
+  if(!e.badge)return;
+  const auto=_autoLinkFor(scope);
+  const manual=!_linkIsOurs(scope);
+  e.badge.textContent=manual?'수동':'자동';
+  e.badge.title=manual
+    ?(auto?'직접 수정한 링크입니다. 누르면 ID 기준으로 다시 만듭니다.':'직접 입력한 링크입니다(플랫폼 ID가 없어 자동 생성할 수 없습니다).')
+    :'플랫폼 ID로 자동 생성되는 링크입니다';
+  e.badge.disabled=manual&&!auto;
+}
+// 뱃지 클릭 — 직접 고친 링크를 다시 자동값으로 되돌린다
+function relinkChannel(scope){
+  const auto=_autoLinkFor(scope);
+  if(!auto){showToast('플랫폼과 ID를 먼저 입력해주세요');return;}
+  const e=_linkEls(scope);
+  if(e.link)e.link.value=auto;
+  _lastAutoLink[scope]=auto;
+  _refreshLinkAutoBadge(scope);
+}
+/* 모달·폼을 열 때 호출 — 지금 링크가 자동값인지 기억해 두고, ID는 있는데 링크가 비었으면 채운다. */
+function _initLinkAuto(scope){
+  const e=_linkEls(scope);
+  const auto=_autoLinkFor(scope);
+  const cur=String((e.link||{}).value||'').trim();
+  if(auto&&!cur&&e.link)e.link.value=auto;           // ID만 있고 링크가 비어 있던 기존 건
+  _lastAutoLink[scope]=(auto&&(!cur||_sameUrl(cur,auto)))?auto:'';
+  _refreshLinkAutoBadge(scope);
+}
+/* ID 칸 입력 */
+function _onChannelIdInput(scope,which){
+  const e=_linkEls(scope);
+  const p0=e.platform?e.platform.value:'';
+  // which가 없으면(플랫폼을 바꾼 경우 등) 지금 플랫폼에 해당하는 칸을 본다
+  const side=which||_platformKind(p0)||'ig';
+  const el=side==='yt'?e.yt:e.ig;
   if(el)el.classList.remove('chf-auto'); // 사용자가 직접 손댄 순간 '자동 채움' 표시는 떼어낸다
-  const p=document.getElementById('mPlatform').value;
-  const platformMatches=(which==='yt'&&p==='유튜브')||(which==='ig'&&p==='인스타그램');
-  if(!platformMatches)return;
-  const id=(el&&el.value||'').trim();
-  if(id)document.getElementById('mLinkInput').value=buildChannelLink(p,id);
+  const p=p0;
+  const kind=_platformKind(p);
+  // 주소를 통째로 붙여넣은 경우 — ID만 남기고 그 주소를 링크로 쓴다
+  if(el){
+    const parsed=_parseChannelIdInput(p,el.value);
+    if(parsed.url){
+      if(parsed.id)el.value=parsed.id;
+      if(e.link)e.link.value=parsed.url;
+      _lastAutoLink[scope]=parsed.url;
+      _refreshLinkAutoBadge(scope);
+      return;
+    }
+  }
+  // 지금 플랫폼과 다른 쪽 ID를 건드린 경우엔 링크를 바꾸지 않는다
+  if(which&&kind&&which!==kind){_refreshLinkAutoBadge(scope);return;}
+  const auto=_autoLinkFor(scope);
+  if(auto&&_linkIsOurs(scope)){
+    if(e.link)e.link.value=auto;
+    _lastAutoLink[scope]=auto;
+  }
+  _refreshLinkAutoBadge(scope);
 }
+function mOnChannelIdChange(which){_onChannelIdInput('m',which);}
+function onChannelIdChange(which){_onChannelIdInput('f',which);}
 // 링크를 직접 붙여넣거나 수정했을 때, 인식 가능한 형식이면 인스타그램/유튜브 ID도 같이 맞춰줌
 // (반대 방향은 mOnChannelIdChange가 이미 처리) — 인식 못 하는 링크는 ID를 건드리지 않음
-function mOnLinkInputChange(){
-  const p=document.getElementById('mPlatform').value;
-  const link=document.getElementById('mLinkInput').value.trim();
-  if(!link)return;
+function _onLinkInputChange(scope){
+  const e=_linkEls(scope);
+  const p=e.platform?e.platform.value:'';
+  const link=String((e.link||{}).value||'').trim();
+  if(!link){_refreshLinkAutoBadge(scope);return;}
   const id=_extractChannelIdFromLink(p,link);
-  if(!id)return;
-  const target=document.getElementById(p==='유튜브'?'mYtId':'mIgId');
-  if(target){target.value=id;target.classList.remove('chf-auto');}
+  if(id){
+    const target=_platformKind(p)==='yt'?e.yt:e.ig;
+    if(target){target.value=id;target.classList.remove('chf-auto');}
+  }
+  _refreshLinkAutoBadge(scope);
 }
+function mOnLinkInputChange(){_onLinkInputChange('m');}
+function fOnLinkInputChange(){_onLinkInputChange('f');}
 function mOnDateChange(){
   const s=document.getElementById('mStart').value;
   const e=document.getElementById('mEnd').value;
@@ -7100,6 +7214,7 @@ function openDealForm(){
   _refreshTierAutoLine('fInfluencer','fTier','fTierAuto');
   fRecalcComposition();
   document.getElementById('fCopyNotice').style.display='none';
+  _initLinkAuto('f'); // 새 폼이므로 자동/수동 상태도 초기화
   document.getElementById('dealOv').classList.add('open');
   _setHash('new-deal');
 }
@@ -7119,6 +7234,7 @@ function _reopenDealFormWith(d){
   set('fIgId',d.igId||''); set('fYtId',d.ytId||'');
   set('fStart',d.start||''); set('fEnd',d.end||''); if(typeof onDateChange==='function')onDateChange();
   set('fVendor',d.vendor||''); set('fLink',d.link||''); set('fMarketingLink',d.marketingLink||'');
+  _initLinkAuto('f');
   set('fFormat',d.format||''); set('fComposition',d.composition||'');
   set('fTargetQty',d.targetQty!=null?d.targetQty:'');
   set('fExtraQty',d.extraQty!=null?d.extraQty:'');
@@ -7189,13 +7305,14 @@ function copyDealToNew(){
   // ID 열이 생기기 전에 등록된 건은 ID가 비어 있고 링크만 있다 — 링크에서 뽑아 해당 칸을 채움
   const _cpId=_extractChannelIdFromLink(d.platform,d.link);
   if(_cpId){
-    const _cpEl=document.getElementById(d.platform==='유튜브'?'fYtId':'fIgId');
+    const _cpEl=document.getElementById(_platformKind(d.platform)==='yt'?'fYtId':'fIgId');
     if(_cpEl&&!_cpEl.value)_cpEl.value=_cpId;
   }
   document.getElementById('fVendor').value=d.vendor||'';
   document.getElementById('fTier').value=manualTierOf(d); // 복사한 건의 수동 지정을 그대로 이어받음(같은 채널이므로)
   _setFollowerInput('fFollowers',d.followers!=null?d.followers:null); // 같은 채널이라 직전 값이 출발점으로 적절
   document.getElementById('fLink').value=d.link||'';
+  _initLinkAuto('f');
   document.getElementById('fMarketingLink').value=d.marketingLink||'';
 
   // openDealForm()이 오늘 날짜로 채워둔 시작일/마감일을 다시 비움 — 새 건이므로 새로 지정해야 함
@@ -7249,15 +7366,7 @@ function onPlatformChange(){
   _syncPlatformIdMarks('f',p);
   onChannelIdChange();
 }
-/* 어느 쪽 ID를 건드렸는지(which)와 이 건의 플랫폼이 맞을 때만 링크를 다시 만든다 —
-   인스타 건에서 유튜브 ID를 적었다고 링크가 유튜브로 바뀌면 안 된다. */
-function onChannelIdChange(which){
-  const p=document.getElementById('fPlatform').value;
-  if(which&&!((which==='yt'&&p==='유튜브')||(which==='ig'&&p==='인스타그램')))return;
-  const el=document.getElementById(p==='유튜브'?'fYtId':'fIgId');
-  const id=el?el.value:'';
-  if(id.trim())document.getElementById('fLink').value=buildChannelLink(p,id);
-}
+
 // 등록 폼에서 지금 선택된 플랫폼에 해당하는 ID 값(링크 생성·검증용)
 function _formPlatformId(){
   const p=document.getElementById('fPlatform').value;

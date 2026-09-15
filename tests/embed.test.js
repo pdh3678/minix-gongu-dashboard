@@ -305,7 +305,8 @@ console.log('\n[17] DOM 참조 무결성 — 코드가 부르는 id가 실제로
 
   // 이번 회귀의 구체적 고정 — 교체 전 id가 코드 어디에도 남아 있으면 안 된다
   const codeOnly = scripts.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-  check('제거된 mChannelId를 코드가 더 이상 참조하지 않음', codeOnly.indexOf('mChannelId') < 0);
+  // 단어 경계로 본다 — 부분 문자열로 세면 다른 식별자(예: ...ChannelIdInput)에 걸려 오탐이 난다
+  check('제거된 mChannelId를 코드가 더 이상 참조하지 않음', !/mChannelId/.test(codeOnly));
   check('새 입력칸 mIgId/mYtId가 마크업에 존재',
     html.indexOf('id="mIgId"') > 0 && html.indexOf('id="mYtId"') > 0);
 }
