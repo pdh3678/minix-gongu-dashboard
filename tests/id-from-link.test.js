@@ -271,6 +271,33 @@ console.log('\n[9] 프론트 — 채널 정보 미입력 목록');
   check('탭 전환·렌더가 예외 없이 끝난다', threw === null, threw && threw.message);
 }
 
+console.log('\n[10] 같은 채널에 링크가 둘 — 아래쪽(최근) 행이 이긴다');
+{
+  /* 운영 시트에서 실제로 나온 모양(2026-09-16, 리빙천재): 한 채널명 아래 서로 다른 인스타 링크가
+     둘이고 시트에는 사람이 넣은 ID가 없다. 계정명을 바꾼 경우가 흔해 최근 행을 채택하되,
+     어느 쪽이 채택됐는지가 로그만 보고 분명해야 한다. */
+  const w = HEADERS.length;
+  const row = o => { const r = new Array(w).fill(''); Object.keys(o).forEach(k => { r[k] = o[k]; }); return r; };
+  const g = [new Array(w).fill(''), HEADERS.slice()];
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'P1', [C.channel]:'리빙천재', [C.dealId]:'L1',
+    [C.link]:'https://www.instagram.com/ani__iq77/' }));   // 3행: 예전 계정
+  g.push(row({ [C.brand]:'미닉스', [C.product]:'P2', [C.channel]:'리빙천재', [C.dealId]:'L2',
+    [C.link]:'https://www.instagram.com/ri_zz_i_/' }));    // 4행: 최근 계정
+  const sheet = makeSheet('실적통합', g);
+  const ctx = load(sheet);
+  const r = ctx._extractIdsFromLinks(false);
+
+  check('두 행 모두 아래쪽 값으로 통일',
+    cell(sheet, 3, C.igId) === 'ri_zz_i_' && cell(sheet, 4, C.igId) === 'ri_zz_i_',
+    [cell(sheet, 3, C.igId), cell(sheet, 4, C.igId)]);
+  check('충돌 1건으로 보고', r.conflicts.length === 1, r.conflicts);
+  check('  밀려난 값과 채택된 값이 둘 다 로그에 남는다',
+    r.conflicts[0].indexOf('ani__iq77') > 0 && r.conflicts[0].indexOf('ri_zz_i_') > 0, r.conflicts[0]);
+  check('  어느 쪽이 채택됐는지 문구로 드러난다',
+    r.conflicts[0].indexOf('아래쪽 행 우선') > 0 && r.conflicts[0].indexOf('4행') > 0, r.conflicts[0]);
+  check('충돌이어도 채우는 건 채운다', r.filled === 2, r.filled);
+}
+
 console.log('\n' + '─'.repeat(52));
 console.log('통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);

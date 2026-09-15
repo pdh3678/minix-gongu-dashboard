@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'idlink-2026-09-16-01';
+var SCRIPT_VERSION = 'idlink-2026-09-16-02';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -1443,7 +1443,12 @@ function _extractIdsFromLinks(dryRun) {
     var got = _extractIdFromLinkGas(link);
     if (!got.kind) { skipped.push({ sheetRow: first + i, channel: ch, link: link, reason: got.reason }); continue; }
     var prev = got.kind === 'ig' ? c.igLink : c.ytLink;
-    if (prev && prev !== got.id) c.conflicts.push(got.kind + ' 링크끼리: ' + prev + ' vs ' + got.id);
+    // 같은 채널에 서로 다른 링크가 있으면 아래쪽(= 최근) 행이 이긴다. 어느 쪽이 채택됐는지가
+    // 로그만 보고 분명해야 한다 — "A vs B"로만 적으면 사람이 순서를 외워야 한다
+    if (prev && prev !== got.id) {
+      c.conflicts.push(got.kind + ' 링크끼리 어긋남: ' + prev + ' → ' + got.id +
+        '(' + (first + i) + '행) 채택 — 아래쪽 행 우선');
+    }
     if (got.kind === 'ig') c.igLink = got.id; else c.ytLink = got.id;
   }
 
@@ -1491,7 +1496,9 @@ function _extractIdsFromLinks(dryRun) {
   }
   if (skipped.length > 40) Logger.log('  [건너뜀] … 외 ' + (skipped.length - 40) + '개');
   if (conflicts.length) {
-    Logger.log('[ID 역추출] 값이 어긋난 채널 ' + conflicts.length + '개 — 시트 값을 그대로 두었습니다');
+    // 충돌은 두 종류다(시트 vs 링크 / 링크 vs 링크). 앞엣것만 말하면 뒤엣것을 볼 때 문구가 거짓이 된다
+    Logger.log('[ID 역추출] 값이 어긋난 채널 ' + conflicts.length +
+      '개 — 시트에 값이 있으면 그 값을, 없으면 아래쪽(최근) 행의 링크값을 썼습니다');
     for (var v = 0; v < conflicts.length; v++) Logger.log('  ! ' + conflicts[v]);
   }
 
