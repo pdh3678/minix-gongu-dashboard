@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'chfields-2026-09-15-09';
+var SCRIPT_VERSION = 'chlayout-2026-09-15-12';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -2129,6 +2129,9 @@ function _addDeal(ss, data) {
   common[COL.firstComeQty]  = data.firstComeQty || '';
   common[COL.note2]         = data.note2 || '';
   common[COL.tier]          = _normalizeTier(data.tier);
+  // 채널 단위 속성(플랫폼 ID) — 열이 없으면(-1) 건너뛴다. 없는 열에 쓰면 A열을 덮어쓴다.
+  if (COL.igId >= 0) common[COL.igId] = _normalizeChannelFieldValue('igId', data.igId);
+  if (COL.ytId >= 0) common[COL.ytId] = _normalizeChannelFieldValue('ytId', data.ytId);
   // 등급 결과 열(G·H)도 등록과 동시에 기록 — 신규 건이라도 채널 등급은 프론트가 이미 알고 있어서
   // payload에 실려온다. 예전엔 등록 후 재조회 → render() → writeTiers로 왕복이 두 번 더 있었다.
   if (data.tiers) {

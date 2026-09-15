@@ -340,5 +340,49 @@ console.log('\n[18] 공구건 상세 모달이 열리는 경로가 끊기지 않
   ctx.openM('D1', null);
   check('잠금 해제 후 다시 열림', opened && opened.dealId === 'D1');
 }
+
+console.log('\n[19] 채널 정보 레이아웃 — 3열 그리드 3행');
+{
+  const chSec = html.slice(html.indexOf('<div class="f-sec has-hint">채널 정보'));
+  const modalSec = chSec.slice(0, chSec.indexOf('</div>\n        <div class="fg fg-3"', 200) + 4000);
+  // CSS 정의는 빼고 마크업 사용만 센다 — 모달 + 등록 폼 두 곳
+  const hintUses = (html.match(/class="f-sec-hint"/g) || []).length;
+  check('안내 문구가 섹션마다 한 번씩(모달+등록 폼)', hintUses === 2, hintUses);
+  check('안내 문구 내용', html.indexOf('플랫폼 ID·팔로워 수는 같은 채널의 다른 공구건에도 함께 반영됩니다') > 0);
+  check('필드별 "채널 공통" 뱃지 제거', html.indexOf('채널 공통') < 0);
+  check('"기준 ?" 뱃지 제거', html.indexOf('기준 ?') < 0);
+  check('5열 그리드가 남아 있지 않음', html.indexOf('class="fg fg-5"') < 0);
+  check('4열 그리드도 3열로 통일', html.indexOf('class="fg fg-4"') < 0);
+  check('채널명은 2칸 폭', /class="f-grp span2">\s*<label class="f-lbl">채널명/.test(html));
+  check('등급 상태 박스가 2칸 폭으로 그리드 안에', /class="f-grp span2">\s*<label class="f-lbl">등급 상태/.test(html));
+  check('span2 CSS 정의', html.indexOf('.fg .span2{grid-column:span 2}') > 0);
+  check('라벨 줄바꿈 금지 CSS', html.indexOf('.f-lbl{white-space:nowrap}') > 0);
+  check('모달 본문 스크롤 유지', /\.sch-modal-wide\{[^}]*max-height:88vh;overflow-y:auto/.test(html));
+  // 모달과 등록 폼 둘 다 같은 구조여야 한다
+  ['mIgId','mYtId','mFollowers','mTier','mTierAuto','fIgId','fYtId','fFollowers','fTier','fTierAuto']
+    .forEach(id => check(id + ' 존재', html.indexOf('id="' + id + '"') > 0));
+}
+
+console.log('\n[20] 플랫폼에 따라 필수(*) 표시가 옮겨감');
+{
+  const { ctx } = loadFrontend(PROJ, null, { search: '', runHeadScripts: true });
+  const els = {};
+  ctx.document.getElementById = id => (els[id] = els[id] || { style: {}, value: '', placeholder: '', classList: { add(){}, remove(){}, contains: () => false } });
+  const shown = id => els[id] && els[id].style.display !== 'none';
+
+  ctx._syncPlatformIdMarks('m', '인스타그램');
+  check('인스타 선택 → IG 필수', shown('mIgReq') && !shown('mIgOpt'), [els.mIgReq.style.display, els.mIgOpt.style.display]);
+  check('인스타 선택 → YT 선택', !shown('mYtReq') && shown('mYtOpt'));
+
+  ctx._syncPlatformIdMarks('m', '유튜브');
+  check('유튜브로 바꾸면 필수가 YT로 이동', shown('mYtReq') && !shown('mIgReq'), [els.mYtReq.style.display, els.mIgReq.style.display]);
+  check('유튜브 선택 → IG는 선택 표시', shown('mIgOpt') && !shown('mYtOpt'));
+
+  ctx._syncPlatformIdMarks('m', '기타');
+  check('기타/미선택이면 둘 다 선택', !shown('mIgReq') && !shown('mYtReq') && shown('mIgOpt') && shown('mYtOpt'));
+
+  ctx._syncPlatformIdMarks('f', '유튜브');
+  check('등록 폼도 같은 규칙', shown('fYtReq') && !shown('fIgReq'));
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);
