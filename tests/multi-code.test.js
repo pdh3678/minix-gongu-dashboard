@@ -18,6 +18,7 @@ const HEADERS = require(path.join(__dirname, 'lib', 'real-headers.js'));
 const C = { brand: 1, product: 2, vendor: 3, channel: 4, platform: 5, salesTier: 6, followerTier: 7,
   code: 9, salePrice: 10, qty: 11, revenue: 12, commission: 13, year: 14,
   startMD: 15, endMD: 16, status: 17, targetQty: 23, note: 25, views: 26,
+  igId: 39, ytId: 40, link: 41,
   dealId: 44, codeSeq: 45, tier: 54, followers: 55 };
 
 function mkRow(o) { const r = new Array(HEADERS.length).fill(''); Object.keys(o).forEach(k => { r[k] = o[k]; }); return r; }
@@ -294,6 +295,73 @@ console.log('\n[10] dealId 통일 — 같은 건이 아니면 건드리지 않�
   check('건너뛴 이유 보고', res.skipped[0].reason.indexOf('채널·제품·기간이 다릅니다') >= 0, res.skipped[0]);
   check('시트를 바꾸지 않음', sheet._grid[3][C.dealId] === 'D-B', sheet._grid[3][C.dealId]);
   check('범위 밖 행도 건너뜀', ctx.applyUnifyDealIds([[3, 999]]).skipped.length === 1);
+}
+
+
+console.log('\n[14] 인플루언서 링크 일괄 채움');
+{
+  const g = [new Array(HEADERS.length).fill(''), HEADERS.slice()];
+  const row = o => mkRow(Object.assign({ [C.brand]: '미닉스', [C.product]: '더 플렌더',
+    [C.year]: 2026, [C.startMD]: '2026-04-01', [C.endMD]: '2026-04-03', [C.codeSeq]: 1 }, o));
+  g.push(row({ [C.channel]: '밈채',   [C.platform]: '인스타그램', [C.igId]: 'meme.ch', [C.dealId]: 'D1' }));
+  g.push(row({ [C.channel]: '브론테', [C.platform]: '유튜브',     [C.ytId]: 'bronte',  [C.dealId]: 'D2' }));
+  g.push(row({ [C.channel]: '표기흔들', [C.platform]: 'IG',       [C.igId]: 'wobbly',  [C.dealId]: 'D3' }));
+  // 이미 링크가 있는 행 — 건드리면 안 된다
+  g.push(row({ [C.channel]: '기존링크', [C.platform]: '인스타그램', [C.igId]: 'has.link',
+    [C.link]: 'https://linktr.ee/custom', [C.dealId]: 'D4' }));
+  // ID가 없는 행 — 만들 수 없다
+  g.push(row({ [C.channel]: 'ID없음', [C.platform]: '인스타그램', [C.dealId]: 'D5' }));
+  // 플랫폼이 비었지만 ID가 한쪽에만 있는 행
+  g.push(row({ [C.channel]: '플랫폼없음', [C.platform]: '', [C.igId]: 'onlyig', [C.dealId]: 'D6' }));
+  const sheet = makeSheet('실적통합', g);
+  const ctx = load(sheet);
+
+  const pv = ctx.previewInfluencerLinks();
+  check('미리보기 플래그', pv.dryRun === true);
+  check('대상 4행', pv.count === 4, pv.count);
+  check('샘플 5개까지 보고', pv.sample.length === 4, pv.sample.length);
+  check('미리보기는 쓰지 않음', sheet._calls.filter(c => c.op === 'setValues').length === 0);
+  check('미리보기 후 시트 그대로', !sheet._grid[2][C.link], sheet._grid[2][C.link]);
+
+  const res = ctx.fillInfluencerLinks();
+  check('4행 기록', res.count === 4, res.count);
+  check('인스타 링크', sheet._grid[2][C.link] === 'https://www.instagram.com/meme.ch', sheet._grid[2][C.link]);
+  check('유튜브 링크', sheet._grid[3][C.link] === 'https://www.youtube.com/@bronte', sheet._grid[3][C.link]);
+  check('플랫폼 표기가 달라도 생성', sheet._grid[4][C.link] === 'https://www.instagram.com/wobbly', sheet._grid[4][C.link]);
+  check('기존 링크는 그대로', sheet._grid[5][C.link] === 'https://linktr.ee/custom', sheet._grid[5][C.link]);
+  check('ID 없는 행은 비어 있음', !sheet._grid[6][C.link], sheet._grid[6][C.link]);
+  check('플랫폼 없어도 ID 하나면 생성', sheet._grid[7][C.link] === 'https://www.instagram.com/onlyig', sheet._grid[7][C.link]);
+  check('한 번의 setValues로', sheet._calls.filter(c => c.op === 'setValues' && c.c === C.link + 1).length === 1);
+
+  // 재실행하면 더 채울 것이 없다
+  check('재실행 시 대상 0', ctx.fillInfluencerLinks().count === 0);
+}
+
+console.log('\n[15] 링크도 채널 단위로 전파된다');
+{
+  const g = [new Array(HEADERS.length).fill(''), HEADERS.slice()];
+  const row = o => mkRow(Object.assign({ [C.brand]: '미닉스', [C.product]: '더 플렌더',
+    [C.channel]: '같은채널', [C.platform]: '인스타그램', [C.year]: 2026,
+    [C.startMD]: '2026-04-01', [C.endMD]: '2026-04-03', [C.codeSeq]: 1 }, o));
+  g.push(row({ [C.dealId]: 'A', [C.igId]: 'same.ch', [C.link]: '' }));
+  g.push(row({ [C.dealId]: 'B', [C.igId]: '', [C.link]: '' }));
+  g.push(row({ [C.dealId]: 'C', [C.channel]: '다른채널', [C.link]: '' }));
+  const sheet = makeSheet('실적통합', g);
+  const ctx = load(sheet);
+
+  check('전파 대상 목록에 link 포함', ctx.CHANNEL_FIELD_KEYS.indexOf('link') >= 0, ctx.CHANNEL_FIELD_KEYS);
+  const r = act(ctx, 'updateDeal', {
+    dealId: 'A', changes: {},
+    channelFields: { channel: '같은채널', fields: { link: 'https://www.instagram.com/same.ch' }, mode: 'fillEmpty' }
+  });
+  check('저장 성공', r.success === true, r);
+  check('같은 채널 2행에 반영',
+    sheet._grid[2][C.link] === 'https://www.instagram.com/same.ch' &&
+    sheet._grid[3][C.link] === 'https://www.instagram.com/same.ch',
+    [sheet._grid[2][C.link], sheet._grid[3][C.link]]);
+  check('다른 채널은 그대로', !sheet._grid[4][C.link], sheet._grid[4][C.link]);
+  check('링크에서 @를 떼지 않음', ctx._normalizeChannelFieldValue('link', 'https://x.com/@abc') === 'https://x.com/@abc',
+    ctx._normalizeChannelFieldValue('link', 'https://x.com/@abc'));
 }
 
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);

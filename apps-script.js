@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'chlink-2026-09-15-20';
+var SCRIPT_VERSION = 'inflink-2026-09-15-21';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -104,7 +104,8 @@ var COL_HEADER_SPECS = [
    같은 채널명(앞뒤 공백만 제거한 완전 일치)의 모든 행에 같은 값이 유지돼야 하며,
    전파·자동 채움·불일치 검사가 전부 이 목록 하나를 기준으로 돈다.
    col이 -1(시트에 열 없음)인 필드는 모든 경로에서 자동으로 건너뛴다. */
-var CHANNEL_FIELD_KEYS = ['igId', 'ytId', 'followers'];
+// link(인플루언서 링크)도 채널 단위 속성이다 — 같은 채널이면 프로필 주소가 같다
+var CHANNEL_FIELD_KEYS = ['igId', 'ytId', 'followers', 'link'];
 function _channelFieldCols() {
   var out = [];
   for (var i = 0; i < CHANNEL_FIELD_KEYS.length; i++) {
@@ -119,6 +120,8 @@ function _normalizeChannelFieldValue(key, v) {
     var n = _normalizeFollowers(v);
     return n == null ? '' : n;
   }
+  // 링크는 주소 그대로 — @를 떼면 안 된다(ID 규칙을 주소에 적용하면 값이 망가진다)
+  if (key === 'link') return String(v == null ? '' : v).trim();
   // 플랫폼 ID: 앞의 @와 공백만 정리(대소문자는 플랫폼에 따라 의미가 있으므로 건드리지 않음)
   return String(v == null ? '' : v).trim().replace(/^@+/, '');
 }
@@ -1250,6 +1253,86 @@ function _unifyDealIds(groups, dryRun) {
     Logger.log('[dealId 통일] 기록 완료 — 대시보드를 새로고침하면 각 묶음이 한 건으로 보입니다');
   }
   return { dryRun: !!dryRun, groups: ok, edits: edits, skipped: skipped };
+}
+
+
+/* ── 인플루언서 링크 일괄 채움 (2026-09-15) ────────────────────────────────────
+   ID(인스타/유튜브)는 있는데 링크 열이 빈 행에, 대시보드와 같은 규칙으로 프로필 주소를 만들어
+   기록한다. 이미 링크가 있는 행은 건드리지 않는다(사람이 넣은 값이 우선).
+
+   대시보드는 링크가 비어 있어도 화면에서 즉석 생성해 걸어주므로 이 함수는 필수가 아니다.
+   시트를 직접 보는 사람에게도 링크가 보이게 하려는 1회성 정리다.
+
+   먼저 previewInfluencerLinks()로 대상 행 수와 샘플을 확인한 뒤 fillInfluencerLinks(). */
+function previewInfluencerLinks() { return _fillInfluencerLinks(true); }
+function fillInfluencerLinks()    { return _fillInfluencerLinks(false); }
+
+// 플랫폼 표기 흔들림 흡수 — 프론트 _platformKind와 같은 기준
+function _platformKindGas(platform) {
+  var t = String(platform || '').trim().toLowerCase().replace(/\s+/g, '');
+  if (!t) return '';
+  if (t.indexOf('인스타') >= 0 || t.indexOf('instagram') >= 0 || t === 'ig' ||
+      t.indexOf('릴스') >= 0 || t.indexOf('reels') >= 0) return 'ig';
+  if (t.indexOf('유튜브') >= 0 || t.indexOf('유툽') >= 0 || t.indexOf('youtube') >= 0 || t === 'yt' ||
+      t.indexOf('쇼츠') >= 0 || t.indexOf('shorts') >= 0) return 'yt';
+  return '';
+}
+function _buildChannelLinkGas(platform, igId, ytId) {
+  var kind = _platformKindGas(platform);
+  var ig = String(igId || '').trim().replace(/^@+/, '');
+  var yt = String(ytId || '').trim().replace(/^@+/, '');
+  if (kind === 'ig' && ig) return 'https://www.instagram.com/' + ig;
+  if (kind === 'yt' && yt) return 'https://www.youtube.com/@' + yt;
+  // 플랫폼 표기가 없거나 못 알아볼 때 — ID가 한쪽에만 있으면 그걸로 만든다
+  if (!kind) {
+    if (ig && !yt) return 'https://www.instagram.com/' + ig;
+    if (yt && !ig) return 'https://www.youtube.com/@' + yt;
+  }
+  return '';
+}
+
+function _fillInfluencerLinks(dryRun) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = _mainSheet(ss);
+  if (!sheet) { Logger.log('[링크 채움] 실적통합 시트를 찾을 수 없습니다'); return null; }
+  _resolveCols(sheet);
+  if (COL.link < 0) { Logger.log("[링크 채움] '인플루언서 링크' 열을 찾을 수 없습니다"); return null; }
+  if (COL.igId < 0 && COL.ytId < 0) { Logger.log('[링크 채움] 인스타/유튜브 ID 열이 없습니다'); return null; }
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastRow <= DATA_START_ROW) { Logger.log('[링크 채움] 데이터 행이 없습니다'); return null; }
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
+  var linkVals = sheet.getRange(first, COL.link + 1, n, 1).getValues();
+
+  var targets = [];
+  for (var i = 0; i < n; i++) {
+    var row = vals[i];
+    if (!String(row[COL.product] || '').trim()) continue;
+    if (!MINIX_ALIASES[String(row[COL.brand] || '').trim()]) continue;
+    if (String(linkVals[i][0] || '').trim()) continue;              // 이미 링크가 있으면 손대지 않는다
+    var url = _buildChannelLinkGas(row[COL.platform],
+      COL.igId >= 0 ? row[COL.igId] : '', COL.ytId >= 0 ? row[COL.ytId] : '');
+    if (!url) continue;
+    targets.push({ idx: i, sheetRow: first + i, channel: String(row[COL.channel] || '').trim(), url: url });
+  }
+
+  Logger.log('[링크 채움] ' + (dryRun ? '미리보기' : '실행') + ' — 대상 ' + targets.length + '행' +
+    ' (ID는 있는데 링크가 빈 행)');
+  for (var t = 0; t < Math.min(5, targets.length); t++) {
+    Logger.log('  · ' + targets[t].sheetRow + '행  ' + targets[t].channel + '  → ' + targets[t].url);
+  }
+  if (targets.length > 5) Logger.log('  · … 외 ' + (targets.length - 5) + '행');
+  if (!targets.length) Logger.log('  (채울 행이 없습니다)');
+
+  if (!dryRun && targets.length) {
+    for (var w = 0; w < targets.length; w++) linkVals[targets[w].idx][0] = targets[w].url;
+    sheet.getRange(first, COL.link + 1, n, 1).setValues(linkVals);
+    SpreadsheetApp.flush();
+    _invalidateDashboardCache();
+    Logger.log('[링크 채움] ' + targets.length + '행 기록 완료');
+  }
+  return { dryRun: !!dryRun, count: targets.length, sample: targets.slice(0, 5) };
 }
 
 

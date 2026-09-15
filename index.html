@@ -1631,7 +1631,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-chlink-2026-09-15-20';
+const DASHBOARD_VERSION='dash-inflink-2026-09-15-21';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1644,7 +1644,7 @@ if(IS_EMBED)console.log('[dashboard] 임베드 모드 — 사이드바/헤더 �
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='chlink-2026-09-15-20';
+const REQUIRED_SCRIPT_VERSION='inflink-2026-09-15-21';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2187,6 +2187,7 @@ function _chFieldText(key,v){
 function _chFieldNorm(key,v){
   if(v==null||v==='')return '';
   if(key==='followers'){const n=Number(String(v).replace(/[,\s]/g,''));return isFinite(n)&&n>=0?String(Math.round(n)):'';}
+  if(key==='link')return String(v).trim(); // 주소에서 @를 떼면 값이 망가진다
   return String(v).trim().replace(/^@+/,'');
 }
 
@@ -3201,7 +3202,7 @@ function renderDashList(){
   document.getElementById('dashSelBody').innerHTML=list.length?list.map(d=>`
     <tr>
       <td>${productBadge(d.product)}</td>
-      <td>${d.ch}</td>
+      <td>${chCell(d)}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
       <td>${d.views!=null?d.views.toFixed(1)+'만':'—'}</td>
       <td>${d.rev!=null?won(d.rev):'—'}</td>
@@ -4373,7 +4374,7 @@ function renderDashChannelAnalytics(){
   const trendIcon={up:'▲',down:'▼',flat:'–'};
   body.innerHTML=shown.map(r=>`
     <tr>
-      <td>${r.ch}${_chMismatchBadge(r.ch)}</td>
+      <td>${chNameHtml(r.ch,getChannelLinkByName(r.ch),_chMismatchBadge(r.ch))}</td>
       <td class="tier-help" title="${_escAttr(tierEvidence(r.tierStat,r.scopedDone))}">${tierBadgeWithFlags(r.tierStat,true)}${tierDeltaHtml(r.tierStat)}</td>
       <td class="tier-help" title="${_escAttr(followerEvidence(r.tierStat))}">${tierBadge(r.followerTier)}</td>
       <td>${gapBadge(r.gap)}</td>
@@ -4968,15 +4969,48 @@ function formatBadge(f){
   return`<span class="bp bp-fmt" style="background:${c.bg};color:${c.fg}">${f}</span>`;
 }
 
+/* ── 인플루언서 프로필 링크 (표시용) ────────────────────────────────────────────
+   시트(인플루언서 링크 열)에 값이 있으면 그걸 쓰고, 없으면 플랫폼+ID로 모달과 **같은 규칙**으로
+   즉석 생성한다. 예전엔 표가 시트 값만 보고 링크를 걸어서, 자동 생성은 모달에서 입력할 때만
+   일어나는 기존 건들(시트 열이 빈 건)은 이름을 눌러도 아무 일도 없었다.
+   저장된 링크와 즉석 생성 링크는 화면에서 구분하지 않는다 — 사용자에겐 같은 프로필이다. */
+function getInfluencerLink(d){
+  if(!d)return null;
+  const saved=normalizeUrl(d.link)||normalizeUrl(d.profileLink);
+  if(saved)return saved;
+  const made=buildChannelLink(d.platform,_platformKind(d.platform)==='yt'?d.ytId:d.igId);
+  if(made)return made;
+  // 플랫폼 표기가 아예 없더라도 ID가 한쪽에만 있으면 그걸로 만든다(표기 누락이 흔하다)
+  if(d.igId&&!d.ytId)return buildChannelLink('인스타그램',d.igId)||null;
+  if(d.ytId&&!d.igId)return buildChannelLink('유튜브',d.ytId)||null;
+  return null;
+}
+/* 채널 단위(집계 행)에서 쓰는 버전 — 그 채널의 공구건 중 링크를 만들 수 있는 최근 건을 따른다. */
+function getChannelLinkByName(ch){
+  const key=String(ch||'').trim();
+  if(!key)return null;
+  const rows=DATA.filter(d=>String(d.ch||d.influencer||'').trim()===key)
+    .sort((a,b)=>String(b.start||'').localeCompare(String(a.start||'')));
+  for(let i=0;i<rows.length;i++){const u=getInfluencerLink(rows[i]);if(u)return u;}
+  return null;
+}
+// 채널명 셀 — 링크가 있으면 새 탭으로 열리는 이름, 없으면 그냥 이름
+function chNameHtml(name,url,extra){
+  const txt=String(name==null?'':name);
+  if(!url)return txt+(extra||'');
+  return`<a href="${_escAttr(url)}" target="_blank" rel="noopener" class="ch-name-link" onclick="event.stopPropagation()">${txt}</a>`+(extra||'');
+}
+function chCell(d){return chNameHtml(d&&(d.ch||d.influencer),getInfluencerLink(d));}
+
 const SALES_CELL={
   product:d=>productBadge(d.product),
   channel:d=>{
-    // 채널명 링크 우선순위: ①모달/새 공구건 폼에서 직접 입력한 채널 링크 ②브랜드별 일정 시트 매칭 프로필 링크 ③링크 없음(일반 텍스트)
-    const chLink=normalizeUrl(d.link)||normalizeUrl(d.profileLink);
-    const name=chLink?`<a href="${chLink}" target="_blank" rel="noopener" class="ch-name-link" onclick="event.stopPropagation()">${d.ch}</a>`:d.ch;
-    const idLink=normalizeUrl(d.link);
-    const idPart=d.chId?`<span class="ch-id">${idLink?`<a href="${idLink}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${d.chId.replace(/^@/,'')}</a>`:'@'+d.chId.replace(/^@/,'')}</span>`:'';
-    return name+idPart;
+    /* 링크 우선순위: ①시트에 저장된 링크 ②브랜드별 일정 시트 프로필 링크 ③플랫폼+ID로 즉석 생성.
+       ③이 없어서 "시트에 링크가 없는 채널은 이름을 눌러도 반응이 없던" 문제가 있었다. */
+    const chLink=getInfluencerLink(d);
+    const id=d.chId||(_platformKind(d.platform)==='yt'?d.ytId:d.igId)||'';
+    const idPart=id?`<span class="ch-id">${chLink?`<a href="${_escAttr(chLink)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">@${String(id).replace(/^@/,'')}</a>`:'@'+String(id).replace(/^@/,'')}</span>`:'';
+    return chNameHtml(d.ch,chLink,idPart);
   },
   vendor:d=>d.vendor?`<span class="bp bp-vendor">${d.vendor}</span>`:'<span style="color:var(--text-3)">—</span>',
   platform:d=>d.platform||'—',
@@ -5171,7 +5205,7 @@ function renderMgmtPage(){
   document.getElementById('mgmtBody').innerHTML=f.length?f.map(d=>`
     <tr>
       <td>${productBadge(d.product)}</td>
-      <td>${d.ch}</td>
+      <td>${chCell(d)}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
       <td>${won(d.s&&d.s.sale)}</td>
       <td>${bdg(_displayStatus(d))+_savingChip(d)}</td>

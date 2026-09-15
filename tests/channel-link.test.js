@@ -33,12 +33,14 @@ function makeDom(vals) {
   return { els, get: id => (els[id] = els[id] || mk(id)) };
 }
 function setup(vals) {
-  const { ctx } = loadFrontend(PROJ);
+  // SALES_CELL은 const라 컨텍스트 프로퍼티로 안 보인다 — shim으로 꺼낸다
+  const { ctx, X } = loadFrontend(PROJ, 'get SALES_CELL(){return SALES_CELL;}');
+  ctx.DATA = X.DATA; // const 선언이라 컨텍스트 프로퍼티로는 안 보인다
   const dom = makeDom(vals || {});
   ctx.document.getElementById = dom.get;
   ctx._syncPlatformIdMarks = () => {};
   ctx.showToast = () => {};
-  return { ctx, els: dom.els, get: dom.get };
+  return { ctx, X, els: dom.els, get: dom.get };
 }
 
 console.log('\n[1] URL 형식은 기존 그대로');
@@ -222,6 +224,80 @@ console.log('\n[10] 마크업 — 두 폼 모두 핸들러가 걸려 있다');
     html.slice(html.indexOf('function openModalLink')).indexOf("getElementById('mLinkInput')") < 200);
   check('안내 placeholder 복원', (html.match(/ID 입력 시 자동 생성 \(직접 수정 가능\)/g) || []).length === 2,
     (html.match(/ID 입력 시 자동 생성 \(직접 수정 가능\)/g) || []).length);
+}
+
+
+console.log('\n[11] 표 렌더 — 시트에 링크가 없어도 ID로 즉석 생성해 건다');
+{
+  const { ctx, X } = setup();
+  const DATA = ctx.DATA;
+  DATA.splice(0, DATA.length,
+    // 시트에 링크가 저장된 건
+    { dealId: 'A', ch: '저장된채널', platform: '인스타그램', igId: 'saved.id',
+      link: 'https://www.instagram.com/saved.id', start: '2026-03-01', product: 'P' },
+    // 링크는 비었지만 ID가 있는 건 — 예전엔 클릭이 안 되던 경우(밈채·브론테 같은)
+    { dealId: 'B', ch: '밈채', platform: '인스타그램', igId: 'meme.ch', link: '', start: '2026-03-02', product: 'P' },
+    { dealId: 'C', ch: '브론테', platform: '유튜브', ytId: 'bronte', link: '', start: '2026-03-03', product: 'P' },
+    // 플랫폼 표기가 흔들리는 건
+    { dealId: 'D', ch: '표기흔들', platform: 'IG', igId: 'wobbly', link: '', start: '2026-03-04', product: 'P' },
+    // 플랫폼이 비었지만 ID가 한쪽에만 있는 건
+    { dealId: 'E', ch: '플랫폼없음', platform: '', igId: 'onlyig', link: '', start: '2026-03-05', product: 'P' },
+    // 링크도 ID도 없는 건
+    { dealId: 'F', ch: '아무것도없음', platform: '인스타그램', link: '', start: '2026-03-06', product: 'P' });
+
+  check('저장된 링크를 그대로 사용',
+    ctx.getInfluencerLink(DATA[0]) === 'https://www.instagram.com/saved.id', ctx.getInfluencerLink(DATA[0]));
+  check('링크가 비면 인스타 ID로 생성',
+    ctx.getInfluencerLink(DATA[1]) === 'https://www.instagram.com/meme.ch', ctx.getInfluencerLink(DATA[1]));
+  check('유튜브도 생성',
+    ctx.getInfluencerLink(DATA[2]) === 'https://www.youtube.com/@bronte', ctx.getInfluencerLink(DATA[2]));
+  check('플랫폼 표기가 달라도 생성',
+    ctx.getInfluencerLink(DATA[3]) === 'https://www.instagram.com/wobbly', ctx.getInfluencerLink(DATA[3]));
+  check('플랫폼이 비어도 ID가 한쪽뿐이면 생성',
+    ctx.getInfluencerLink(DATA[4]) === 'https://www.instagram.com/onlyig', ctx.getInfluencerLink(DATA[4]));
+  check('둘 다 없으면 null', ctx.getInfluencerLink(DATA[5]) === null, ctx.getInfluencerLink(DATA[5]));
+  check('deal이 없으면 null', ctx.getInfluencerLink(null) === null);
+
+  // 셀 마크업
+  const cellB = ctx.chCell(DATA[1]);
+  check('링크 있으면 a 태그', cellB.indexOf('<a href="https://www.instagram.com/meme.ch"') >= 0, cellB);
+  check('새 탭으로', cellB.indexOf('target="_blank"') >= 0 && cellB.indexOf('rel="noopener"') >= 0, cellB);
+  check('행 클릭(모달)으로 새지 않음', cellB.indexOf('stopPropagation') >= 0, cellB);
+  check('채널명이 그대로 보임', cellB.indexOf('>밈채<') >= 0, cellB);
+  const cellF = ctx.chCell(DATA[5]);
+  check('링크 없으면 일반 텍스트', cellF === '아무것도없음', cellF);
+  check('저장된 링크와 즉석 생성을 구분 표시하지 않음',
+    ctx.chCell(DATA[0]).replace('saved.id', 'X').replace('저장된채널', 'C') ===
+    ctx.chCell(DATA[1]).replace('meme.ch', 'X').replace('밈채', 'C'),
+    [ctx.chCell(DATA[0]), ctx.chCell(DATA[1])]);
+
+  // 품목별 실적 테이블 셀
+  const salesCell = X.SALES_CELL.channel(DATA[1]);
+  check('품목별 실적 셀도 링크', salesCell.indexOf('instagram.com/meme.ch') >= 0, salesCell);
+  check('품목별 실적 셀에 @ID 표기', salesCell.indexOf('@meme.ch') >= 0, salesCell);
+
+  // 채널 단위(집계 행)
+  check('채널명으로도 링크를 찾음',
+    ctx.getChannelLinkByName('브론테') === 'https://www.youtube.com/@bronte', ctx.getChannelLinkByName('브론테'));
+  check('없는 채널은 null', ctx.getChannelLinkByName('없는채널') === null);
+  check('빈 채널명은 null', ctx.getChannelLinkByName('') === null);
+  // 같은 채널에 링크 없는 건이 섞여 있어도 만들 수 있는 건을 찾아낸다
+  DATA.push({ dealId: 'G', ch: '브론테', platform: '유튜브', ytId: '', link: '', start: '2026-09-01', product: 'P' });
+  check('최근 건에 값이 없으면 다음 건에서 찾음',
+    ctx.getChannelLinkByName('브론테') === 'https://www.youtube.com/@bronte', ctx.getChannelLinkByName('브론테'));
+}
+
+console.log('\n[12] 채널명이 보이는 표들이 모두 헬퍼를 쓴다');
+{
+  const fs = require('fs');
+  const html = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+  const body = s => { const i = html.indexOf(s); return html.slice(i, i + 1200); };
+  check('대시보드 개별 공구 건', body('function renderDashList').indexOf('chCell(d)') >= 0);
+  check('실적 미기입 목록', body('function renderMgmtPage').indexOf('chCell(d)') >= 0);
+  check('품목별 실적', body('const SALES_CELL=').indexOf('getInfluencerLink(d)') >= 0);
+  check('채널별 성과', html.indexOf('chNameHtml(r.ch,getChannelLinkByName(r.ch)') >= 0);
+  // 옛 방식(시트 값만 보고 거는 렌더)이 남아 있으면 안 된다
+  check('시트 값만 보는 옛 렌더가 없음', html.indexOf("const chLink=normalizeUrl(d.link)||normalizeUrl(d.profileLink)") < 0);
 }
 
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
