@@ -1532,7 +1532,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tiercols-2026-09-14-02';
+const DASHBOARD_VERSION='dash-fastsave-2026-09-15-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1541,7 +1541,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='tiercols-2026-09-14-02';
+const REQUIRED_SCRIPT_VERSION='fastsave-2026-09-15-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2034,6 +2034,73 @@ async function syncTiersToSheet(){
     _tierSyncBusy=false;
     if(_tierSyncAgain){_tierSyncAgain=false;syncTiersToSheet();}
   }
+}
+
+/* ── 저장 낙관적 반영 (2026-09-15) ────────────────────────────────────────────
+   예전 저장은 "요청 → 응답 → 전체 재조회(fetchLive) → 등급 기록"을 직렬로 기다린 뒤에야 모달이
+   닫혔다. HTTP 왕복 3~4회 + 시트 6.7만 셀 읽기라 수 초가 걸렸고, 그동안 화면은 로딩 오버레이로
+   덮여 있었다.
+
+   이제는 순서를 뒤집는다: 사용자가 입력한 값을 **먼저** 로컬 DATA에 반영하고 모달을 즉시 닫은 뒤,
+   저장 요청은 뒤에서 보낸다. 서버가 돌려주는 것 중 프론트가 스스로 알 수 없는 값은 행 번호와
+   dealId뿐이라(나머지는 방금 사용자가 입력한 값 그대로다) 재조회할 이유가 없다.
+
+   실패하면 저장 직전 상태로 완전히 되돌리고(스냅샷) 모달을 사용자가 입력했던 값 그대로 다시 연다 —
+   "저장된 줄 알았는데 아니었다"가 가장 나쁜 결과라, 실패는 반드시 눈에 띄게 만든다. */
+
+// 저장 진행 중인 건들 — 같은 건을 두 번 저장하거나, 저장 중인 건을 다시 편집하는 것을 막는다.
+const _savingDeals = new Map(); // dealId -> 저장 직전 스냅샷
+function isDealSaving(dealId){ return _savingDeals.has(dealId); }
+function _savingChip(d){
+  return d && d._saving ? ' <span class="bdg bdg-p" style="opacity:.7">저장 중</span>' : '';
+}
+function _snapshotDeal(d){ return JSON.parse(JSON.stringify(d)); }
+function _restoreDeal(d, snap){
+  Object.keys(d).forEach(k => { delete d[k]; });
+  Object.assign(d, snap);
+}
+
+/* 모달 입력값(next) → 공구건 객체 필드. 낙관적 반영과 실패 시 모달 재오픈이 "완전히 같은 값"을
+   쓰도록 한 곳에서 만든다(두 군데에 같은 Object.assign을 늘어놓으면 반드시 어긋난다). */
+function _dealFieldsFromNext(next, codes, codesChanged, reels, touchReels, totalViews){
+  const f = {
+    product:next.product, ch:next.channel, influencer:next.channel, platform:next.platform,
+    vendor:next.vendor, link:next.link, marketingLink:next.marketingLink,
+    start:next.start, end:next.end, format:next.format, composition:next.composition,
+    targetQty:next.targetQty, qty:next.qty, option2:next.option2, firstCome:next.firstCome,
+    firstComeQty:next.firstComeQty, note:next.note,
+    giftItem1:next.giftItem1, giftQty1:next.giftQty1,
+    giftItem2:next.giftItem2, giftQty2:next.giftQty2,
+    giftItem3:next.giftItem3, giftQty3:next.giftQty3,
+    extraQty:next.extraQty, tier:next.tier, followers:next.followers,
+    status:_calcStatus(next.start, next.end)
+  };
+  if(codesChanged) f.codes = codes;
+  if(touchReels){ f.reels = reels; f.views = totalViews; }
+  return f;
+}
+
+/* 이 저장과 함께 시트 G·H열에 기록할 등급.
+   낙관적 반영이 **끝난 뒤** 호출해야 한다 — 이 저장으로 매출이 바뀌면 채널 등급도 같이 바뀌고,
+   시트에 써야 하는 건 바뀐 쪽이기 때문. 호출 전에 invalidateTierStats()로 캐시를 비울 것. */
+function _tiersForSave(channel){
+  const [salesTier, followerTier] = _tierCellsFor(channel);
+  return { salesTier, followerTier };
+}
+
+/* 저장 요청에 등급을 실어 보냈으면, 로컬 _tierRows도 미리 같은 값으로 맞춰둔다.
+   안 그러면 낙관적 render() 직후 syncTiersToSheet()가 "시트와 다르다"고 판단해 writeTiers를
+   한 번 더 쏜다 — 방금 없앤 왕복이 그대로 되살아난다. */
+function _presetTierRows(d, tiers){
+  if(!d || !Array.isArray(d._tierRows)) return;
+  d._tierRows.forEach(r => { r[1] = tiers.salesTier; r[2] = tiers.followerTier; });
+}
+
+// GAS가 돌려준 timings를 콘솔에 표로 — 다음에 또 느려지면 여기부터 본다
+function _logSaveTimings(label, t, clientMs){
+  if(!t){ console.log(`[저장 계측] ${label} — 클라이언트 왕복 ${Math.round(clientMs)}ms (서버 timings 없음: 구버전 배포본)`); return; }
+  console.log(`[저장 계측] ${label} — 클라이언트 왕복 ${Math.round(clientMs)}ms / 서버 총 ${t.total}ms`,
+    {payload파싱:t.parse, 핸들러:t.handler, flush:t.flush, 캐시:t.cache});
 }
 /* ── 등급 축 (2026-09-11) ───────────────────────────────────────────────────
    '등급별 성과' 섹션 전체가 이 축 하나로 매출/팔로워를 갈아끼운다. 새 축을 추가하려면 여기에
@@ -4498,7 +4565,7 @@ const SALES_CELL={
   comm:d=>d.s&&d.s.comm!=null?d.s.comm+'%':'—',
   year:d=>yearOf(d.start)??'—',
   period:d=>`${fmtS(d.start)} ~ ${fmtS(d.end)}`,
-  status:d=>bdg(_displayStatus(d)),
+  status:d=>bdg(_displayStatus(d))+_savingChip(d),
   views:d=>d.views!=null?d.views.toFixed(1)+'만':'<span style="color:var(--text-3)">—</span>',
   code:d=>{
     const codes=(d.codes||[]).filter(c=>c);
@@ -4635,7 +4702,7 @@ function renderMgmtPage(){
       <td>${d.ch}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
       <td>${won(d.s&&d.s.sale)}</td>
-      <td>${bdg(_displayStatus(d))}</td>
+      <td>${bdg(_displayStatus(d))+_savingChip(d)}</td>
     </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-3)">실적 미기입 건이 없습니다 🎉</td></tr>`;
 }
 
@@ -4921,6 +4988,9 @@ function _refreshModalHeader(d){
 // 조회에 실패하면(=클릭한 칩/행의 dealId와 일치하는 건이 DATA에 없으면) 절대 다른 건으로
 // 대체 열지 않음 — 엉뚱한 건이 열리는 것보다 그냥 안 열리는 게 낫다는 원칙.
 function openM(dealId,srcEl){
+  // 저장 중인 건은 열지 않는다 — 응답이 오기 전에 또 고치면 어느 값이 최종인지 알 수 없어지고,
+  // 롤백 스냅샷도 어긋난다. 몇 백 ms짜리 잠금이라 실제로 걸리는 일은 드물다.
+  if(isDealSaving(dealId)){showToast('저장 중인 공구건입니다. 잠시 후 다시 열어주세요.');return;}
   const d=DATA.find(x=>x.dealId===dealId);
   // [모달진단] 클릭한 칩/행이 기대한 채널·제품과, 실제로 그 dealId로 조회된 건의 채널·제품을 항상 비교 로그로 남김
   const expected=srcEl?`(기대: ${srcEl.dataset.ch||'?'}/${srcEl.dataset.product||'?'})`:'';
@@ -5429,31 +5499,64 @@ async function saveSchemeModal(){
 
   if(url){
     if(Object.keys(changes).length===0 && !touchReels && !codesChanged){closeSchModal();showToast('변경된 내용이 없습니다');return;}
-    setLoad(true);
+    if(isDealSaving(d.dealId)){showToast('이 공구건은 아직 저장 중입니다. 잠시 후 다시 시도해주세요.');return;}
+
+    // ── 낙관적 반영: 요청을 보내기 전에 화면부터 끝낸다 ──
+    console.time('[저장] 낙관적 반영→모달 닫힘');
+    const snapshot=_snapshotDeal(d);
+    _savingDeals.set(d.dealId,snapshot);
+    Object.assign(d,_dealFieldsFromNext(next,codes,codesChanged,reels,touchReels,totalViews));
+    d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
+    if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
+    d._saving=true;
+    // 등급은 방금 반영한 값 기준으로 다시 산정해야 시트에 맞는 값이 나감
+    invalidateTierStats();
+    const tiers=_tiersForSave(next.channel);
+    _presetTierRows(d,tiers);
+    closeSchModal();
+    render();
+    console.timeEnd('[저장] 낙관적 반영→모달 닫힘');
+    showToast('저장 중…');
+
+    const _t0=performance.now();
     (async()=>{
-      // updateDeal과 saveReels는 이제 둘 다 dealId로 같은 행을 직접 찾으므로(제품+채널 추측 검증 폐기)
-      // 병렬로 보내도 안전하지만, 실패 시 원인 구분이 쉽도록 순차 처리 유지.
+      // updateDeal과 saveReels는 둘 다 dealId로 같은 행을 직접 찾으므로 병렬로 보내도 안전하지만,
+      // 실패 시 원인 구분이 쉽도록 순차 처리 유지.
+      let last=null;
       if(Object.keys(changes).length||codesChanged){
-        const r1=await _gasWrite(url,'updateDeal',{dealId:d.dealId,changes,codes});
+        const r1=await _gasWrite(url,'updateDeal',{dealId:d.dealId,changes,codes,tiers});
         if(!r1||r1.success!==true||r1.error)throw new Error((r1&&r1.error)||'updateDeal 응답에 success:true가 없습니다');
+        last=r1;
       }
       if(touchReels){
         const r2=await _gasWrite(url,'saveReels',{dealId:d.dealId,link:next.link,reels});
         if(!r2||r2.success!==true||r2.error)throw new Error((r2&&r2.error)||'saveReels 응답에 success:true가 없습니다');
+        last=last||r2;
       }
-    })().then(()=>{
-      // fetchLive()가 끝나기 전에 모달/테이블/캘린더가 빈 상태로 보이지 않도록, 방금 저장한 값을 로컬 DATA에도 바로 반영
-      Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,followers:next.followers,status:_calcStatus(next.start,next.end)});
-      if(codesChanged)d.codes=codes;
-      d.s=d.s||{};d.s.sale=next.sale;d.s.comm=next.comm;d.s.note=next.note2;
-      if(next.sale!=null&&next.qty!=null)d.rev=next.sale*next.qty;
-      if(touchReels){d.reels=reels;d.views=totalViews;}
-      _refreshModalHeader(d); // 헤더(제목/기간)를 즉시 갱신
+      return last;
+    })().then(res=>{
+      _logSaveTimings('수정 저장',res&&res.timings,performance.now()-_t0);
+      // 프론트가 스스로 알 수 없는 건 행 번호뿐 — 그것만 서버 값으로 맞춘다(전체 재조회 불필요)
+      if(res&&Array.isArray(res.tierRows)&&res.tierRows.length)d._tierRows=res.tierRows;
+      if(res&&res.rowIndex!=null)d.id=res.rowIndex;
+      if(res&&res.rowCount!=null)d._rowCount=res.rowCount;
+      _savingDeals.delete(d.dealId);
+      delete d._saving;
       render();
-      closeSchModal();
       showToast('저장되었습니다',{type:'success'});
-      fetchLive();
-    }).catch(e=>{console.error('[저장 실패]',e);showToast('저장 실패: '+_friendlySaveError(e.message),{type:'error'});setLoad(false);});
+    }).catch(e=>{
+      console.error('[저장 실패]',e);
+      // 저장 직전 상태로 완전히 되돌리고, 사용자가 입력했던 값 그대로 모달을 다시 연다
+      const attempted=Object.assign({},d,_dealFieldsFromNext(next,codes,true,reels,true,totalViews),
+        {codes,reels,s:{...(d.s||{}),sale:next.sale,comm:next.comm,note:next.note2}});
+      _restoreDeal(d,snapshot);
+      _savingDeals.delete(d.dealId);
+      delete d._saving;
+      invalidateTierStats();
+      render();
+      showToast('저장 실패: '+_friendlySaveError(e.message)+' — 입력값을 그대로 다시 열었습니다',{type:'error'});
+      _openRegisteredModal(attempted);
+    });
   } else {
     Object.assign(d,{product:next.product,ch:next.channel,influencer:next.channel,platform:next.platform,vendor:next.vendor,link:next.link,marketingLink:next.marketingLink,start:next.start,end:next.end,format:next.format,composition:next.composition,targetQty:next.targetQty,qty:next.qty,option2:next.option2,firstCome:next.firstCome,firstComeQty:next.firstComeQty,note:next.note,giftItem1:next.giftItem1,giftQty1:next.giftQty1,giftItem2:next.giftItem2,giftQty2:next.giftQty2,giftItem3:next.giftItem3,giftQty3:next.giftQty3,extraQty:next.extraQty,tier:next.tier,followers:next.followers,status:_calcStatus(next.start,next.end)});
     if(codesChanged)d.codes=codes;
@@ -6340,6 +6443,45 @@ function openDealForm(){
   document.getElementById('dealOv').classList.add('open');
   _setHash('new-deal');
 }
+/* 신규 등록이 실패했을 때, 사용자가 방금 친 값을 그대로 담아 등록 폼을 다시 연다 (2026-09-15).
+   closeDealForm()이 입력칸을 전부 비우므로 낙관적 반영 후에는 폼이 빈 상태다. 여기서 되돌려
+   채워주지 않으면 "저장도 안 됐는데 입력한 것도 날아감"이 되어 최악이다.
+   openDealForm()의 초기화를 그대로 탄 뒤 값을 덮어쓰는 순서를 지킬 것 — 품목군(fLine)을 먼저
+   넣고 onLineChange()를 불러야 제품(fModel) 드롭다운이 채워진다(플랫폼/채널ID도 같은 관계). */
+function _reopenDealFormWith(d){
+  openDealForm();
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v==null?'':v;};
+  const {line,model}=_lineModelFromProduct(d.product||'');
+  set('fLine',line); if(typeof onLineChange==='function')onLineChange();
+  set('fModel',model); if(typeof onModelChange==='function')onModelChange();
+  set('fInfluencer',d.ch||d.influencer||'');
+  set('fPlatform',d.platform||''); if(typeof onPlatformChange==='function')onPlatformChange();
+  set('fChannelId',d.chId||'');
+  set('fStart',d.start||''); set('fEnd',d.end||''); if(typeof onDateChange==='function')onDateChange();
+  set('fVendor',d.vendor||''); set('fLink',d.link||''); set('fMarketingLink',d.marketingLink||'');
+  set('fFormat',d.format||''); set('fComposition',d.composition||'');
+  set('fTargetQty',d.targetQty!=null?d.targetQty:'');
+  set('fExtraQty',d.extraQty!=null?d.extraQty:'');
+  set('fOpenTime',d.option2||''); set('fFirstComeItem',d.firstCome||''); set('fFirstComeQty',d.firstComeQty||'');
+  set('fPoints',d.note||'');
+  set('fNote',(d.s&&d.s.note)||'');
+  set('fSalePrice',(d.s&&d.s.sale)!=null?d.s.sale:'');
+  set('fCommission',(d.s&&d.s.comm)!=null?d.s.comm:'');
+  set('fTier',d.tier||'');
+  if(typeof _setFollowerInput==='function')_setFollowerInput('fFollowers',d.followers!=null?d.followers:null);
+  _formCodes=(Array.isArray(d.codes)&&d.codes.length?d.codes.slice():['']);
+  renderFormCodeList();
+  _formGifts=[];
+  for(let i=1;i<=3;i++){
+    const it=d['giftItem'+i],q=d['giftQty'+i];
+    if(it)_formGifts.push({item:it,qty:q||''});
+  }
+  if(!_formGifts.length)_formGifts=[{item:'',qty:''}];
+  renderFormGiftList();
+  if(typeof fRecalcComposition==='function')fRecalcComposition();
+  set('fComposition',d.composition||''); // 자동 재계산이 덮어썼을 수 있어 마지막에 한 번 더
+}
+
 function closeDealForm(){
   document.getElementById('dealOv').classList.remove('open');
   document.getElementById('dealOv').querySelectorAll('input,select,textarea').forEach(el=>{if(!el.readOnly)el.value='';});
@@ -6531,13 +6673,47 @@ function saveDeal(){
 
   const url=_getGasUrl();
   if(url){
-    setLoad(true);
-    _gasWrite(url,'addSalesRow',newDeal)
+    /* 신규 등록도 낙관적으로 — 임시 dealId로 목록에 먼저 띄우고 폼을 즉시 닫는다.
+       임시 건은 _tierRows가 없어서 syncTiersToSheet가 건너뛰므로, 응답 오기 전에 엉뚱한 행에
+       등급이 기록될 일은 없다. 등급 자체는 저장 payload(tiers)에 실어 같은 실행에서 기록된다. */
+    console.time('[등록] 낙관적 반영→폼 닫힘');
+    const tempId='__tmp_'+((window.crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now());
+    newDeal.dealId=tempId;
+    newDeal.id=-Date.now();      // 목록 렌더 key용 임시값(응답에서 실제 행 번호로 교체)
+    newDeal._saving=true;
+    newDeal._tierRows=[];
+    DATA.push(newDeal);
+    _savingDeals.set(tempId,null); // 신규는 되돌릴 스냅샷이 없고 "목록에서 제거"가 롤백
+    invalidateTierStats();
+    const tiers=_tiersForSave(newDeal.ch);
+    closeDealForm();
+    render();
+    console.timeEnd('[등록] 낙관적 반영→폼 닫힘');
+    showToast('등록 중…');
+
+    const _t0=performance.now();
+    _gasWrite(url,'addSalesRow',Object.assign({},newDeal,{tiers}))
       .then(j=>{
-        if(j.error)throw new Error(j.error);
-        closeDealForm();fetchLive();
-        showToast(`등록 완료 — 실적통합 ${j.mainRow}행에 연결되었습니다`);
-      }).catch(e=>{console.error('[등록 실패]',e);showToast('저장 실패: '+_friendlySaveError(e.message));setLoad(false);});
+        if(!j||j.error)throw new Error((j&&j.error)||'등록 응답에 결과가 없습니다');
+        _logSaveTimings('신규 등록',j.timings,performance.now()-_t0);
+        // 임시값을 서버가 확정한 실제 값으로 교체
+        newDeal.dealId=j.dealId||tempId;
+        if(j.rowIndex!=null)newDeal.id=j.rowIndex;
+        if(j.rowCount!=null)newDeal.rowCount=j.rowCount;
+        newDeal._tierRows=Array.isArray(j.tierRows)?j.tierRows:[];
+        _savingDeals.delete(tempId);
+        delete newDeal._saving;
+        render();
+        showToast(`등록 완료 — 실적통합 ${j.mainRow}행에 연결되었습니다`,{type:'success'});
+      }).catch(e=>{
+        console.error('[등록 실패]',e);
+        const idx=DATA.indexOf(newDeal);if(idx>=0)DATA.splice(idx,1); // 롤백 = 임시 건 제거
+        _savingDeals.delete(tempId);
+        invalidateTierStats();
+        render();
+        showToast('저장 실패: '+_friendlySaveError(e.message)+' — 입력값을 그대로 다시 열었습니다',{type:'error'});
+        _reopenDealFormWith(newDeal);
+      });
   } else {
     newDeal.dealId=crypto.randomUUID(); // 샘플 모드는 서버가 없어 dealId를 로컬에서 즉석 발급(새로고침 시 초기화됨)
     DATA.push(newDeal);

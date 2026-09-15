@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'tiercols-2026-09-14-02';
+var SCRIPT_VERSION = 'fastsave-2026-09-15-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -197,6 +197,20 @@ function getColIndexByHeader(sheet, header, opts) {
 var _colsResolved = false;
 function _resolveCols(sheet) {
   if (_colsResolved) return COL;
+  // 캐시 히트 조건: 같은 스크립트 버전 + 열 개수 동일. 열 개수가 바뀌면(삽입/삭제) 무조건 다시 읽는다.
+  // TTL 60초 — 헤더 "문구"만 바꾼 경우는 열 개수가 그대로라 최대 1분간 옛 매핑이 남을 수 있음.
+  var lastCol = sheet.getLastColumn();
+  try {
+    var cachedStr = CacheService.getScriptCache().get(_colsCacheKey());
+    var cached = cachedStr ? JSON.parse(cachedStr) : null;
+    if (cached && cached.lastCol === lastCol && cached.cols) {
+      for (var ck in cached.cols) COL[ck] = cached.cols[ck];
+      REEL_COL_START = COL.views + 2;
+      _colsResolved = true;
+      return COL;
+    }
+  } catch (e) { Logger.log('열 매핑 캐시 읽기 실패 (무시하고 재해석): ' + e); }
+
   var claimed = {};
   var log = [];
   for (var i = 0; i < COL_HEADER_SPECS.length; i++) {
@@ -211,6 +225,10 @@ function _resolveCols(sheet) {
   // 열이 밀렸을 때 "어느 열로 해석됐는지"를 실행 기록 한 줄로 확인할 수 있게 항상 남김 — 값이
   // 이상해 보이는 문제는 대부분 이 줄과 시트를 나란히 보면 바로 판별됨.
   Logger.log('[열 해석] ' + log.join(', ') + ' / 릴스 슬롯 시작=' + _colLetter(REEL_COL_START - 1));
+  try {
+    CacheService.getScriptCache().put(_colsCacheKey(),
+      JSON.stringify({ lastCol: lastCol, cols: COL }), COLS_CACHE_TTL_SEC);
+  } catch (e) { Logger.log('열 매핑 캐시 저장 실패 (무시): ' + e); }
   return COL;
 }
 
@@ -221,6 +239,179 @@ function _mainSheet(ss) {
   var sheet = ss.getSheetByName(MAIN_SHEET);
   if (sheet) _resolveCols(sheet);
   return sheet;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 저장 성능: 구간 계측 / 행 탐색 / 배치 쓰기 / 락 (2026-09-15) ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/* 쓰기 요청의 구간별 소요시간(ms)을 모아 응답 JSON의 timings로 돌려준다.
+   Apps Script는 프로파일러가 없어서, 느린 저장을 만나면 "어디가 느린지"를 추측할 수밖에 없었다.
+   이 계측이 있으면 프론트 콘솔에 바로 구간표가 찍히므로 다음 번에도 측정부터 시작할 수 있다. */
+var _TM = null;
+function _tmStart() { _TM = { _last: Date.now(), _t0: Date.now(), phases: {} }; }
+function _tmMark(name) {
+  if (!_TM) return;
+  var now = Date.now();
+  _TM.phases[name] = (_TM.phases[name] || 0) + (now - _TM._last);
+  _TM._last = now;
+}
+function _tmReport() {
+  if (!_TM) return null;
+  _TM.phases.total = Date.now() - _TM._t0;
+  return _TM.phases;
+}
+
+// ── 헤더 인덱스 캐시 ──
+// _resolveCols는 헤더 한 줄(수십 셀) 읽기 1회라 원래도 싸지만, 연속 저장 시 그 1회도 아끼려고 캐시.
+// ⚠ 열 위치의 근거가 헤더 텍스트인 구조이므로 staleness는 곧 "엉뚱한 열에 쓰기"다. 그래서
+//   (1) TTL을 60초로 짧게 두고 (2) 열 개수가 달라지면 무조건 다시 읽는다. 헤더 "문구"만 바꾸고
+//   열 개수는 그대로인 경우 최대 60초 동안 옛 매핑이 쓰일 수 있음 — 헤더를 고쳤으면 1분 기다릴 것.
+var COLS_CACHE_TTL_SEC = 60;
+function _colsCacheKey() { return 'cols_' + SCRIPT_VERSION; }
+function _invalidateColsCache() {
+  try { CacheService.getScriptCache().remove(_colsCacheKey()); } catch (e) {}
+}
+
+// ── dealId → 행 목록 맵 ──
+/* 예전 _findGroupRows는 dealId 하나를 찾자고 getDataRange()로 시트 전체(운영 기준 2만 셀 이상)를
+   읽었다. 실제로 필요한 건 dealId 열과 코드순번 열 둘뿐이라, 그 두 열만 한 번에 읽어 맵을 만든다.
+   맵은 CacheService에도 올려두고, 다음 요청은 아래 두 가지를 확인한 뒤에만 재사용한다:
+     1) 시트 전체 행 수(getMaxRows)가 맵을 만들 때와 같은가 — 사람이 행을 넣거나 지우면 달라짐
+     2) 후보 행들이 지금도 그 dealId를 담고 있는가 — 좁은 범위 읽기 1회
+   둘 중 하나라도 어긋나면 그냥 다시 만든다. 캐시가 어긋난 채로 쓰면 "남의 행에 저장"이 되므로
+   검증 없는 재사용은 절대 하지 않는다. */
+var DEAL_ROWS_TTL_SEC = 120;
+function _dealRowsCacheKey() { return 'dealRows_' + SCRIPT_VERSION; }
+function _invalidateDealRowMap() {
+  try { CacheService.getScriptCache().remove(_dealRowsCacheKey()); } catch (e) {}
+}
+
+function _buildDealRowMap(sheet) {
+  var maxRows = sheet.getMaxRows();
+  var map = {};
+  if (maxRows <= DATA_START_ROW) return { rows: map, maxRows: maxRows };
+  var n = maxRows - DATA_START_ROW;
+  var first = DATA_START_ROW + 1;
+  var vals;
+  if (COL.codeSeq === COL.dealId + 1) {
+    vals = sheet.getRange(first, COL.dealId + 1, n, 2).getValues(); // 붙어 있으면 읽기 1회
+  } else {
+    var a = sheet.getRange(first, COL.dealId + 1, n, 1).getValues();
+    var b = sheet.getRange(first, COL.codeSeq + 1, n, 1).getValues();
+    vals = [];
+    for (var z = 0; z < n; z++) vals.push([a[z][0], b[z][0]]);
+  }
+  for (var i = 0; i < n; i++) {
+    var id = String(vals[i][0] || '').trim();
+    if (!id) continue;
+    var seq = _numOrNull(vals[i][1]);
+    if (!map[id]) map[id] = [];
+    map[id].push([first + i, seq == null ? 999 : seq]);
+  }
+  return { rows: map, maxRows: maxRows };
+}
+
+function _putDealRowMap(blob) {
+  try {
+    var s = JSON.stringify(blob);
+    if (s.length < 95000) CacheService.getScriptCache().put(_dealRowsCacheKey(), s, DEAL_ROWS_TTL_SEC);
+  } catch (e) { Logger.log('dealId 행 맵 캐시 저장 실패 (무시): ' + e); }
+}
+function _getDealRowMap() {
+  try {
+    var s = CacheService.getScriptCache().get(_dealRowsCacheKey());
+    return s ? JSON.parse(s) : null;
+  } catch (e) { return null; }
+}
+
+// 캐시된 후보 행들이 "지금도" 그 dealId인지 좁은 범위 하나만 읽어 확인
+function _verifyDealRows(sheet, dealId, pairs) {
+  if (!pairs || !pairs.length) return false;
+  var min = pairs[0][0], max = pairs[0][0];
+  for (var i = 1; i < pairs.length; i++) {
+    if (pairs[i][0] < min) min = pairs[i][0];
+    if (pairs[i][0] > max) max = pairs[i][0];
+  }
+  if (min <= DATA_START_ROW || max > sheet.getMaxRows()) return false;
+  var vals = sheet.getRange(min, COL.dealId + 1, max - min + 1, 1).getValues();
+  for (var j = 0; j < pairs.length; j++) {
+    if (String(vals[pairs[j][0] - min][0] || '').trim() !== dealId) return false;
+  }
+  return true;
+}
+
+function _findGroupRows(sheet, dealId) {
+  if (!dealId) return [];
+  var out = null;
+  var cached = _getDealRowMap();
+  if (cached && cached.maxRows === sheet.getMaxRows() && cached.rows && cached.rows[dealId]) {
+    if (_verifyDealRows(sheet, dealId, cached.rows[dealId])) out = cached.rows[dealId];
+  }
+  if (!out) {
+    var blob = _buildDealRowMap(sheet);
+    _putDealRowMap(blob);
+    out = blob.rows[dealId] || [];
+  }
+  var res = [];
+  for (var i = 0; i < out.length; i++) res.push({ row: out[i][0], codeSeq: out[i][1] });
+  res.sort(function (a, b) { return a.codeSeq - b.codeSeq; });
+  return res;
+}
+
+/* 같은 행 안에서 "완전히 인접한" 열끼리만 묶어 setValues를 한 번씩 호출한다.
+   pending 형태: { 행번호: { 0-based열: 값 } }
+   ⚠ 떨어진 열을 한 범위로 묶으면 사이 열까지 값으로 덮어써 버린다(총매출 수식이 숫자로 박히는 사고).
+   그래서 gap이 1칸이라도 있으면 범위를 끊는다 — 호출이 조금 늘어도 남의 칸은 건드리지 않는 쪽. */
+function _writeCellsBatched(sheet, pending) {
+  var calls = 0;
+  for (var rowKey in pending) {
+    var row = Number(rowKey);
+    var cols = [];
+    for (var ck in pending[rowKey]) cols.push(Number(ck));
+    cols.sort(function (a, b) { return a - b; });
+    var i = 0;
+    while (i < cols.length) {
+      var j = i;
+      while (j + 1 < cols.length && cols[j + 1] === cols[j] + 1) j++;
+      var vals = [];
+      for (var k = i; k <= j; k++) vals.push(pending[rowKey][cols[k]]);
+      sheet.getRange(row, cols[i] + 1, 1, vals.length).setValues([vals]);
+      calls++;
+      i = j + 1;
+    }
+  }
+  return calls;
+}
+
+// 등급 결과 열(매출등급/팔로워 등급)을 pending에 얹어, 본문 저장과 같은 setValues 묶음에 태운다.
+// 두 열은 붙어 있으므로 보통 추가 호출 0회(본문 쓰기와 합쳐지거나 2칸짜리 범위 하나).
+function _stageTiers(pending, rows, tiers) {
+  if (!tiers) return;
+  var s = _normalizeTier(tiers.salesTier), f = _normalizeTier(tiers.followerTier);
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (!pending[r]) pending[r] = {};
+    pending[r][COL.salesTier] = s;
+    pending[r][COL.followerTier] = f;
+  }
+}
+
+/* 행 구조를 바꾸는 저장(행 추가/삭제)만 짧게 직렬화한다.
+   두 사람이 동시에 등록하면 둘 다 같은 "마지막 데이터 행"을 계산해서 한쪽이 다른 쪽을 덮어쓸 수
+   있기 때문. 값만 고치는 저장은 행이 이미 확정돼 있어 락이 필요 없다(락은 그 자체가 대기시간이라
+   꼭 필요한 경로에만 건다). 5초 안에 못 잡으면 기다리지 않고 바로 에러 — 사용자를 붙잡아두는
+   것보다 "다시 시도해주세요"가 낫다. */
+var STRUCT_LOCK_WAIT_MS = 5000;
+function _withStructLock(fn) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(STRUCT_LOCK_WAIT_MS);
+  } catch (e) {
+    throw new Error('다른 사용자가 저장 중입니다. 잠시 후 다시 시도해주세요.');
+  }
+  try { return fn(); }
+  finally { try { lock.releaseLock(); } catch (e) {} }
 }
 
 // ── 등급 결과 열(매출등급/팔로워 등급)의 시트 측 표시 (2026-09-14) ──
@@ -603,6 +794,80 @@ function _cacheGetJSON(cache, key) {
     Logger.log('캐시 조회 실패 (무시): ' + e);
     return null;
   }
+}
+
+/* 저장한 건 하나만 캐시에서 갈아끼움 (2026-09-15).
+   기존에는 저장할 때마다 대시보드 캐시를 통째로 버렸고, 그러면 그 다음 조회가 시트 전체 재파싱
+   (운영 기준 4만 셀 이상)을 떠안았다. 바뀐 건 한 건인데 전체를 버리는 게 아까워서, 캐시된
+   payload에서 그 dealId만 찾아 필드를 덮어쓴다.
+
+   ⚠ 안전이 속도보다 우선이다. 캐시가 실제 시트와 조용히 어긋나면 "남들 화면에만 옛날 값이 보이는"
+   가장 찾기 힘든 종류의 버그가 된다. 그래서 아래 조건이 하나라도 걸리면 부분 갱신을 포기하고
+   기존처럼 전체 무효화로 떨어진다(느릴 뿐 항상 정확함):
+     · 핸들러가 cachePatch를 만들지 않은 액션 (신규 등록/삭제/릴스/상품코드 변경 등 — 행 구성이
+       바뀌면 건 단위 조립을 다시 해야 하므로 필드 덮어쓰기로는 맞출 수 없음)
+     · 파생값이 걸린 변경 (공구가·판매수량 → 총매출은 시트 수식, 시작일·종료일 → 연도/진행상태)
+     · 캐시 자체가 없거나 그 dealId가 캐시에 없을 때 */
+function _patchDashboardCache(resp) {
+  if (!resp || !resp.cachePatch) return false;
+  var p = resp.cachePatch;
+  if (!p.dealId) return false;
+  try {
+    var cache = CacheService.getScriptCache();
+    var payload = _cacheGetJSON(cache, _dashboardCacheKey());
+    if (!payload || !payload.purchases) return false; // 캐시가 없으면 갱신할 대상도 없음
+    var list = payload.purchases, hit = -1;
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].dealId || '') === p.dealId) { hit = i; break; }
+    }
+    if (hit < 0) return false;
+    for (var k in p.fields) list[hit][k] = p.fields[k];
+    if (p.tierRows) list[hit].tierRows = p.tierRows;
+    payload.updatedAt = new Date().toISOString();
+    _cachePutJSON(cache, _dashboardCacheKey(), payload, DASHBOARD_CACHE_TTL_SEC);
+    Logger.log('[캐시 부분 갱신] dealId=' + p.dealId + ' / 필드 ' + Object.keys(p.fields || {}).length + '개');
+    return true;
+  } catch (e) {
+    Logger.log('캐시 부분 갱신 실패 → 전체 무효화로 대체: ' + e);
+    return false;
+  }
+}
+
+/* updateDeal의 changes 키 → 캐시된 deal 객체의 필드명.
+   여기 **없는 키가 하나라도 섞여 있으면** 부분 갱신을 통째로 포기한다(= 전체 무효화).
+   일부러 뺀 것들과 이유:
+     sale/comm/qty — 총매출이 시트 수식이라 서버가 그 결과를 알지 못함(다시 읽어야 함)
+     start/end     — 연도·진행상태가 여기서 파생되므로 단순 덮어쓰기로는 정합이 안 맞음
+     codes         — 행이 늘거나 줄어 건 단위 조립 자체가 달라짐 */
+var CACHE_PATCH_FIELDS = {
+  product: 'product', vendor: 'vendor', platform: 'platform', format: 'format',
+  composition: 'composition', marketingLink: 'marketingLink', link: 'link',
+  targetQty: 'targetQty', extraQty: 'extraQty', note: 'note', note2: 'note2',
+  option1: 'option1', option2: 'option2', firstCome: 'firstCome', firstComeQty: 'firstComeQty',
+  giftItem1: 'giftItem1', giftQty1: 'giftQty1', giftItem2: 'giftItem2', giftQty2: 'giftQty2',
+  giftItem3: 'giftItem3', giftQty3: 'giftQty3',
+  status: 'status', tier: 'tier', followers: 'followers'
+};
+
+function _buildCachePatch(dealId, changes, tierRows) {
+  var fields = {};
+  for (var k in changes) {
+    var target = CACHE_PATCH_FIELDS[k];
+    if (!target) {
+      if (k === 'channel') { // 채널명은 캐시에 두 이름으로 들어 있어 특별 취급
+        fields.channel = changes[k] || '';
+        fields.influencer = changes[k] || '';
+        continue;
+      }
+      return null; // 모르는/파생 필드가 끼어 있으면 부분 갱신 포기
+    }
+    var v = changes[k];
+    // parseMainSheet가 내려주는 형태와 맞춰줌 — 빈 팔로워는 ''가 아니라 null이어야 함
+    // (프론트 adaptGAS가 !=null로 판정해서, ''로 두면 0명으로 읽힌다)
+    if (k === 'followers') v = (v === '' || v == null) ? null : Number(v);
+    fields[target] = v;
+  }
+  return { dealId: dealId, fields: fields, tierRows: tierRows || null };
 }
 
 // 데이터를 바꾸는 doPost 액션이 성공하면 호출 — 다음 doGet이 방금 바뀐 값을 바로 반영하게 함
@@ -1189,7 +1454,7 @@ function _autoFillMissingDealIds(sheet, deals) {
     d.dealId = newId;
     filled++;
   }
-  if (filled > 0) Logger.log('[dealId 자동 백필] ' + filled + '건에 새 dealId 발급함');
+  if (filled > 0) { Logger.log('[dealId 자동 백필] ' + filled + '건에 새 dealId 발급함'); _invalidateDealRowMap(); }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1428,19 +1693,6 @@ function remigrateFromBackup() {
 
 // 해당 dealId를 가진 모든 물리 행을 코드순번 오름차순으로 반환. [0]이 항상 대표 행.
 // 반환 항목: {row: 1-based 물리 행 번호, codeSeq: 숫자}
-function _findGroupRows(sheet, dealId) {
-  if (!dealId) return [];
-  var all = sheet.getDataRange().getValues();
-  var out = [];
-  for (var i = DATA_START_ROW; i < all.length; i++) {
-    if (String(all[i][COL.dealId] || '').trim() === dealId) {
-      var seq = _numOrNull(all[i][COL.codeSeq]);
-      out.push({ row: i + 1, codeSeq: seq == null ? 999 : seq });
-    }
-  }
-  out.sort(function (a, b) { return a.codeSeq - b.codeSeq; });
-  return out;
-}
 
 // 그룹 전체(모든 코드순번 행)에 동일하게 반영하는 필드 — 사람이 시트를 훑어볼 때 헷갈리지 않도록
 // (등급은 채널명에 종속된 값이라 channel과 같은 취급 — 그룹의 모든 행에 동일하게 기록)
@@ -1514,6 +1766,8 @@ function doPost(e) {
 // (e.parameter.chunkTotal > 1)는 CacheService에 청크를 모아뒀다가 마지막 청크가 도착했을 때만
 // 조립해서 실제 처리를 실행함 — 그 전 청크들은 "받았다"는 가벼운 확인 응답만 돌려줌.
 function _handleWriteAction(e, idToken) {
+  _tmStart();
+  _lastJsonObj = null;
   var action = e.parameter.action;
   // ⚠ 2026-07-29 이분 탐색용 진단 체크포인트 — e.parameter.debugStage가 '0'~'3'이면 그 지점까지만
   // 실행하고 조기 반환함(실제 시트 변경 없음). 정상 저장 요청은 이 파라미터를 아예 안 보내므로 평소
@@ -1569,17 +1823,21 @@ function _handleWriteAction(e, idToken) {
       return _json({ success: true, stage: 3, note: 'SpreadsheetApp 접근까지 정상', sheetFound: !!sheetCheck });
     }
 
+    _tmMark('parse'); // 여기까지가 payload 수신·파싱·시트 접근
+
     var resp;
     // 회고 문서는 실적통합과 무관한 별도 시트라 대시보드 캐시를 무효화할 필요가 없음 — 이 액션들만 건너뜀.
     var skipCacheInvalidate = false;
-    if (action === 'addSalesRow') resp = _addDeal(ss, data);
+    // 행을 추가/삭제하는 액션만 짧게 직렬화 — 동시 저장이 같은 '마지막 데이터 행'을 계산해
+    // 서로 덮어쓰는 것을 막는다(경합이 없으면 대기 0). 값만 바꾸는 액션은 락을 걸지 않음.
+    if (action === 'addSalesRow') resp = _withStructLock(function () { return _addDeal(ss, data); });
     else if (action === 'addPerf') resp = _addPerf(ss, data);
     else if (action === 'addCalendarEvent') resp = _addCalendarEvent(ss, data);
     else if (action === 'updateCalendarEvent') resp = _updateCalendarEvent(ss, data);
     else if (action === 'deleteCalendarEvent') resp = _deleteCalendarEvent(ss, data);
     else if (action === 'saveReels') resp = _saveReels(ss, data);
-    else if (action === 'updateDeal') resp = _updateDeal(ss, data);
-    else if (action === 'deleteDeal') resp = _deleteDeal(ss, data);
+    else if (action === 'updateDeal') resp = _withStructLock(function () { return _updateDeal(ss, data); });
+    else if (action === 'deleteDeal') resp = _withStructLock(function () { return _deleteDeal(ss, data); });
     else if (action === 'clearChannelTier') resp = _clearChannelTier(ss, data);
     else if (action === 'updateChannelFollowers') resp = _updateChannelFollowers(ss, data);
     else if (action === 'writeTiers') resp = _writeTiers(ss, data);
@@ -1600,10 +1858,24 @@ function _handleWriteAction(e, idToken) {
     // 호출해서, 검증 위반이 있으면 반드시 지금 이 자리에서(아직 try 안에서) 터지게 만들어 catch가
     // 잡을 수 있게 함 — 이후로 이런 예외는 정상적인 JSON({error:'...데이터 확인 규칙...'}) 응답으로
     // 나가고, 실행 기록에도 "완료됨"으로 남게 됨(에러 응답을 정상적으로 반환한 것이므로).
+    _tmMark('handler');
     SpreadsheetApp.flush();
+    _tmMark('flush');
 
-    if (!skipCacheInvalidate) _invalidateDashboardCache();
-    Logger.log('[doGet 쓰기 완료] action=' + action);
+    if (!skipCacheInvalidate) {
+      // 저장한 행만 캐시에서 갈아끼우고, 그게 불가능한 액션/상황이면 통째로 무효화.
+      // (무효화는 다음 조회가 전체 재파싱을 떠안는다는 뜻이라, 가능하면 부분 갱신 쪽이 이득)
+      if (!_patchDashboardCache(_lastJsonObj)) _invalidateDashboardCache();
+    }
+    _tmMark('cache');
+
+    Logger.log('[doGet 쓰기 완료] action=' + action + ' / ' + JSON.stringify(_tmReport()));
+    // 구간 시간을 응답에 실어 보냄 — 핸들러가 이미 _json()으로 직렬화했으므로, 그때 붙잡아둔
+    // 원본 객체(_lastJsonObj)에 timings를 얹어 다시 직렬화한다(작은 객체라 비용 무시 가능).
+    if (_lastJsonObj) {
+      _lastJsonObj.timings = _tmReport();
+      return _json(_lastJsonObj);
+    }
     return resp;
   } catch (err) {
     Logger.log('[doGet 쓰기 실패] action=' + action + ' / 에러=' + err + ' / 스택=\n' + (err && err.stack));
@@ -1764,6 +2036,12 @@ function _addDeal(ss, data) {
   common[COL.firstComeQty]  = data.firstComeQty || '';
   common[COL.note2]         = data.note2 || '';
   common[COL.tier]          = _normalizeTier(data.tier);
+  // 등급 결과 열(G·H)도 등록과 동시에 기록 — 신규 건이라도 채널 등급은 프론트가 이미 알고 있어서
+  // payload에 실려온다. 예전엔 등록 후 재조회 → render() → writeTiers로 왕복이 두 번 더 있었다.
+  if (data.tiers) {
+    common[COL.salesTier]    = _normalizeTier(data.tiers.salesTier);
+    common[COL.followerTier] = _normalizeTier(data.tiers.followerTier);
+  }
 
   var rows = [];
   for (var i = 0; i < codes.length; i++) {
@@ -1832,7 +2110,18 @@ function _addDeal(ss, data) {
     sheet.getRange(startRow, COL.channel + 1, codes.length, 1).setRichTextValues(channelRT);
   }
 
-  return _json({ success: true, mainRow: startRow, dealId: dealId });
+  _invalidateDealRowMap(); // 행이 늘었으므로 dealId→행 맵을 버림
+
+  // 프론트가 낙관적으로 그려둔 임시 건을 실제 값으로 바꿔 끼울 수 있게 행 정보를 돌려줌
+  var addTierRows = [];
+  var addS = data.tiers ? _normalizeTier(data.tiers.salesTier) : '';
+  var addF = data.tiers ? _normalizeTier(data.tiers.followerTier) : '';
+  for (var tr2 = 0; tr2 < codes.length; tr2++) addTierRows.push([startRow + tr2, addS, addF]);
+
+  return _json({
+    success: true, mainRow: startRow, dealId: dealId,
+    rowIndex: startRow, rowCount: codes.length, tierRows: addTierRows
+  });
 }
 
 // 공구건 상세 모달 저장 — dealId 그룹 전체에 반영.
@@ -1861,13 +2150,21 @@ function _updateDeal(ss, data) {
     c.followers = nf == null ? '' : nf;
   }
 
+  /* ⚠ 2026-09-15: 예전엔 바뀐 필드마다 setValue를 한 번씩 불렀다(필드 10개면 RPC 10회).
+     이제는 "어느 행 어느 열에 무엇을 쓸지"를 pending에 모아두고, 마지막에 붙어 있는 열끼리만
+     묶어서 setValues로 한 번에 내보낸다. 사은품 6칸+선착순수량+비고처럼 원래 연속인 구간은
+     호출 하나로 합쳐지고, 등급 결과 열(G·H)도 같은 묶음에 얹혀 별도 왕복이 사라진다. */
+  var pending = {};
+  function stage(row, col, value) {
+    if (!pending[row]) pending[row] = {};
+    pending[row][col] = value;
+  }
+
   // 공통 필드 — 그룹의 모든 행에 동일 반영
   for (var ki = 0; ki < GROUP_MIRROR_KEYS.length; ki++) {
     var k = GROUP_MIRROR_KEYS[ki];
     if (c[k] !== undefined) {
-      for (var g = 0; g < groupRows.length; g++) {
-        sheet.getRange(groupRows[g].row, COL[k] + 1).setValue(c[k] || '');
-      }
+      for (var g = 0; g < groupRows.length; g++) stage(groupRows[g].row, COL[k], c[k] || '');
     }
   }
 
@@ -1875,39 +2172,46 @@ function _updateDeal(ss, data) {
   for (var k2i = 0; k2i < PRIMARY_ONLY_KEYS.length; k2i++) {
     var k2 = PRIMARY_ONLY_KEYS[k2i];
     if (c[k2] !== undefined) {
-      var pCell = sheet.getRange(primaryRow, COL[k2] + 1);
       // option2(오픈시간, "10:00")를 구글 시트가 시간 값으로 자동 인식하는 문제 방지 — 값을 쓰기
       // 전에 이 열만 일반 텍스트로 고정(REVIEW_COL.ym에 이미 쓰던 setNumberFormat('@') 패턴 재사용)
-      if (k2 === 'option2') pCell.setNumberFormat('@');
-      pCell.setValue(c[k2] != null ? c[k2] : '');
+      if (k2 === 'option2') sheet.getRange(primaryRow, COL.option2 + 1).setNumberFormat('@');
+      stage(primaryRow, COL[k2], c[k2] != null ? c[k2] : '');
     }
   }
 
+  if (c.sale !== undefined) stage(primaryRow, COL.salePrice, c.sale != null ? c.sale : '');
+  if (c.comm !== undefined) stage(primaryRow, COL.commission, c.comm != null ? c.comm / 100 : '');
+  if (c.qty  !== undefined) stage(primaryRow, COL.qty, c.qty != null ? c.qty : '');
+
+  var newStart = c.start !== undefined ? _toDateOnly(c.start) : undefined;
+  var newEnd   = c.end   !== undefined ? _toDateOnly(c.end)   : undefined;
+  if (newStart !== undefined) {
+    sheet.getRange(primaryRow, COL.startMD + 1).setNumberFormat('yyyy-mm-dd');
+    stage(primaryRow, COL.startMD, newStart || '');
+    if (newStart) stage(primaryRow, COL.year, newStart.getFullYear());
+  }
+  if (newEnd !== undefined) {
+    sheet.getRange(primaryRow, COL.endMD + 1).setNumberFormat('yyyy-mm-dd');
+    stage(primaryRow, COL.endMD, newEnd || '');
+  }
+
+  // 등급 결과 열(G·H)을 같은 묶음에 태움 — 예전엔 저장이 끝난 뒤 프론트가 writeTiers를 따로
+  // 호출해서 HTTP 왕복이 하나 더 있었다. 채널 등급은 프론트가 산정하므로 저장 payload에 실려온다.
+  if (data.tiers) {
+    var tierTargets = [];
+    for (var tg = 0; tg < groupRows.length; tg++) tierTargets.push(groupRows[tg].row);
+    _stageTiers(pending, tierTargets, data.tiers);
+  }
+
+  var writeCalls = _writeCellsBatched(sheet, pending);
+
   // 채널명 셀의 하이퍼링크도 함께 갱신 — 위 링크 열(COL.link)과 어긋나지 않게, 그룹의 모든 행에
-  // 반영함(채널명 텍스트는 위 GROUP_MIRROR_KEYS 반영이 이미 끝난 뒤라 최신 텍스트를 그대로 씀).
+  // 반영함(채널명 텍스트는 위 값 쓰기가 이미 끝난 뒤라 최신 텍스트를 그대로 씀).
   // 링크를 빈 값으로 저장하면 하이퍼링크만 제거되고 텍스트는 유지됨.
   if (c.link !== undefined) {
     for (var lg = 0; lg < groupRows.length; lg++) {
       _setChannelLink(sheet, groupRows[lg].row, c.link || '');
     }
-  }
-
-  if (c.sale !== undefined) sheet.getRange(primaryRow, COL.salePrice + 1).setValue(c.sale != null ? c.sale : '');
-  if (c.comm !== undefined) sheet.getRange(primaryRow, COL.commission + 1).setValue(c.comm != null ? c.comm / 100 : '');
-  if (c.qty !== undefined) sheet.getRange(primaryRow, COL.qty + 1).setValue(c.qty != null ? c.qty : '');
-
-  var newStart = c.start !== undefined ? _toDateOnly(c.start) : undefined;
-  var newEnd   = c.end   !== undefined ? _toDateOnly(c.end)   : undefined;
-  if (newStart !== undefined) {
-    var startCell = sheet.getRange(primaryRow, COL.startMD + 1);
-    startCell.setNumberFormat('yyyy-mm-dd');
-    startCell.setValue(newStart || '');
-    if (newStart) sheet.getRange(primaryRow, COL.year + 1).setValue(newStart.getFullYear());
-  }
-  if (newEnd !== undefined) {
-    var endCell = sheet.getRange(primaryRow, COL.endMD + 1);
-    endCell.setNumberFormat('yyyy-mm-dd');
-    endCell.setValue(newEnd || '');
   }
 
   // 2026-08-21: 예전엔 수식이 없을 때만 "판매수량×공구가"를 고정 숫자로 한 번 계산해 넣었는데,
@@ -1920,6 +2224,7 @@ function _updateDeal(ss, data) {
   }
 
   // 상품코드 배열 반영 — 행 수를 codes.length에 맞춤
+  var rowSetChanged = false; // 행이 늘거나 줄면 캐시 부분 갱신으로는 못 맞춤 → 전체 무효화로 떨어짐
   if (Array.isArray(data.codes)) {
     var codes = data.codes.map(function (x) { return String(x || '').trim(); }).filter(function (x) { return x; }).slice(0, MAX_CODES);
     if (!codes.length) codes = [''];
@@ -1928,6 +2233,11 @@ function _updateDeal(ss, data) {
     var shared = Math.min(groupRows.length, codes.length);
     for (var s = 0; s < shared; s++) {
       sheet.getRange(groupRows[s].row, COL.code + 1).setValue(codes[s]);
+    }
+
+    if (codes.length !== groupRows.length) {
+      rowSetChanged = true;
+      _invalidateDealRowMap(); // 행 번호가 바뀌므로 dealId→행 맵을 버림
     }
 
     if (codes.length > groupRows.length) {
@@ -1971,7 +2281,24 @@ function _updateDeal(ss, data) {
     }
   }
 
-  return _json({ success: true });
+  // 저장 결과를 프론트가 그대로 병합할 수 있게 돌려줌 — 예전엔 저장 직후 fetchLive()로 전체를
+  // 다시 받아왔는데(시트 4만 셀 재파싱 + HTTP 왕복 1회), 실제로 바뀐 건 이 건 하나뿐이다.
+  var finalRows = rowSetChanged ? _findGroupRows(sheet, data.dealId) : groupRows;
+  var tierRows = [];
+  var sT = data.tiers ? _normalizeTier(data.tiers.salesTier) : '';
+  var fT = data.tiers ? _normalizeTier(data.tiers.followerTier) : '';
+  for (var fr = 0; fr < finalRows.length; fr++) tierRows.push([finalRows[fr].row, sT, fT]);
+
+  return _json({
+    success: true,
+    dealId: data.dealId,
+    rowIndex: finalRows.length ? finalRows[0].row : primaryRow,
+    rowCount: finalRows.length,
+    tierRows: tierRows,
+    writeCalls: writeCalls,
+    // 행 구성이 그대로일 때만 캐시 부분 갱신 시도(아니면 _handleWriteAction이 전체 무효화로 감)
+    cachePatch: rowSetChanged ? null : _buildCachePatch(data.dealId, c, tierRows)
+  });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2187,6 +2514,7 @@ function _deleteDeal(ss, data) {
 
   var rowsDesc = groupRows.map(function (x) { return x.row; }).sort(function (a, b) { return b - a; });
   for (var i = 0; i < rowsDesc.length; i++) sheet.deleteRow(rowsDesc[i]);
+  _invalidateDealRowMap(); // 행이 사라졌으므로 dealId→행 맵을 버림
 
   return _json({ success: true });
 }
@@ -2747,7 +3075,10 @@ function _shareReviewImages(data) {
 // 별도 수정 없이 "GAS 처리 시간(ms)"을 갖게 됨 — 프론트가 이 값으로 병목이 GAS인지(execMs가 큼)
 // 네트워크/콜드스타트인지(execMs는 작은데 왕복은 느림) 구분할 수 있음. 호출부가 이미 execMs를
 // 직접 넣어둔 경우(예: doGet의 캐시 히트 경로)는 덮어쓰지 않음.
+// 마지막으로 직렬화한 객체 — _handleWriteAction이 여기에 timings를 얹어 다시 내보낸다.
+var _lastJsonObj = null;
 function _json(obj) {
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) _lastJsonObj = obj;
   if (obj && typeof obj === 'object' && !Array.isArray(obj) && obj.execMs === undefined && _reqStartMs) {
     obj.execMs = Date.now() - _reqStartMs;
   }
