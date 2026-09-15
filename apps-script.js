@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'fastsave-2026-09-15-02';
+var SCRIPT_VERSION = 'fastsave-2026-09-15-04';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -2205,6 +2205,14 @@ function _updateDeal(ss, data) {
 
   var writeCalls = _writeCellsBatched(sheet, pending);
 
+  /* 릴스도 같은 실행에서 처리 (2026-09-15) — 예전엔 프론트가 updateDeal 다음에 saveReels를
+     따로 호출해서 HTTP 왕복이 하나 더 있었다. Apps Script는 왕복당 고정비가 1.7~2초라
+     (302 리다이렉트 구조) 이 한 번이 저장 시간의 절반을 차지했다.
+     프론트는 릴스가 **실제로 바뀐 경우에만** data.reels를 실어 보낸다 — 안 바뀌었는데 매번 쓰면
+     슬롯 10칸을 헛되이 다시 쓰게 되고(쓰기 RPC 20여 회), 그게 합친 이득을 도로 까먹는다. */
+  var reelsSaved = null;
+  if (data.reels != null) reelsSaved = _applyReels(sheet, primaryRow, data.reels);
+
   // 채널명 셀의 하이퍼링크도 함께 갱신 — 위 링크 열(COL.link)과 어긋나지 않게, 그룹의 모든 행에
   // 반영함(채널명 텍스트는 위 값 쓰기가 이미 끝난 뒤라 최신 텍스트를 그대로 씀).
   // 링크를 빈 값으로 저장하면 하이퍼링크만 제거되고 텍스트는 유지됨.
@@ -2303,8 +2311,10 @@ function _updateDeal(ss, data) {
     rowCount: finalRows.length,
     tierRows: tierRows,
     writeCalls: writeCalls,
+    reelsSaved: reelsSaved,
     // 행 구성이 그대로일 때만 캐시 부분 갱신 시도(아니면 _handleWriteAction이 전체 무효화로 감)
-    cachePatch: rowSetChanged ? null : _buildCachePatch(data.dealId, c, tierRows)
+    // 릴스를 건드렸으면 조회수 합계·썸네일이 바뀌므로 필드 덮어쓰기로는 못 맞춤 → 전체 무효화로
+    cachePatch: (rowSetChanged || data.reels != null) ? null : _buildCachePatch(data.dealId, c, tierRows)
   });
 }
 
@@ -2556,43 +2566,50 @@ function _saveReels(ss, data) {
 
   sheet.getRange(sheetRow, COL.link + 1).setValue(data.link || '');
 
-  var savedCount = 0;
-  if (data.reels != null) {
-    var reels = data.reels;
-    var thumbs = [];
-    var total = 0;
-    for (var i = 0; i < REEL_SLOT_COUNT; i++) {
-      var cell = sheet.getRange(sheetRow, REEL_COL_START + i);
-      var r = reels[i];
-      if (r && (r.url || r.views != null)) {
-        var text = r.views != null ? String(r.views) : ' ';
-        try {
-          if (r.url) {
-            cell.setNumberFormat('@');
-            var rtv = SpreadsheetApp.newRichTextValue().setText(text).setLinkUrl(0, text.length, r.url).build();
-            cell.setRichTextValue(rtv);
-          } else {
-            cell.setValue(r.views != null ? r.views : '');
-          }
-        } catch (linkErr) {
-          cell.setNumberFormat('@');
-          cell.setValue(text);
-          Logger.log('릴스 링크 저장 실패 (텍스트만 저장): row=' + sheetRow + ' slot=' + i + ' url=' + r.url + ' err=' + linkErr);
-        }
-        if (r.views != null) total += Number(r.views);
-        thumbs.push(r.thumb || '');
-        savedCount++;
-      } else {
-        cell.setNumberFormat('General');
-        cell.setValue('');
-        thumbs.push('');
-      }
-    }
-    sheet.getRange(sheetRow, COL.views + 1).setValue(total || '');
-    sheet.getRange(sheetRow, COL.thumbs + 1).setValue(JSON.stringify(thumbs));
-  }
-
+  var savedCount = _applyReels(sheet, sheetRow, data.reels);
   return _json({ success: true, count: savedCount });
+}
+
+/* 릴스 슬롯 + 썸네일 + 조회수 합계를 한 행에 기록 — _saveReels와 _updateDeal이 공유한다.
+   ⚠ 2026-09-15 저장 왕복을 줄이면서 추출한 것으로, 로직은 예전 _saveReels 본문 그대로다
+   (로직을 새로 쓰면 하이퍼링크·썸네일 처리에서 조용히 틀어질 위험이 있어 옮기기만 했다).
+   reels가 null/undefined면 아무것도 하지 않고 0을 돌려준다 — "릴스를 안 건드린 저장"이
+   조회수 합계나 슬롯을 지워버리면 안 되기 때문. */
+function _applyReels(sheet, sheetRow, reels) {
+  if (reels == null) return 0;
+  var savedCount = 0;
+  var thumbs = [];
+  var total = 0;
+  for (var i = 0; i < REEL_SLOT_COUNT; i++) {
+    var cell = sheet.getRange(sheetRow, REEL_COL_START + i);
+    var r = reels[i];
+    if (r && (r.url || r.views != null)) {
+      var text = r.views != null ? String(r.views) : ' ';
+      try {
+        if (r.url) {
+          cell.setNumberFormat('@');
+          var rtv = SpreadsheetApp.newRichTextValue().setText(text).setLinkUrl(0, text.length, r.url).build();
+          cell.setRichTextValue(rtv);
+        } else {
+          cell.setValue(r.views != null ? r.views : '');
+        }
+      } catch (linkErr) {
+        cell.setNumberFormat('@');
+        cell.setValue(text);
+        Logger.log('릴스 링크 저장 실패 (텍스트만 저장): row=' + sheetRow + ' slot=' + i + ' url=' + r.url + ' err=' + linkErr);
+      }
+      if (r.views != null) total += Number(r.views);
+      thumbs.push(r.thumb || '');
+      savedCount++;
+    } else {
+      cell.setNumberFormat('General');
+      cell.setValue('');
+      thumbs.push('');
+    }
+  }
+  sheet.getRange(sheetRow, COL.views + 1).setValue(total || '');
+  sheet.getRange(sheetRow, COL.thumbs + 1).setValue(JSON.stringify(thumbs));
+  return savedCount;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

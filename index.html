@@ -1532,7 +1532,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-fastsave-2026-09-15-03';
+const DASHBOARD_VERSION='dash-fastsave-2026-09-15-04';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -1541,7 +1541,7 @@ console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='fastsave-2026-09-15-02';
+const REQUIRED_SCRIPT_VERSION='fastsave-2026-09-15-04';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -2054,6 +2054,13 @@ function isDealSaving(dealId){ return _savingDeals.has(dealId); }
 function _savingChip(d){
   return d && d._saving ? ' <span class="bdg bdg-p" style="opacity:.7">저장 중</span>' : '';
 }
+/* 릴스가 실제로 달라졌는지 — 순서·URL·조회수·썸네일까지 그대로 비교한다.
+   모달을 열기만 해도 _modalReels가 만들어지므로 "존재 여부"로 판단하면 매번 바뀐 걸로 오인한다. */
+function _reelsSignature(list){
+  return JSON.stringify((list||[]).map(r=>[r.url||'', r.views!=null?r.views:null, r.thumb||'']));
+}
+function _reelsChanged(before,after){ return _reelsSignature(before)!==_reelsSignature(after); }
+
 function _snapshotDeal(d){ return JSON.parse(JSON.stringify(d)); }
 function _restoreDeal(d, snap){
   Object.keys(d).forEach(k => { delete d[k]; });
@@ -5493,8 +5500,11 @@ async function saveSchemeModal(){
   if(productInvalid){showToast('제품명 표기가 시트 규칙과 일치하지 않습니다. 관리자에게 문의해주세요.');return;}
 
   let reels=_modalReels.filter(r=>r.url||r.views!=null||r.thumb).slice(0,10);
-  // 릴스가 원래 없었고 지금도 안 건드렸으면(둘 다 빈 상태) 조회수 합계/Q~Z를 건드리지 않음 — 링크만 저장
-  const touchReels=reels.length>0||_modalHadReels;
+  /* ⚠ 2026-09-15: 예전엔 "릴스가 있기만 하면"(reels.length>0||_modalHadReels) 무조건 릴스를
+     다시 저장했다. 실제로는 릴스를 전혀 건드리지 않은 저장이 대부분인데도 매번 슬롯 10칸을
+     다시 쓰고 있었고, 그게 별도 HTTP 왕복(왕복당 1.7~2초)까지 만들었다.
+     이제는 내용을 실제로 비교해서 달라졌을 때만 보낸다 — 값이 같으면 시트를 건드릴 이유가 없다. */
+  const touchReels=_reelsChanged(d.reels,reels);
   const url=_getGasUrl();
 
   console.log('[변경된 필드]',changes,'[상품코드]',codes,codesChanged?'(변경됨)':'(변경없음)');
@@ -5539,18 +5549,13 @@ async function saveSchemeModal(){
     (async()=>{
       // updateDeal과 saveReels는 둘 다 dealId로 같은 행을 직접 찾으므로 병렬로 보내도 안전하지만,
       // 실패 시 원인 구분이 쉽도록 순차 처리 유지.
-      let last=null;
-      if(Object.keys(changes).length||codesChanged){
-        const r1=await _gasLeg(_legs,'updateDeal',()=>_gasWrite(url,'updateDeal',{dealId:d.dealId,changes,codes,tiers}));
-        if(!r1||r1.success!==true||r1.error)throw new Error((r1&&r1.error)||'updateDeal 응답에 success:true가 없습니다');
-        last=r1;
-      }
-      if(touchReels){
-        const r2=await _gasLeg(_legs,'saveReels',()=>_gasWrite(url,'saveReels',{dealId:d.dealId,link:next.link,reels}));
-        if(!r2||r2.success!==true||r2.error)throw new Error((r2&&r2.error)||'saveReels 응답에 success:true가 없습니다');
-        last=last||r2;
-      }
-      return last;
+      // 본문·등급·릴스를 한 요청에 담는다. Apps Script는 왕복당 고정비가 1.7~2초라
+      // (302 리다이렉트 구조상 줄일 수 없음) 요청 수가 곧 저장 시간이다.
+      const payload={dealId:d.dealId,changes,codes,tiers};
+      if(touchReels)payload.reels=reels;
+      const r1=await _gasLeg(_legs,'updateDeal',()=>_gasWrite(url,'updateDeal',payload));
+      if(!r1||r1.success!==true||r1.error)throw new Error((r1&&r1.error)||'updateDeal 응답에 success:true가 없습니다');
+      return r1;
     })().then(res=>{
       _logSaveTimings('수정 저장',res&&res.timings,performance.now()-_t0,_legs);
       // 프론트가 스스로 알 수 없는 건 행 번호뿐 — 그것만 서버 값으로 맞춘다(전체 재조회 불필요)

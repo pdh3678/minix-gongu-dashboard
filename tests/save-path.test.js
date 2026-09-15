@@ -18,7 +18,7 @@ const PROJ = process.argv[2] || path.join(__dirname, '..');
 
 const C = { brand:1, product:2, channel:4, platform:5, salesTier:6, followerTier:7, code:9,
   salePrice:10, qty:11, revenue:12, year:14, startMD:15, endMD:16, status:17,
-  targetQty:23, note:25, dealId:44, codeSeq:45, note2:53, tier:54, followers:55 };
+  targetQty:23, note:25, views:26, dealId:44, codeSeq:45, note2:53, tier:54, followers:55 };
 
 function mkRow(o){ const r = new Array(HEADERS.length).fill(''); Object.keys(o).forEach(k => { r[k] = o[k]; }); return r; }
 function buildSheet(){
@@ -166,6 +166,41 @@ function check(l, c, extra) {
   front.invalidateTierStats();
   check('추가 writeTiers 대기 없음', front._collectTierWrites().length === 0, front._collectTierWrites());
 
+
+  console.log('\n[7] 릴스 — 실제로 바뀐 경우에만 한 요청에 실려 감');
+  check('같은 내용이면 변경 아님',
+    front._reelsChanged([{url:'u1',views:3,thumb:''}], [{url:'u1',views:3,thumb:''}]) === false);
+  check('조회수가 다르면 변경', front._reelsChanged([{url:'u1',views:3}], [{url:'u1',views:5}]) === true);
+  check('개수가 다르면 변경', front._reelsChanged([{url:'u1',views:3}], []) === true);
+  check('둘 다 비어 있으면 변경 아님', front._reelsChanged([], []) === false);
+  check('빈 배열 vs undefined도 변경 아님', front._reelsChanged(undefined, []) === false);
+
+  // 릴스를 실어 보내면 같은 실행에서 기록된다
+  sent.length = 0;
+  const rReel = await front._gasWrite('u', 'updateDeal', {
+    dealId:'D1', changes:{ note:'릴스같이' }, codes:['AAA','BBB'], tiers,
+    reels:[{ url:'https://r1', views:4, thumb:'' }, { url:'', views:6, thumb:'' }]
+  });
+  check('요청은 여전히 1회(saveReels 별도 호출 없음)', sent.length === 1 && sent[0] === 'updateDeal', sent);
+  // 슬롯0은 URL이 있어 하이퍼링크(setRichTextValue)로 들어가고, 목은 그 호출만 기록한다 —
+  // 그리드 값으로는 확인할 수 없으므로 "올바른 열에 리치텍스트를 썼는지"로 본다.
+  const reelRich = sheet._calls.filter(x => x.op === 'setRichTextValue' && x.r === 3);
+  check('슬롯0은 하이퍼링크로 기록(릴스 시작 열)',
+    reelRich.some(x => x.c === C.views + 2), reelRich.map(x => x.c));
+  check('슬롯1은 값으로 기록', sheet._grid[2][C.views + 2] === 6, sheet._grid[2][C.views + 2]);
+  check('조회수 합계 갱신(4+6=10)', sheet._grid[2][C.views] === 10, sheet._grid[2][C.views]);
+  check('reelsSaved 보고', rReel.reelsSaved === 2, rReel.reelsSaved);
+
+  // 릴스를 안 실어 보내면 슬롯도 합계도 그대로여야 한다 (여기가 깨지면 조회수가 조용히 사라진다)
+  const viewsBefore = sheet._grid[2][C.views];
+  const slot1Before = sheet._grid[2][C.views + 1];
+  const rNoReel = await front._gasWrite('u', 'updateDeal', {
+    dealId:'D1', changes:{ note:'릴스없이' }, codes:['AAA','BBB'], tiers
+  });
+  check('reels 없으면 reelsSaved=null', rNoReel.reelsSaved === null, rNoReel.reelsSaved);
+  check('조회수 합계 보존', sheet._grid[2][C.views] === viewsBefore, [sheet._grid[2][C.views], viewsBefore]);
+  check('릴스 슬롯 보존', sheet._grid[2][C.views + 1] === slot1Before, [sheet._grid[2][C.views + 1], slot1Before]);
+  check('본문 변경은 반영됨', sheet._grid[2][C.note] === '릴스없이', sheet._grid[2][C.note]);
   console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
   process.exit(fail ? 1 : 0);
 })();
