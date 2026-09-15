@@ -20,8 +20,12 @@ function check(label, cond, extra) {
   ['syncTiersToSheet', '_collectTierWrites', '_tierCellsFor', '_dealFieldsFromNext',
    '_snapshotDeal', '_restoreDeal', '_tiersForSave', '_presetTierRows', 'isDealSaving']
     .forEach(fn => check(fn + ' 정의됨', typeof ctx[fn] === 'function', typeof ctx[fn]));
-  check('프론트/서버 버전 문자열이 짝을 이룸',
-    X.DASHBOARD_VERSION.replace(/^dash-/, '') === X.REQUIRED_SCRIPT_VERSION,
+  /* 두 버전 문자열은 일부러 독립이다 — DASHBOARD_VERSION은 프론트 전용이고,
+     REQUIRED_SCRIPT_VERSION은 "이 프론트가 의존하는 최소 Apps Script 배포본"이다.
+     프론트만 고친 경우에도 GAS 재배포를 강요하지 않으려고 분리해 둔 것이라, 둘이 같은지를
+     단언하면 안 된다. 여기서는 "둘 다 채워져 있는지"만 본다. */
+  check('버전 문자열이 둘 다 설정됨',
+    !!X.DASHBOARD_VERSION && !!X.REQUIRED_SCRIPT_VERSION,
     { dash: X.DASHBOARD_VERSION, req: X.REQUIRED_SCRIPT_VERSION });
 
   console.log('\n[2] adaptGAS가 서버 tierRows를 그대로 받아옴');

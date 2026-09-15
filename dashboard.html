@@ -1532,7 +1532,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-fastsave-2026-09-15-02';
+const DASHBOARD_VERSION='dash-fastsave-2026-09-15-03';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 
 // 이 프론트가 실제로 의존하는 "최소 호환 Apps Script 버전" — DASHBOARD_VERSION(프론트 전용 버전,
@@ -2096,11 +2096,27 @@ function _presetTierRows(d, tiers){
   d._tierRows.forEach(r => { r[1] = tiers.salesTier; r[2] = tiers.followerTier; });
 }
 
-// GAS가 돌려준 timings를 콘솔에 표로 — 다음에 또 느려지면 여기부터 본다
-function _logSaveTimings(label, t, clientMs){
-  if(!t){ console.log(`[저장 계측] ${label} — 클라이언트 왕복 ${Math.round(clientMs)}ms (서버 timings 없음: 구버전 배포본)`); return; }
-  console.log(`[저장 계측] ${label} — 클라이언트 왕복 ${Math.round(clientMs)}ms / 서버 총 ${t.total}ms`,
-    {payload파싱:t.parse, 핸들러:t.handler, flush:t.flush, 캐시:t.cache});
+/* 저장 한 번이 실제로 HTTP를 몇 번 탔고 각각 어디서 시간을 썼는지 남긴다.
+   ⚠ 예전엔 전체 경과시간 하나와 마지막 응답의 timings만 찍었는데, 그러면 요청이 2회일 때
+   "경과는 두 요청 합계인데 timings는 한 요청 것"이라 둘이 안 맞아 원인을 가릴 수 없었다.
+   요청마다 구간을 따로 잡아야 '서버가 느린 것'과 '왕복이 많은 것'이 구분된다. */
+function _gasLeg(legs, name, fn){
+  const t0=performance.now();
+  return Promise.resolve(fn()).then(res=>{
+    legs.push({name, ms:Math.round(performance.now()-t0), server:(res&&res.timings&&res.timings.total)||null,
+               exec:(res&&res.execMs)!=null?res.execMs:null});
+    return res;
+  });
+}
+function _logSaveTimings(label, t, clientMs, legs){
+  const total=Math.round(clientMs);
+  if(Array.isArray(legs)&&legs.length){
+    const over=legs.reduce((s,l)=>s+(l.ms-(l.exec!=null?l.exec:(l.server||0))),0);
+    console.log(`[저장 계측] ${label} — 총 ${total}ms / HTTP 왕복 ${legs.length}회 / 그중 플랫폼·네트워크 ≈${Math.round(over)}ms`);
+    legs.forEach(l=>console.log(`    · ${l.name}: 왕복 ${l.ms}ms / 스크립트 execMs ${l.exec!=null?l.exec+'ms':'—'} / 핸들러 ${l.server!=null?l.server+'ms':'—'}`));
+  }
+  if(!t){ console.log(`    (서버 timings 없음 — 구버전 배포본일 수 있음)`); return; }
+  console.log('    마지막 응답 서버 구간:', {payload파싱:t.parse, 핸들러:t.handler, flush:t.flush, 캐시:t.cache});
 }
 /* ── 등급 축 (2026-09-11) ───────────────────────────────────────────────────
    '등급별 성과' 섹션 전체가 이 축 하나로 매출/팔로워를 갈아끼운다. 새 축을 추가하려면 여기에
@@ -5519,23 +5535,24 @@ async function saveSchemeModal(){
     showToast('저장 중…');
 
     const _t0=performance.now();
+    const _legs=[]; // 요청 단위 구간 — 왕복이 몇 번이고 각각 얼마였는지 구분해서 보기 위함
     (async()=>{
       // updateDeal과 saveReels는 둘 다 dealId로 같은 행을 직접 찾으므로 병렬로 보내도 안전하지만,
       // 실패 시 원인 구분이 쉽도록 순차 처리 유지.
       let last=null;
       if(Object.keys(changes).length||codesChanged){
-        const r1=await _gasWrite(url,'updateDeal',{dealId:d.dealId,changes,codes,tiers});
+        const r1=await _gasLeg(_legs,'updateDeal',()=>_gasWrite(url,'updateDeal',{dealId:d.dealId,changes,codes,tiers}));
         if(!r1||r1.success!==true||r1.error)throw new Error((r1&&r1.error)||'updateDeal 응답에 success:true가 없습니다');
         last=r1;
       }
       if(touchReels){
-        const r2=await _gasWrite(url,'saveReels',{dealId:d.dealId,link:next.link,reels});
+        const r2=await _gasLeg(_legs,'saveReels',()=>_gasWrite(url,'saveReels',{dealId:d.dealId,link:next.link,reels}));
         if(!r2||r2.success!==true||r2.error)throw new Error((r2&&r2.error)||'saveReels 응답에 success:true가 없습니다');
         last=last||r2;
       }
       return last;
     })().then(res=>{
-      _logSaveTimings('수정 저장',res&&res.timings,performance.now()-_t0);
+      _logSaveTimings('수정 저장',res&&res.timings,performance.now()-_t0,_legs);
       // 프론트가 스스로 알 수 없는 건 행 번호뿐 — 그것만 서버 값으로 맞춘다(전체 재조회 불필요)
       if(res&&Array.isArray(res.tierRows)&&res.tierRows.length)d._tierRows=res.tierRows;
       if(res&&res.rowIndex!=null)d.id=res.rowIndex;
@@ -6695,7 +6712,7 @@ function saveDeal(){
     _gasWrite(url,'addSalesRow',Object.assign({},newDeal,{tiers}))
       .then(j=>{
         if(!j||j.error)throw new Error((j&&j.error)||'등록 응답에 결과가 없습니다');
-        _logSaveTimings('신규 등록',j.timings,performance.now()-_t0);
+        _logSaveTimings('신규 등록',j.timings,performance.now()-_t0,[{name:'addSalesRow',ms:Math.round(performance.now()-_t0),server:(j.timings&&j.timings.total)||null,exec:j.execMs!=null?j.execMs:null}]);
         // 임시값을 서버가 확정한 실제 값으로 교체
         newDeal.dealId=j.dealId||tempId;
         if(j.rowIndex!=null)newDeal.id=j.rowIndex;
