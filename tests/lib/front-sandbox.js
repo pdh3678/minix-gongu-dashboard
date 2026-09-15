@@ -36,19 +36,35 @@ function makeStorage() {
   };
 }
 
-// index.html에서 가장 큰 인라인 <script>(대시보드 본체)를 꺼낸다
-function extractMainScript(projectPath) {
+// index.html의 인라인 script들을 문서 순서대로 꺼낸다(외부 src는 제외)
+function extractScripts(projectPath) {
   const html = fs.readFileSync(path.join(projectPath, 'index.html'), 'utf8');
-  const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-  if (!scripts.length) throw new Error('index.html에서 인라인 스크립트를 찾지 못했습니다.');
-  return scripts.sort((a, b) => b.length - a.length)[0];
+  const re = new RegExp('<script(?![^>]*\\bsrc=)[^>]*>([\\s\\S]*?)<\\/script>', 'g');
+  const out = [];
+  let m;
+  while ((m = re.exec(html)) !== null) out.push(m[1]);
+  if (!out.length) throw new Error('index.html에서 인라인 스크립트를 찾지 못했습니다.');
+  return out;
+}
+// 그중 가장 큰 것(대시보드 본체)
+function extractMainScript(projectPath) {
+  return extractScripts(projectPath).slice().sort((a, b) => b.length - a.length)[0];
 }
 
 /* 프론트를 로드해 { ctx, X, src } 반환.
    ctx — vm 컨텍스트(함수 선언들이 여기 올라와 있고, 스텁으로 갈아끼울 수도 있다)
-   X   — const/let 값 접근용 shim (DATA, 버전 문자열, _savingDeals 등) */
-function loadFrontend(projectPath, extraShimBody) {
-  const src = extractMainScript(projectPath);
+   X   — const/let 값 접근용 shim (DATA, 버전 문자열, _savingDeals 등)
+
+   opts.search         — location.search 값('?embed=1' 등). 임베드 모드 검증용.
+   opts.runHeadScripts — true면 본체보다 앞에 있는 작은 인라인 스크립트(임베드 판정 등)도
+                         문서 순서대로 먼저 실행한다. 실제 브라우저와 같은 순서를 재현하기 위함. */
+function loadFrontend(projectPath, extraShimBody, opts) {
+  opts = opts || {};
+  const all = extractScripts(projectPath);
+  const src = all.slice().sort((a, b) => b.length - a.length)[0];
+  const head = all.filter(s => s !== src);
+  const search = opts.search || '';
+
   const sandbox = {
     console, Math, Date, JSON, Number, String, Boolean, Array, Object, Map, Set, RegExp, Error,
     isNaN, isFinite, parseInt, parseFloat, encodeURIComponent, decodeURIComponent,
@@ -57,11 +73,28 @@ function loadFrontend(projectPath, extraShimBody) {
       getElementById: () => stubNode(), querySelector: () => stubNode(),
       querySelectorAll: () => ({ length: 0, forEach() {}, map: () => [] }),
       createElement: () => stubNode(), addEventListener() {}, removeEventListener() {},
-      body: stubNode(), documentElement: stubNode(), head: stubNode(),
-      cookie: '', readyState: 'complete'
+      body: stubNode(), head: stubNode(), cookie: '', readyState: 'complete',
+      // html 요소의 클래스는 임베드 판정 결과가 실제로 실리는 곳이라 진짜로 동작해야 한다
+      documentElement: {
+        classList: {
+          _s: new Set(),
+          add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
+          contains(c) { return this._s.has(c); },
+          toggle(c) { this._s.has(c) ? this._s.delete(c) : this._s.add(c); }
+        }
+      }
     },
     localStorage: makeStorage(), sessionStorage: makeStorage(),
-    location: { protocol: 'https:', hash: '', href: 'https://minix-gongu-dashboard.onrender.com/' },
+    location: {
+      protocol: 'https:', hash: '', pathname: '/', search,
+      href: 'https://minix-gongu-dashboard.onrender.com/' + search
+    },
+    // _setHash가 실제로 어떤 URL을 쓰는지 봐야 하므로 기록형 스텁
+    history: {
+      _urls: [],
+      replaceState(_s, _t, url) { this._urls.push(url); },
+      pushState(_s, _t, url) { this._urls.push(url); }
+    },
     navigator: { userAgent: 'node' },
     Chart: function () { return stubNode(); },
     fetch: async () => ({ status: 200, json: async () => ({}) }),
@@ -84,13 +117,17 @@ function loadFrontend(projectPath, extraShimBody) {
   get DATA(){return DATA;},
   get DASHBOARD_VERSION(){return DASHBOARD_VERSION;},
   get REQUIRED_SCRIPT_VERSION(){return REQUIRED_SCRIPT_VERSION;},
+  get IS_EMBED(){return IS_EMBED;},
   get savingDeals(){return _savingDeals;},
   setSyncReady(v){_tierSyncReady=v;}${extraShimBody ? ',\n  ' + extraShimBody : ''}
 };`;
 
   const ctx = vm.createContext(sandbox);
+  if (opts.runHeadScripts) {
+    head.forEach((s, i) => vm.runInContext(s, ctx, { filename: 'index.html(head script ' + i + ')' }));
+  }
   vm.runInContext(src + shim, ctx, { filename: 'index.html(inline script)' });
-  return { ctx, X: ctx.__X__, src };
+  return { ctx, X: ctx.__X__, src, head };
 }
 
-module.exports = { loadFrontend, extractMainScript, stubNode };
+module.exports = { loadFrontend, extractMainScript, extractScripts, stubNode };

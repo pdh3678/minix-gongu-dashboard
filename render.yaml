@@ -8,3 +8,15 @@ services:
       - path: /*
         name: Cache-Control
         value: no-cache
+      # iframe 임베드 허용 범위 (2026-09-15).
+      # Render는 X-Frame-Options를 붙이지 않는다(실측 확인) — 즉 지금까지는 아무 사이트나 이
+      # 대시보드를 iframe에 넣을 수 있었다. frame-ancestors로 그 범위를 명시적으로 좁힌다.
+      # 'self'  = 대시보드 자신(같은 오리진 미리보기 등)
+      # minix-workspace.onrender.com = 세일즈 팀 워크스페이스
+      # ⚠ 워크스페이스에 커스텀 도메인을 붙이면 그 도메인도 여기에 추가해야 한다. 빠뜨리면
+      #   부모 페이지에서 iframe이 "연결 거부"처럼 빈 화면으로만 보이고 콘솔에만 CSP 오류가 남는다.
+      # ⚠ X-Frame-Options는 일부러 넣지 않는다. ALLOW-FROM은 모든 최신 브라우저에서 폐기됐고,
+      #   DENY/SAMEORIGIN을 넣으면 frame-ancestors보다 우선 적용돼 임베드가 막힌다.
+      - path: /*
+        name: Content-Security-Policy
+        value: "frame-ancestors 'self' https://minix-workspace.onrender.com"
