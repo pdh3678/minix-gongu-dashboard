@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'fastsave-2026-09-15-01';
+var SCRIPT_VERSION = 'fastsave-2026-09-15-02';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -2284,10 +2284,17 @@ function _updateDeal(ss, data) {
   // 저장 결과를 프론트가 그대로 병합할 수 있게 돌려줌 — 예전엔 저장 직후 fetchLive()로 전체를
   // 다시 받아왔는데(시트 4만 셀 재파싱 + HTTP 왕복 1회), 실제로 바뀐 건 이 건 하나뿐이다.
   var finalRows = rowSetChanged ? _findGroupRows(sheet, data.dealId) : groupRows;
-  var tierRows = [];
-  var sT = data.tiers ? _normalizeTier(data.tiers.salesTier) : '';
-  var fT = data.tiers ? _normalizeTier(data.tiers.followerTier) : '';
-  for (var fr = 0; fr < finalRows.length; fr++) tierRows.push([finalRows[fr].row, sT, fT]);
+  // 등급을 같이 보내지 않은 요청이면 시트의 G·H를 건드리지 않았으므로 tierRows를 만들지 않는다.
+  // 예전엔 이 경우에도 빈 문자열로 채워 돌려줬는데, 그러면 프론트가 "시트 G·H가 비었다"고 오해해서
+  // 다음 렌더에서 writeTiers를 한 번 더 쏜다(방금 없앤 왕복이 되살아남). null이면 프론트도
+  // 캐시 갱신도 그냥 건너뛴다.
+  var tierRows = null;
+  if (data.tiers) {
+    var sT = _normalizeTier(data.tiers.salesTier);
+    var fT = _normalizeTier(data.tiers.followerTier);
+    tierRows = [];
+    for (var fr = 0; fr < finalRows.length; fr++) tierRows.push([finalRows[fr].row, sT, fT]);
+  }
 
   return _json({
     success: true,
