@@ -1151,6 +1151,185 @@ function _debugRawDump(ss, sheet) {
   };
 }
 
+
+/* ── dealId 통일 (2026-09-15) ───────────────────────────────────────────────────
+   상품코드별로 따로 등록돼 dealId가 제각각인 행들을, 기존 구조(같은 dealId + 코드순번 1..n)로
+   맞춘다. 대상은 행 번호로 직접 지정한다 — 내용(제품·채널·기간)이 같다는 이유로 자동으로 묶으면
+   서로 다른 공구건을 합칠 위험이 있어서, 사람이 확인한 묶음만 손댄다.
+
+   각 묶음의 **첫 행 dealId**가 대표가 되고, 나머지 행의 dealId가 그 값으로 바뀐다.
+   코드순번은 1부터 순서대로 다시 매긴다. 행은 삭제하지 않고 실적도 건드리지 않는다
+   (상품코드별 실적은 그대로 남고, parseMainSheet가 합산해서 한 건으로 보여준다).
+
+   먼저 previewUnifyDealIds()로 바뀔 셀 목록을 보고, 이상 없으면 applyUnifyDealIds(). */
+
+// 러브지나 — 내용 기준 병합으로만 한 건처럼 보이던 4묶음 (시트 행 번호)
+var LOVEZINA_ROW_GROUPS = [
+  [180, 181, 182, 183, 184, 185],
+  [281, 283, 284],
+  [298, 299, 300],
+  [329, 330, 331]
+];
+
+function previewUnifyDealIds(groups) { return _unifyDealIds(groups || LOVEZINA_ROW_GROUPS, true); }
+function applyUnifyDealIds(groups)   { return _unifyDealIds(groups || LOVEZINA_ROW_GROUPS, false); }
+
+function _unifyDealIds(groups, dryRun) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = _mainSheet(ss);
+  if (!sheet) { Logger.log('[dealId 통일] 실적통합 시트를 찾을 수 없습니다'); return null; }
+  _resolveCols(sheet);
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
+  var idVals  = sheet.getRange(first, COL.dealId + 1, n, 1).getValues();
+  var seqVals = sheet.getRange(first, COL.codeSeq + 1, n, 1).getValues();
+
+  var edits = [], skipped = [], ok = 0;
+
+  for (var g = 0; g < groups.length; g++) {
+    var rows = groups[g];
+    var idxs = [], bad = null;
+    for (var r = 0; r < rows.length; r++) {
+      var idx = rows[r] - first;
+      if (idx < 0 || idx >= n) { bad = rows[r] + '행이 데이터 범위(' + first + '~' + lastRow + ') 밖입니다'; break; }
+      if (!String(vals[idx][COL.product] || '').trim()) { bad = rows[r] + '행에 제품명이 없습니다'; break; }
+      if (!MINIX_ALIASES[String(vals[idx][COL.brand] || '').trim()]) { bad = rows[r] + '행이 미닉스 행이 아닙니다'; break; }
+      idxs.push(idx);
+    }
+    // 같은 공구건이라는 최소 전제 — 채널·제품·기간이 모두 같아야 한다. 다르면 손대지 않고 보고만 한다
+    if (!bad) {
+      var key = null;
+      for (var k = 0; k < idxs.length; k++) {
+        var row = vals[idxs[k]];
+        var yr = _numOrNull(row[COL.year]);
+        var kk = [String(row[COL.channel] || '').trim(), String(row[COL.product] || '').replace(/\s+/g, '').toLowerCase(),
+          _parseDate(row[COL.startMD], yr) || '', _parseDate(row[COL.endMD], yr) || ''].join(' | ');
+        if (key === null) key = kk;
+        else if (kk !== key) { bad = '행마다 채널·제품·기간이 다릅니다 ("' + key + '" vs "' + kk + '")'; break; }
+      }
+    }
+    if (bad) {
+      skipped.push({ rows: rows, reason: bad });
+      Logger.log('  ⚠ 건너뜀 — 행 [' + rows.join(', ') + ']: ' + bad);
+      continue;
+    }
+
+    var primaryId = String(idVals[idxs[0]][0] || '').trim();
+    if (!primaryId) { primaryId = Utilities.getUuid(); }
+    for (var i2 = 0; i2 < idxs.length; i2++) {
+      var sheetRow = first + idxs[i2];
+      var curId = String(idVals[idxs[i2]][0] || '').trim();
+      var curSeq = _numOrNull(seqVals[idxs[i2]][0]);
+      if (curId !== primaryId) {
+        edits.push({ row: sheetRow, col: '공구건ID', from: curId, to: primaryId });
+        idVals[idxs[i2]][0] = primaryId;
+      }
+      if (curSeq !== i2 + 1) {
+        edits.push({ row: sheetRow, col: '코드순번', from: curSeq, to: i2 + 1 });
+        seqVals[idxs[i2]][0] = i2 + 1;
+      }
+    }
+    ok++;
+  }
+
+  Logger.log('[dealId 통일] ' + (dryRun ? '미리보기' : '실행') + ' — 묶음 ' + ok + '개 / 건너뜀 ' +
+    skipped.length + '개 / 바뀔 셀 ' + edits.length + '개');
+  for (var e = 0; e < edits.length; e++) {
+    Logger.log('  · ' + edits[e].row + '행 ' + edits[e].col + ': "' + edits[e].from + '" → "' + edits[e].to + '"');
+  }
+  if (!edits.length) Logger.log('  (바꿀 셀이 없습니다 — 이미 통일돼 있습니다)');
+
+  if (!dryRun && edits.length) {
+    sheet.getRange(first, COL.dealId + 1, n, 1).setValues(idVals);
+    sheet.getRange(first, COL.codeSeq + 1, n, 1).setValues(seqVals);
+    SpreadsheetApp.flush();
+    _invalidateDashboardCache();
+    _invalidateDealRowMap();
+    Logger.log('[dealId 통일] 기록 완료 — 대시보드를 새로고침하면 각 묶음이 한 건으로 보입니다');
+  }
+  return { dryRun: !!dryRun, groups: ok, edits: edits, skipped: skipped };
+}
+
+
+/* ── 다중 상품코드 진단 (2026-09-15) ────────────────────────────────────────────
+   "한 공구건 = 같은 dealId + 코드순번 1..n" 구조가 시트에서 실제로 지켜지고 있는지 본다.
+   하늘마켓·이제이쿡처럼 상품코드가 여러 개인 건을 대조할 때 쓴다. 읽기 전용이다.
+
+   보고 항목
+     rows      — 그 건이 차지한 시트 행 번호
+     codes     — 행별 상품코드
+     strayPerf — 대표 행이 아닌데 실적이 들어 있는 행(운영 규칙 위반 — 대시보드는 대표 행만 읽으므로
+                 이 값들은 집계에서 빠진다)
+     seqIssue  — 코드순번이 비었거나 중복이라 대표 행을 특정할 수 없는 상태 */
+function reportMultiCodeDeals() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = _mainSheet(ss);
+  if (!sheet) { Logger.log('[다중코드] 실적통합 시트를 찾을 수 없습니다'); return []; }
+  _resolveCols(sheet);
+
+  var lastRow = _getLastDataRow(sheet, COL.channel + 1);
+  if (lastRow <= DATA_START_ROW) { Logger.log('[다중코드] 데이터 행이 없습니다'); return []; }
+  var n = lastRow - DATA_START_ROW, first = DATA_START_ROW + 1;
+  var vals = sheet.getRange(first, 1, n, sheet.getLastColumn()).getValues();
+
+  var byDeal = {}, order = [];
+  for (var i = 0; i < n; i++) {
+    var row = vals[i];
+    var did = String(row[COL.dealId] || '').trim();
+    if (!did) continue;
+    if (!String(row[COL.product] || '').trim()) continue;
+    if (!MINIX_ALIASES[String(row[COL.brand] || '').trim()]) continue;
+    if (!byDeal[did]) { byDeal[did] = []; order.push(did); }
+    byDeal[did].push({ sheetRow: first + i, row: row });
+  }
+
+  var out = [];
+  for (var k = 0; k < order.length; k++) {
+    var members = byDeal[order[k]];
+    if (members.length < 2) continue;                 // 단독 행 건은 볼 것이 없다
+    members.sort(function (a, b) {
+      var sa = _numOrNull(a.row[COL.codeSeq]); if (sa == null) sa = 999;
+      var sb = _numOrNull(b.row[COL.codeSeq]); if (sb == null) sb = 999;
+      return sa - sb;
+    });
+    var seqs = {}, seqIssue = false, stray = [], rows = [], codes = [];
+    for (var m = 0; m < members.length; m++) {
+      var mr = members[m].row;
+      rows.push(members[m].sheetRow);
+      codes.push(String(mr[COL.code] || '').trim());
+      var seq = _numOrNull(mr[COL.codeSeq]);
+      if (seq == null || seqs[seq]) seqIssue = true;
+      if (seq != null) seqs[seq] = true;
+      // 대표 행(m===0)이 아닌데 실적이 있으면 대시보드 집계에서 빠진다
+      if (m > 0 && (_numOrNull(mr[COL.qty]) != null || _numOrNull(mr[COL.revenue]) != null)) {
+        stray.push(members[m].sheetRow);
+      }
+    }
+    var year = _numOrNull(members[0].row[COL.year]);
+    out.push({
+      dealId: order[k],
+      channel: String(members[0].row[COL.channel] || '').trim(),
+      product: String(members[0].row[COL.product] || '').trim(),
+      start: _parseDate(members[0].row[COL.startMD], year) || '',
+      end: _parseDate(members[0].row[COL.endMD], year) || '',
+      rows: rows, codes: codes, strayPerf: stray, seqIssue: seqIssue
+    });
+  }
+
+  Logger.log('[다중코드] 상품코드가 2개 이상인 공구건 ' + out.length + '건');
+  for (var o = 0; o < out.length; o++) {
+    var d = out[o];
+    Logger.log('  · ' + d.channel + ' / ' + d.product + ' / ' + d.start + '~' + d.end +
+      ' / 행 [' + d.rows.join(', ') + '] / 코드 [' + d.codes.join(', ') + ']' +
+      (d.strayPerf.length ? '  ⚠ 대표 행이 아닌 행에 실적 있음 → 행 [' + d.strayPerf.join(', ') + '] (집계에서 빠짐)' : '') +
+      (d.seqIssue ? '  ⚠ 코드순번이 비었거나 중복임' : ''));
+  }
+  if (!out.length) Logger.log('  (상품코드가 2개 이상인 건이 없습니다)');
+  return out;
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 메인 시트 파싱 (dealId로 그룹핑 → 그룹당 "공구건" 1개) ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1312,8 +1491,21 @@ function parseMainSheet(sheet) {
     var product    = String(pRow[COL.product]  || '').trim();
     var platform   = String(pRow[COL.platform] || '').trim();
     var salePrice  = _numOrNull(pRow[COL.salePrice]);
-    var qty        = _numOrNull(pRow[COL.qty]);
-    var revenue    = _numOrNull(pRow[COL.revenue]);
+    /* 실적은 그룹의 모든 행을 합산한다 (2026-09-15).
+
+       운영 규칙은 "실적은 대표 행에만"이고 대시보드가 쓰는 행도 대표 행 하나뿐이라, 예전엔
+       대표 행 값만 읽었다. 그런데 상품코드별로 각각 따로 등록된 건(러브지나·하늘마켓 등)은
+       행마다 자기 판매수량·매출을 갖고 있어서, 대표 행만 읽으면 나머지 코드의 실적이 통째로
+       집계에서 사라진다. 프론트가 내용 기준으로 합쳐 보여주던 값이 바로 이 합계였다.
+       행마다 값이 있으면 합치고, 대표 행에만 있으면 결과는 예전과 같다(= 안전한 일반화). */
+    var qty = null, revenue = null, perfRows = 0;
+    for (var pm = 0; pm < members.length; pm++) {
+      var mq = _numOrNull(members[pm].row[COL.qty]);
+      var mr = _numOrNull(members[pm].row[COL.revenue]);
+      if (mq != null) qty = (qty || 0) + mq;
+      if (mr != null) revenue = (revenue || 0) + mr;
+      if (mq != null || mr != null) perfRows++;
+    }
     var commission = _numOrNull(pRow[COL.commission]);
     if (commission != null && commission <= 1) commission = Math.round(commission * 1000) / 10;
     var year       = _numOrNull(pRow[COL.year]);
@@ -1376,7 +1568,12 @@ function parseMainSheet(sheet) {
     if (hasReelViews) {
       views = reels.reduce(function (s, r) { return s + (r.views || 0); }, 0);
     } else {
-      views = _numOrNull(pRow[COL.views]);
+      // 조회수도 같은 이유로 행 합산(릴스 조회수가 있으면 위에서 이미 릴스 기준으로 계산됨)
+      views = null;
+      for (var vm = 0; vm < members.length; vm++) {
+        var vv = _numOrNull(members[vm].row[COL.views]);
+        if (vv != null) views = (views || 0) + vv;
+      }
       if (views === 0) views = null;
     }
 
@@ -1426,6 +1623,9 @@ function parseMainSheet(sheet) {
       targetQty:   targetQty,
       status:      status,
       views:       views,
+      /* 실적이 들어 있는 시트 행 수 — 2 이상이면 상품코드별로 실적이 나뉘어 있다는 뜻이다.
+         모달은 이때 판매수량·조회수를 직접 못 고치게 막는다(한 칸으로는 어느 행에 쓸지 정할 수 없음). */
+      perfRows:    perfRows,
       qty:         qty,
       revenue:     revenue,
       codes:       codes,

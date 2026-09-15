@@ -162,6 +162,50 @@ function setup(dealOverrides, fieldOverrides) {
     check('플랫폼 ID 포함', sent2.length && sent2[0].data.igId === 'new.ch', sent2[0] && sent2[0].data.igId);
   }
 
+
+  console.log('\n[6] 여러 행 건 안내 — 저장은 막지 않고 이유만 알린다');
+  {
+    const { ctx, dom } = setup();
+    // 정상 단독 건
+    ctx._applyMultiRowNotice({ rowCount: 1, perfRows: 1 });
+    check('저장 버튼 열림', dom.els.mSaveBtn.disabled === false, dom.els.mSaveBtn.disabled);
+    check('삭제 버튼 열림', dom.els.mDeleteBtn.disabled === false);
+    check('안내 없음', !dom.els.mPerfHint.textContent, dom.els.mPerfHint.textContent);
+    check('판매수량 편집 가능', dom.els.mQtyInput.readOnly === false, dom.els.mQtyInput.readOnly);
+
+    // 시트 직접 입력으로 보이는 건(dealId가 제각각이라 내용 기준으로 합쳐진 건)
+    ctx._applyMultiRowNotice({ rowCount: 3, perfRows: 1, _isComposite: true, _mergedDealIds: ['A', 'B'] });
+    check('합쳐진 건도 저장 가능', dom.els.mSaveBtn.disabled === false, dom.els.mSaveBtn.disabled);
+    check('합쳐진 건도 삭제 가능', dom.els.mDeleteBtn.disabled === false);
+    check('안내 문구 노출', (dom.els.mPerfHint.textContent || '').indexOf('dealId 통일이 필요합니다') >= 0,
+      dom.els.mPerfHint.textContent);
+    check('안내에 시트 직접 입력 언급', (dom.els.mPerfHint.textContent || '').indexOf('시트 직접 입력') >= 0);
+
+    // 상품코드별로 실적이 나뉜 건 — 판매수량 칸만 잠근다
+    ctx._applyMultiRowNotice({ rowCount: 3, perfRows: 3 });
+    check('실적 나뉜 건도 저장 가능', dom.els.mSaveBtn.disabled === false);
+    check('판매수량만 읽기 전용', dom.els.mQtyInput.readOnly === true, dom.els.mQtyInput.readOnly);
+    check('잠근 이유를 툴팁으로', (dom.els.mQtyInput.title || '').indexOf('시트에서') >= 0, dom.els.mQtyInput.title);
+    check('합계 표시임을 안내', (dom.els.mPerfHint.textContent || '').indexOf('표시값은 합계') >= 0,
+      dom.els.mPerfHint.textContent);
+
+    // 다시 정상 건을 열면 잠금이 풀려야 한다(모달은 재사용된다)
+    ctx._applyMultiRowNotice({ rowCount: 1, perfRows: 1 });
+    check('잠금 해제됨', dom.els.mQtyInput.readOnly === false && !dom.els.mPerfHint.textContent,
+      [dom.els.mQtyInput.readOnly, dom.els.mPerfHint.textContent]);
+  }
+
+  console.log('\n[7] 저장 차단이 정말 사라졌는지 — 코드에서 확인');
+  {
+    const fs2 = require('fs'), path2 = require('path');
+    const html = fs2.readFileSync(path2.join(PROJ, 'index.html'), 'utf8');
+    const fn = html.slice(html.indexOf('function _applyMultiRowNotice'),
+      html.indexOf('function', html.indexOf('function _applyMultiRowNotice') + 10));
+    check('_isComposite로 버튼을 막지 않음', fn.indexOf('disabled=blockSave') < 0, fn.slice(0, 200));
+    check('공구그룹ID 흔적 없음', html.indexOf('공구그룹ID') < 0 && html.indexOf('groupId') < 0);
+    check('내용 기준 병합은 남아 있음', html.indexOf('_mergeDuplicateCodeRows') >= 0);
+  }
+
   console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
   process.exit(fail ? 1 : 0);
 })();

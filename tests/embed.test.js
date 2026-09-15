@@ -345,8 +345,9 @@ console.log('\n[19] 채널 정보 레이아웃 — 3열 그리드 3행');
 {
   const chSec = html.slice(html.indexOf('<div class="f-sec has-hint">채널 정보'));
   const modalSec = chSec.slice(0, chSec.indexOf('</div>\n        <div class="fg fg-3"', 200) + 4000);
-  // CSS 정의는 빼고 마크업 사용만 센다 — 모달 + 등록 폼 두 곳
-  const hintUses = (html.match(/class="f-sec-hint"/g) || []).length;
+  /* 채널 안내 문구는 모달 + 등록 폼 두 곳. f-sec-hint 자체는 다른 섹션(실적 안내 등)도 쓰므로
+     문구로 센다 — 전체 개수를 세면 무관한 섹션이 늘 때마다 여기가 깨진다. */
+  const hintUses = (html.match(/플랫폼 ID·팔로워 수는 같은 채널의 다른 공구건에도 함께 반영됩니다/g) || []).length;
   check('안내 문구가 섹션마다 한 번씩(모달+등록 폼)', hintUses === 2, hintUses);
   check('안내 문구 내용', html.indexOf('플랫폼 ID·팔로워 수는 같은 채널의 다른 공구건에도 함께 반영됩니다') > 0);
   check('필드별 "채널 공통" 뱃지 제거', html.indexOf('채널 공통') < 0);

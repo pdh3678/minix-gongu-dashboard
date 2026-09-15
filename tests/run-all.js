@@ -12,7 +12,8 @@ const SUITES = [
   ['embed.test.js',      '임베드 모드 — 셸 숨김, 쿼리 보존, 프레임 허용 헤더'],
   ['channel-fields.test.js','채널 필드 전파(GAS) — fillEmpty/overwrite, 열 없을 때 안전'],
   ['channel-front.test.js', '채널 필드(프론트) — 불일치 판정, 확인 팝업, 로컬 전파'],
-  ['save-flow.test.js',    '저장 흐름 — saveSchemeModal/saveDeal을 끝까지 실행']
+  ['save-flow.test.js',    '저장 흐름 — saveSchemeModal/saveDeal을 끝까지 실행'],
+  ['multi-code.test.js',   '다중 상품코드 — 같은 dealId+코드순번 구조, 실적 합산, dealId 통일']
 ];
 
 let failed = 0;
