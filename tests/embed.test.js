@@ -175,5 +175,50 @@ console.log('\n[12] 새로 만들어지는 주소는 ASCII 슬러그 (한글은 
     check('  ↳ 한글 슬러그를 만들지 않음', !/[가-힣]/.test(url), url);
   });
 }
+
+console.log('\n[13] 임베드 로그인 — 팝업 방식 확인 + 차단 시 새 탭 탈출구');
+{
+  check('GIS가 팝업 방식(ux_mode:popup) — 리다이렉트 아님', /ux_mode\s*:\s*'popup'/.test(html));
+  check('리다이렉트용 login_uri를 쓰지 않음', html.indexOf('login_uri') < 0);
+
+  const { ctx } = loadFrontend(PROJ, null, { search: '?embed=1', runHeadScripts: true });
+  // 표시 상태를 관찰할 수 있게 요소별 스텁을 심는다
+  const els = {};
+  ctx.document.getElementById = id => (els[id] = els[id] || { style: {}, textContent: '' });
+  ctx._showLoginDiag('팝업 차단');
+  check('임베드에서 새 탭 버튼 노출', els.loginDiagNewTab.style.display === 'inline-block', els.loginDiagNewTab.style.display);
+
+  let opened = null;
+  ctx.window.open = (u) => { opened = u; };
+  ctx.location.hash = '#product-TheShift';
+  ctx._openLoginInNewTab();
+  check('새 탭 URL에서 embed 제거', opened.indexOf('embed') < 0, opened);
+  check('보던 페이지(해시) 유지', opened.indexOf('#product-TheShift') >= 0, opened);
+  check('대시보드 원본 주소', opened.indexOf('minix-gongu-dashboard.onrender.com/') >= 0, opened);
+}
+{
+  // 일반 모드에서는 같은 주소를 새 탭에 열어봤자 의미가 없으므로 버튼을 내보내지 않는다
+  const { ctx } = loadFrontend(PROJ, null, { search: '', runHeadScripts: true });
+  const els = {};
+  ctx.document.getElementById = id => (els[id] = els[id] || { style: {}, textContent: '' });
+  ctx._showLoginDiag('팝업 차단');
+  check('일반 모드에서는 새 탭 버튼 숨김', els.loginDiagNewTab.style.display === 'none', els.loginDiagNewTab.style.display);
+}
+{
+  // embed 외 다른 쿼리는 새 탭 주소에도 남아야 한다
+  const { ctx } = loadFrontend(PROJ, null, { search: '?embed=1&foo=bar', runHeadScripts: true });
+  let opened = null;
+  ctx.window.open = (u) => { opened = u; };
+  ctx._openLoginInNewTab();
+  check('embed만 빼고 나머지 쿼리는 유지', opened.indexOf('foo=bar') >= 0 && opened.indexOf('embed') < 0, opened);
+}
+
+console.log('\n[14] 임베드 로그인 화면은 간결하게');
+{
+  const css = html.slice(0, html.indexOf('</style>'));
+  check('설명 문구 숨김', css.indexOf('html.embed .login-desc{display:none}') > 0);
+  check('카드 폭 축소', /html\.embed \.login-card\{width:min\(/.test(css));
+  check('로그인 화면 자체는 셸 바깥(사이드바 없음)', html.indexOf('<div id="loginScreen">') < html.indexOf('<div class="app-shell"'));
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);

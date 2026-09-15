@@ -87,6 +87,7 @@ function loadFrontend(projectPath, extraShimBody, opts) {
     localStorage: makeStorage(), sessionStorage: makeStorage(),
     location: {
       protocol: 'https:', hash: '', pathname: '/', search,
+      origin: 'https://minix-gongu-dashboard.onrender.com',
       href: 'https://minix-gongu-dashboard.onrender.com/' + search
     },
     // _setHash가 실제로 어떤 URL을 쓰는지 봐야 하므로 기록형 스텁

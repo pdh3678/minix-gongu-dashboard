@@ -131,7 +131,12 @@ html.embed .sb-backdrop,
 html.embed .hdr{display:none}
 html.embed .app-main{margin-left:0}
 html.embed .app-shell.sb-collapsed .app-main{margin-left:0} /* 접힘 상태(64px)도 같이 무력화 */
-html.embed .main{padding:14px 16px} /* iframe은 대개 좁으니 좌우 여백을 줄임 */
+html.embed .main{padding:14px 16px}
+/* 임베드 로그인 화면 — iframe 안에서는 브랜드 설명까지 넣을 자리가 없다. 로고 한 줄과 버튼만 남기고
+   카드를 줄여서, 좁은 프레임에서도 "로그인하면 되는구나"가 한눈에 보이게 한다. */
+html.embed .login-card{width:min(340px,92vw);padding:28px 24px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.18)}
+html.embed .login-desc{display:none}
+html.embed .login-logo{font-size:17px;margin-bottom:18px} /* iframe은 대개 좁으니 좌우 여백을 줄임 */
 .app-shell{display:flex;min-height:100vh}
 .app-main{flex:1;min-width:0;margin-left:220px;transition:margin-left .18s ease}
 .app-shell.sb-collapsed .app-main{margin-left:64px}
@@ -625,6 +630,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     <div class="login-diag" id="loginDiag">
       <span class="login-diag-msg" id="loginDiagMsg"></span>
       <button type="button" class="login-diag-retry" id="loginDiagRetry" style="display:none" onclick="_retryGsiScript()">다시 시도</button>
+      <button type="button" class="login-diag-retry" id="loginDiagNewTab" style="display:none" onclick="_openLoginInNewTab()">새 탭에서 로그인</button>
     </div>
     <div class="login-notice">앳홈 조직 계정(@athomecorp.com)만 접속 가능합니다</div>
   </div>
@@ -1556,7 +1562,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-embed-2026-09-15-07';
+const DASHBOARD_VERSION='dash-embed-2026-09-15-08';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -6950,7 +6956,25 @@ function _showLoginDiag(msg,opts){
   opts=opts||{};
   document.getElementById('loginDiagMsg').textContent=msg;
   document.getElementById('loginDiagRetry').style.display=opts.retry?'inline-block':'none';
+  /* 임베드에서 로그인이 막히는 경우(팝업 차단, GIS 스크립트 차단 등)에는 항상 탈출구를 같이 준다 —
+     iframe 안에서 해결할 방법이 없는 상황이 실제로 존재하기 때문. 일반 모드에서는 같은 주소를
+     새 탭에 여는 게 아무 도움이 안 되므로 보여주지 않는다. */
+  const showNewTab=(opts.newTab!==false)&&IS_EMBED;
+  document.getElementById('loginDiagNewTab').style.display=showNewTab?'inline-block':'none';
   document.getElementById('loginDiag').style.display='flex';
+}
+
+/* 팝업이 막혀 iframe 안에서 로그인을 끝낼 수 없을 때의 탈출구 — 대시보드를 그 자체 주소로
+   (embed 파라미터만 빼고) 새 탭에 연다. 보고 있던 페이지(해시)와 나머지 쿼리는 그대로 유지해서
+   새 탭에서 곧바로 같은 화면이 뜨게 한다.
+   ⚠ 브라우저가 서드파티 저장소를 상위 사이트별로 분리하기 때문에, 새 탭에서 로그인해도 그 세션이
+   iframe 안으로 따라 들어오지는 않는다. 이 버튼은 "iframe을 고치는" 수단이 아니라 "사용자가 지금
+   당장 일을 할 수 있게 하는" 탈출구다. */
+function _openLoginInNewTab(){
+  const p=new URLSearchParams(location.search);
+  p.delete('embed');
+  const qs=p.toString();
+  window.open(location.origin+location.pathname+(qs?'?'+qs:'')+location.hash,'_blank','noopener');
 }
 function _hideLoginDiag(){
   document.getElementById('loginDiag').style.display='none';
@@ -7019,7 +7043,11 @@ function _startLoginAttemptWatchdog(){
     _gsiAttemptTimer=null;
     if(_getToken()&&_getToken()!==credBefore)return; // 그 사이 로그인 성공 — 배지 필요 없음
     _gsiLog('로그인 시도 후 5초 경과 — credential 콜백 없음');
-    _showLoginDiag('로그인이 완료되지 않았습니다. 팝업이 차단된 것 같습니다 — 주소창의 팝업 차단 아이콘을 확인해 이 사이트의 팝업을 허용해주세요.');
+    // iframe 안에서는 팝업이 막히는 일이 훨씬 흔하고, 부모 페이지의 팝업 설정까지 걸려 있어
+    // 사용자가 "이 사이트"를 어디로 봐야 할지도 헷갈린다 — 그래서 안내 문구를 따로 준다.
+    _showLoginDiag(IS_EMBED
+      ? '팝업이 차단되었습니다. 이 페이지를 감싸고 있는 사이트의 팝업을 허용하거나, 새 탭에서 로그인해주세요.'
+      : '로그인이 완료되지 않았습니다. 팝업이 차단된 것 같습니다 — 주소창의 팝업 차단 아이콘을 확인해 이 사이트의 팝업을 허용해주세요.');
   },5000);
 }
 // 관리자 전용 컨트롤(상태 필터/새로고침/디버그/설정)을 볼 수 있는 계정 — 나중에 추가할 수 있게 배열로 관리
