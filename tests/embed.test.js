@@ -220,5 +220,72 @@ console.log('\n[14] 임베드 로그인 화면은 간결하게');
   check('카드 폭 축소', /html\.embed \.login-card\{width:min\(/.test(css));
   check('로그인 화면 자체는 셸 바깥(사이드바 없음)', html.indexOf('<div id="loginScreen">') < html.indexOf('<div class="app-shell"'));
 }
+
+console.log('\n[15] 회고 에디터 — 번들 로드 경합 (임베드에서 드러난 기존 버그)');
+{
+  /* review.js는 defer라 문서 파싱 후에 실행되는데, 부트스트랩(_enterDashboard→_routeFromHash)은
+     파싱 중에 동기로 돈다. 그래서 #review로 바로 들어오면 번들보다 먼저 마운트를 시도한다.
+     사이드바가 있던 시절엔 클릭으로 들어가서 가려졌지만, 임베드는 직접 URL이 유일한 진입로다. */
+  const { ctx } = loadFrontend(PROJ, null, { search: '?embed=1', runHeadScripts: true });
+  const host = { innerHTML: '' };
+  ctx.document.getElementById = id => (id === 'reviewRoot' ? host : { style: {}, textContent: '', classList: { add(){}, remove(){}, contains: () => false } });
+
+  // ① 번들이 아직 안 온 상태에서 마운트 시도 → "실패"가 아니라 "불러오는 중"
+  delete ctx.window.ReviewApp;
+  ctx._mountReviewApp();
+  check('로딩 중에는 실패 메시지를 내지 않음', host.innerHTML.indexOf('불러오지 못했습니다') < 0, host.innerHTML);
+  check('로딩 중 안내 표시', host.innerHTML.indexOf('불러오는 중') >= 0, host.innerHTML);
+
+  // ② 번들이 도착하면 자동으로 마운트된다(사용자가 새로고침할 필요 없음)
+  let mounted = null;
+  ctx.window.ReviewApp = { mount: (el) => { mounted = el; }, unmount: () => {} };
+  ctx._reviewBundleLoaded();
+  check('번들 도착 시 자동 마운트', mounted === host, mounted === host);
+
+  // ③ 기다리는 동안 다른 페이지로 떠났으면 나중에 마운트하지 않는다
+  const { ctx: c2 } = loadFrontend(PROJ, null, { search: '?embed=1', runHeadScripts: true });
+  const host2 = { innerHTML: '' };
+  c2.document.getElementById = id => (id === 'reviewRoot' ? host2 : { style: {}, textContent: '', classList: { add(){}, remove(){}, contains: () => false } });
+  delete c2.window.ReviewApp;
+  c2._mountReviewApp();
+  c2._unmountReviewApp();            // 다른 페이지로 이동
+  let mounted2 = null;
+  c2.window.ReviewApp = { mount: () => { mounted2 = true; }, unmount: () => {} };
+  c2._reviewBundleLoaded();
+  check('떠난 뒤에는 마운트하지 않음', mounted2 === null, mounted2);
+
+  // ④ 진짜 로드 실패는 실패로 보여준다
+  const { ctx: c3 } = loadFrontend(PROJ, null, { search: '?embed=1', runHeadScripts: true });
+  const host3 = { innerHTML: '' };
+  c3.document.getElementById = id => (id === 'reviewRoot' ? host3 : { style: {}, textContent: '', classList: { add(){}, remove(){}, contains: () => false } });
+  delete c3.window.ReviewApp;
+  c3._mountReviewApp();
+  c3._reviewBundleFailed(new Error('net'));
+  check('로드 실패 시 실패 메시지', host3.innerHTML.indexOf('불러오지 못했습니다') >= 0, host3.innerHTML);
+
+  // ⑤ 마운트 자체가 던지면 원인을 화면과 콘솔에 남긴다(예전엔 뭉개져 원인이 안 보였음)
+  const { ctx: c4 } = loadFrontend(PROJ, null, { search: '?embed=1', runHeadScripts: true });
+  const host4 = { innerHTML: '' };
+  c4.document.getElementById = id => (id === 'reviewRoot' ? host4 : { style: {}, textContent: '', classList: { add(){}, remove(){}, contains: () => false } });
+  c4.window.ReviewApp = { mount: () => { throw new Error('부트 실패 상세'); }, unmount: () => {} };
+  let logged = '';
+  c4.console = { log(){}, warn(){}, error(...a){ logged += a.map(String).join(' '); } };
+  c4._mountReviewApp();
+  check('마운트 예외가 밖으로 새지 않음', true);
+  check('실제 에러 메시지를 화면에 노출', host4.innerHTML.indexOf('부트 실패 상세') >= 0, host4.innerHTML);
+  check('콘솔에도 실제 에러 기록', logged.indexOf('부트 실패 상세') >= 0, logged);
+}
+
+console.log('\n[16] 임베드가 숨기는 요소를 회고 에디터가 참조하지 않음');
+{
+  // 임베드에서 display:none 되는 것: .sidebar / .sb-backdrop / .hdr (DOM에는 남아 있음)
+  const css = html.slice(0, html.indexOf('</style>'));
+  check('임베드는 요소를 지우지 않고 숨기기만 함(참조해도 null이 아님)',
+    /html\.embed[^{]*\{display:none\}/.test(css.replace(/\n/g, ' ')));
+  // 회고 마운트 경로가 셸 요소를 참조하지 않는지 — 참조하면 임베드에서 높이/위치가 0이 된다
+  const mountFn = html.slice(html.indexOf('function _mountReviewApp'), html.indexOf('function _unmountReviewApp'));
+  ['hdr', 'sidebar', 'app-main', 'app-shell', 'innerHeight'].forEach(t =>
+    check('마운트 코드가 ' + t + '를 참조하지 않음', mountFn.indexOf(t) < 0));
+}
 console.log('\n--------------------------------\n통과 ' + pass + ' / 실패 ' + fail);
 process.exit(fail ? 1 : 0);
