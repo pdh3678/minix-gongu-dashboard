@@ -8188,9 +8188,13 @@ async function _exchangeForSession(credential){
       expired:'로그인 정보가 만료되었습니다. 다시 시도해주세요.',
       missing:'로그인 정보가 전달되지 않았습니다. 다시 시도해주세요.'
     }[j&&j.reason]||'로그인에 실패했습니다. 다시 시도해주세요.';
-    _gsiLog('세션 교환 거절 — reason='+((j&&j.reason)||'?'));
+    /* reason이 없는데 error가 있으면 서버가 예외로 죽은 것이다(대표적으로 Script Properties에
+       SESSION_SECRET_V1을 안 넣은 경우). 그 메시지에 원인이 그대로 적혀 있으므로 삼키지 않는다 —
+       "로그인에 실패했습니다"로 뭉개면 설정 실수 하나를 찾는 데 한참 걸린다. */
+    const serverErr=(j&&!j.reason&&j.error)?String(j.error):'';
+    _gsiLog('세션 교환 거절 — reason='+((j&&j.reason)||'?')+(serverErr?(' / '+serverErr):''));
     // 거절된 계정 주소는 서버가 알려줄 때만 보여준다(프론트가 토큰을 뜯어보지 않으므로)
-    _showLoginErr(why+(j&&j.email?('\n('+j.email+')'):''));
+    _showLoginErr((serverErr||why)+(j&&j.email?('\n('+j.email+')'):''));
     setConn('relogin');
     return;
   }
