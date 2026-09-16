@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'idlink-2026-09-16-02';
+var SCRIPT_VERSION = 'session-2026-09-16-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -560,6 +560,34 @@ function _matchPoints(text) {
 var REQUIRE_AUTH   = true;
 var ALLOWED_DOMAIN = 'athomecorp.com';
 
+/* 구글 로그인 클라이언트 ID — 프론트(GAS_CLIENT_ID)와 **반드시 같은 값**이어야 한다.
+   ID 토큰 검증에서 aud를 이 값과 대조하는 데 쓴다. 이게 없으면 "다른 사이트에서 발급된, 서명은
+   진짜인 구글 ID 토큰"으로도 우리 서버에 들어올 수 있다(혼동된 대리자 문제). */
+var GAS_CLIENT_ID = '379680980952-vcvtnv1le4lmma2f0gv6snita17ve7bd.apps.googleusercontent.com';
+
+/* ── 자체 세션 (2026-09-16) ────────────────────────────────────────────────────
+   구글 ID 토큰은 수명이 1시간이고, 갱신 수단(One Tap 조용한 재인증)이 iframe·쿠키 정책·One Tap
+   쿨다운에 막혀 자주 실패했다. 그래서 구글 로그인은 **신원 확인 1회**에만 쓰고, 그 뒤로는
+   우리가 발급한 세션 토큰으로 인증한다.
+
+   저장소를 시트로 둔 이유: CacheService는 최대 6시간이라 절대 만료 12시간을 담지 못하고,
+   무엇보다 로그아웃(즉시 무효화)을 보장할 수 없다. 세션은 몇 십 행 수준이라 시트로 충분하다. */
+var SESSION_SHEET = '_sessions';
+var ALLOWED_USERS_SHEET = '_allowed_users';
+var SESSION_COL = { sid: 0, email: 1, name: 2, issuedAt: 3, expiresAt: 4, lastSeenAt: 5 };
+
+var SESSION_ABSOLUTE_MS = 12 * 60 * 60 * 1000; // 발급 후 12시간이면 무조건 만료
+var SESSION_IDLE_MS     =  2 * 60 * 60 * 1000; // 마지막 사용 후 2시간 미사용이면 만료
+var SESSION_SLIDE_MS    =  6 * 60 * 60 * 1000; // 남은 절대 만료가 이보다 적으면 새 토큰을 실어 연장
+/* lastSeenAt을 매 요청 갱신하면 요청마다 시트 쓰기가 1회 늘어난다(하트비트가 45초마다 오므로
+   사용자 수만큼 곱해진다). 미사용 판정 기준이 2시간이라 1분 단위 정밀도면 차고 넘치므로,
+   이 간격보다 최근에 쓴 값이면 건너뛴다 — 판정에는 영향이 없고 쓰기만 줄어든다. */
+var SESSION_TOUCH_MIN_INTERVAL_MS = 60 * 1000;
+
+// 현재 서명에 쓰는 키 버전. 키를 교체할 땐 Script Properties에 SESSION_SECRET_V2를 넣고 이 값을 2로
+// 올린다 — V1로 서명된 기존 토큰은 계속 검증되다가 자연 만료되므로 전원 재로그인이 필요 없다.
+var SESSION_KEY_VERSION = 1;
+
 // 관리자 전용 기능(시트 연결/디버그 정보 노출)을 쓸 수 있는 계정 — 나중에 추가할 수 있게 배열로 관리.
 // 프론트의 ADMIN_EMAILS(index.html)와 반드시 같은 값으로 유지할 것 — 여긴 실제 서버 검증용, 그쪽은 UI 표시용.
 var ADMIN_EMAILS = ['p_dh_3678@athomecorp.com'];
@@ -596,59 +624,308 @@ var _reqStartMs = 0;
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ── 인증 ──
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/* 2026-09-16 전면 교체. 예전 구조의 문제는 두 가지였다.
 
-// idToken(JWT)의 페이로드를 디코딩만 해서 반환 — 서명 검증은 하지 않음(Google GIS가 발급한
-// 토큰이라는 전제하에 exp/email/name 클레임만 읽어 쓰는 용도). 형식이 안 맞으면 null.
-function _decodeIdTokenPayload(idToken) {
-  if (!idToken || typeof idToken !== 'string') return null;
-  try {
-    var parts = idToken.split('.');
-    if (parts.length !== 3) return null;
-    var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (b64.length % 4) b64 += '=';
-    return JSON.parse(Utilities.newBlob(Utilities.base64Decode(b64)).getDataAsString());
-  } catch (e) {
-    return null;
-  }
+   ① 구글 ID 토큰을 **서명 검증 없이** base64 디코드만 해서 exp/email/hd를 읽었다. 웹앱 액세스
+      권한이 "모든 사용자(익명 포함)"이고 /exec 주소가 공개 HTML에 박혀 있으므로, 아무나
+      {"email":"...@athomecorp.com","hd":"athomecorp.com","exp":<미래>} 를 base64로 만들어 붙이면
+      시트 전체를 읽고 쓸 수 있었다. 서명·aud·iss 중 무엇도 확인하지 않았다.
+   ② 그 토큰의 수명이 1시간인데 갱신이 One Tap 하나에만 의존해 자주 실패했다(iframe에서는 아예
+      뜨지 않아 임베드 모드에서는 100% 실패).
+
+   이제 구글 로그인은 **신원 확인 1회**에만 쓴다(tokeninfo로 서명까지 검증). 그 뒤로는 우리가
+   서명한 세션 토큰으로 인증한다. */
+
+// ── 서명 키 ──
+/* 비밀키는 Script Properties에만 둔다(코드·저장소에 넣지 않는다). 없으면 예외를 던져서
+   "검증이 조용히 통과"하는 일이 절대 없게 한다 — 인증 코드에서 가장 위험한 실패 방식이다. */
+function _sessionSecret(keyVersion) {
+  var name = 'SESSION_SECRET_V' + keyVersion;
+  var v = PropertiesService.getScriptProperties().getProperty(name);
+  if (!v) throw new Error('세션 비밀키가 없습니다: Script Properties에 ' + name + ' 를 추가하세요.');
+  return v;
 }
 
-// idToken 검증 실패 이유를 구분해서 반환 — 클라이언트가 "재발급하면 풀리는 경우"(만료)와
-// "재발급해도 절대 안 풀리는 경우"(도메인 불일치)를 구분해 불필요한 재로그인 시도를 안 하게 함.
-// null(유효함) / 'missing'(토큰 자체가 없음) / 'expired'(토큰 만료) / 'domain'(허용 도메인 아님) /
-// 'invalid'(형식 오류·필수 클레임 없음 등 그 외)
-//
-// 도메인 판정: Google Workspace 계정이면 idToken에 hd 클레임(호스팅 도메인)이 실려오는 게 보통이라
-// 그걸 우선 신뢰하고, hd가 없는 계정/조직 설정도 있으므로 그럴 땐 email의 @ 뒤 문자열로 판정함.
-// 대소문자/앞뒤 공백 차이로 정상 계정이 튕기지 않도록 양쪽 다 trim+소문자 비교.
-function _authFailureReason(idToken) {
-  if (!idToken || typeof idToken !== 'string') return 'missing';
-  var payload = _decodeIdTokenPayload(idToken);
-  if (!payload) return 'invalid';
-  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return 'expired';
-  var email = String(payload.email || '').trim().toLowerCase();
-  if (!email) return 'invalid';
-  var allowedDomain = ALLOWED_DOMAIN.trim().toLowerCase();
-  var hd = payload.hd ? String(payload.hd).trim().toLowerCase() : '';
-  var domainOk = hd ? (hd === allowedDomain) : email.endsWith('@' + allowedDomain);
-  if (!domainOk) return 'domain';
+function _b64u(bytes) {
+  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '');
+}
+function _b64uToString(s) {
+  var t = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+  while (t.length % 4) t += '=';
+  return Utilities.newBlob(Utilities.base64Decode(t)).getDataAsString();
+}
+/* 길이·내용이 같은지를 **일찍 빠져나오지 않고** 비교 — 서명 비교에서 조기 반환하면 일치하는
+   접두사 길이가 응답 시간으로 새어나간다(타이밍 공격). 인증 경로라 습관적으로 상수 시간으로 둔다.
+
+   ⚠ 반드시 charCodeAt으로 비교할 것. 문자열 인덱싱 결과끼리 XOR하면("a" ^ "b") 양쪽이 숫자로
+      강제 변환되며 0 ^ 0 = 0이 되어, **길이만 같으면 무엇이든 일치로 판정된다**. 그러면 서명
+      검증이 통째로 무력해진다(2026-09-16 최초 구현에서 실제로 이랬고 테스트가 잡았다). */
+function _constantTimeEquals(a, b) {
+  var sa = String(a), sb = String(b);
+  if (sa.length !== sb.length) return false;
+  var diff = 0;
+  for (var i = 0; i < sa.length; i++) diff |= (sa.charCodeAt(i) ^ sb.charCodeAt(i));
+  return diff === 0;
+}
+
+// 세션 토큰 = base64url(payload JSON) + '.' + base64url(HMAC-SHA256(payload, secret))
+function _signSessionToken(payload) {
+  var body = _b64u(Utilities.newBlob(JSON.stringify(payload)).getBytes());
+  var mac = Utilities.computeHmacSha256Signature(body, _sessionSecret(payload.kv));
+  return body + '.' + _b64u(mac);
+}
+
+/* 토큰 문자열 → { ok, payload, reason }.
+   reason: 'missing' | 'malformed' | 'badsig' | 'expired' | 'keymissing'
+   ⚠ 여기서는 **서명과 exp만** 본다. 세션이 실제로 살아 있는지(로그아웃·미사용 만료)는
+      시트를 봐야 알 수 있고, 그건 _authRequest가 이어서 확인한다. */
+function _verifySessionToken(token) {
+  if (!token || typeof token !== 'string') return { ok: false, reason: 'missing' };
+  var parts = token.split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return { ok: false, reason: 'malformed' };
+  var payload;
+  try { payload = JSON.parse(_b64uToString(parts[0])); }
+  catch (e) { return { ok: false, reason: 'malformed' }; }
+  if (!payload || !payload.sid || !payload.email || !payload.exp) return { ok: false, reason: 'malformed' };
+
+  var kv = payload.kv || 1;
+  var expected;
+  try { expected = Utilities.computeHmacSha256Signature(parts[0], _sessionSecret(kv)); }
+  catch (e) { return { ok: false, reason: 'keymissing' }; }   // 그 버전의 키가 없음 = 검증 불가
+  if (!_constantTimeEquals(_b64u(expected), parts[1])) return { ok: false, reason: 'badsig' };
+
+  if (payload.exp < Date.now()) return { ok: false, reason: 'expired' };
+  return { ok: true, payload: payload };
+}
+
+// ── 세션 시트 ──
+function _sessionSheet(ss) {
+  var sheet = ss.getSheetByName(SESSION_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(SESSION_SHEET);
+    sheet.getRange(1, 1, 1, 6)
+      .setValues([['sessionId', 'email', 'name', 'issuedAt', 'expiresAt', 'lastSeenAt']])
+      .setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    try { sheet.hideSheet(); } catch (e) {}
+    Logger.log('[세션] ' + SESSION_SHEET + ' 시트를 새로 만들었습니다');
+  }
+  return sheet;
+}
+
+/* 허용 이메일 목록. 시트가 없으면 관리자 계정을 넣어 새로 만든다 —
+   "목록이 비었으니 전원 거부"로 시작하면 첫 배포에서 아무도 못 들어와 손쓸 방법이 없어진다. */
+function _allowedEmails(ss) {
+  var sheet = ss.getSheetByName(ALLOWED_USERS_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(ALLOWED_USERS_SHEET);
+    var seed = [['email', '비고']];
+    for (var a = 0; a < ADMIN_EMAILS.length; a++) seed.push([ADMIN_EMAILS[a], '자동 생성(관리자)']);
+    sheet.getRange(1, 1, seed.length, 2).setValues(seed);
+    sheet.getRange(1, 1, 1, 2).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    try { sheet.hideSheet(); } catch (e) {}
+    Logger.log('[세션] ' + ALLOWED_USERS_SHEET + ' 시트를 만들고 관리자 계정을 넣었습니다 — 나머지 팀원은 직접 추가하세요');
+  }
+  var last = sheet.getLastRow();
+  if (last < 2) return {};
+  var vals = sheet.getRange(2, 1, last - 1, 1).getValues();
+  var out = {};
+  for (var i = 0; i < vals.length; i++) {
+    var em = String(vals[i][0] || '').trim().toLowerCase();
+    if (em) out[em] = true;
+  }
+  return out;
+}
+
+// sid로 세션 행을 찾는다 — 세션 수가 적어 선형 탐색으로 충분하다. { rowIndex, row } 또는 null
+function _findSessionRow(sheet, sid) {
+  var last = sheet.getLastRow();
+  if (last < 2) return null;
+  var vals = sheet.getRange(2, 1, last - 1, 6).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (String(vals[i][SESSION_COL.sid] || '') === sid) return { rowIndex: i + 2, row: vals[i] };
+  }
   return null;
 }
 
-function _verifyAuth(idToken) {
-  if (!REQUIRE_AUTH) return true;
-  return _authFailureReason(idToken) === null;
+// 만료된(절대/미사용) 세션 행을 지운다. 로그인 때만 돌려서 시트가 무한정 커지지 않게 한다.
+function _pruneSessions(sheet) {
+  var last = sheet.getLastRow();
+  if (last < 2) return 0;
+  var vals = sheet.getRange(2, 1, last - 1, 6).getValues();
+  var now = Date.now();
+  var dead = [];
+  for (var i = 0; i < vals.length; i++) {
+    var exp = Number(vals[i][SESSION_COL.expiresAt]) || 0;
+    var seen = Number(vals[i][SESSION_COL.lastSeenAt]) || 0;
+    if (!vals[i][SESSION_COL.sid] || now > exp || (seen && now - seen > SESSION_IDLE_MS)) dead.push(i + 2);
+  }
+  for (var d = dead.length - 1; d >= 0; d--) sheet.deleteRow(dead[d]);
+  if (dead.length) Logger.log('[세션] 만료 세션 ' + dead.length + '건 정리');
+  return dead.length;
 }
 
-// idToken이 유효하고(_verifyAuth와 동일 검증) 그 이메일이 ADMIN_EMAILS에 있을 때만 true.
-// 시트 연결정보/원시 데이터를 노출하는 디버그 엔드포인트(?debug=...)를 막는 용도 — 그 외 일반
-// 데이터 조회/등록/수정 기능은 ADMIN_EMAILS와 무관하게 도메인만 맞으면 전부 허용됨(_verifyAuth 참고).
-function _isAdmin(idToken) {
-  var payload = _decodeIdTokenPayload(idToken);
-  if (!payload) return false;
-  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return false;
-  var email = String(payload.email || '').trim().toLowerCase();
+// ── 구글 ID 토큰 검증 (로그인 1회) ──
+/* tokeninfo는 구글이 서명까지 확인해 클레임을 돌려주는 엔드포인트다. 자체 JWK 캐싱보다 느리지만
+   로그인 시 1회만 타므로 문제되지 않고, 키 롤오버를 구글이 알아서 처리해 준다.
+   반환: { ok, email, name, reason } */
+function _verifyGoogleIdToken(idToken) {
+  if (!idToken || typeof idToken !== 'string') return { ok: false, reason: 'missing' };
+  var res;
+  try {
+    res = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
+      { muteHttpExceptions: true });
+  } catch (e) {
+    Logger.log('[로그인] tokeninfo 호출 실패: ' + e);
+    return { ok: false, reason: 'verify_failed' };
+  }
+  if (res.getResponseCode() !== 200) return { ok: false, reason: 'invalid' };
+
+  var info;
+  try { info = JSON.parse(res.getContentText()); } catch (e) { return { ok: false, reason: 'invalid' }; }
+
+  // aud — 이 토큰이 **우리 클라이언트용으로** 발급됐는가. 빠뜨리면 남의 사이트 토큰도 통과한다.
+  if (String(info.aud || '') !== GAS_CLIENT_ID) return { ok: false, reason: 'aud' };
+  // iss — 구글이 발급했는가
+  var iss = String(info.iss || '');
+  if (iss !== 'https://accounts.google.com' && iss !== 'accounts.google.com') return { ok: false, reason: 'iss' };
+  // exp — tokeninfo가 만료 토큰을 400으로 막아주지만, 응답을 그대로 믿지 않고 한 번 더 본다
+  if (!info.exp || Number(info.exp) * 1000 < Date.now()) return { ok: false, reason: 'expired' };
+  // email_verified — tokeninfo는 문자열 'true'로 주는 경우가 있어 둘 다 받는다
+  var verified = (info.email_verified === true || String(info.email_verified) === 'true');
+  if (!verified) return { ok: false, reason: 'unverified' };
+
+  var email = String(info.email || '').trim().toLowerCase();
+  if (!email) return { ok: false, reason: 'invalid' };
+  var hd = String(info.hd || '').trim().toLowerCase();
+  if (hd !== ALLOWED_DOMAIN.trim().toLowerCase()) return { ok: false, reason: 'domain' };
+
+  return { ok: true, email: email, name: String(info.name || info.email || ''), reason: null };
+}
+
+// ── 로그인 / 로그아웃 ──
+/* 구글 ID 토큰 1개를 받아 검증하고 세션을 발급한다. 이 액션만 세션 없이 호출할 수 있다. */
+function _login(ss, idToken) {
+  var v = _verifyGoogleIdToken(idToken);
+  if (!v.ok) {
+    Logger.log('[로그인 거절] 사유=' + v.reason); // 토큰 값은 절대 남기지 않는다
+    return _json({ error: 'LOGIN_REJECTED', reason: v.reason });
+  }
+  var allowed = _allowedEmails(ss);
+  if (!allowed[v.email]) {
+    Logger.log('[로그인 거절] 허용 목록에 없음 — ' + v.email);
+    return _json({ error: 'LOGIN_REJECTED', reason: 'not_allowed', email: v.email });
+  }
+
+  var sheet = _sessionSheet(ss);
+  _pruneSessions(sheet);
+
+  var now = Date.now();
+  var sid = Utilities.getUuid();
+  var expiresAt = now + SESSION_ABSOLUTE_MS;
+  sheet.appendRow([sid, v.email, v.name, now, expiresAt, now]);
+
+  var token = _signSessionToken({ sid: sid, email: v.email, name: v.name, exp: expiresAt, iat: now, kv: SESSION_KEY_VERSION });
+  Logger.log('[로그인] ' + v.email + ' / sid=' + sid.slice(0, 6));
+  return _json({
+    success: true, sessionToken: token,
+    user: { email: v.email, name: v.name, isAdmin: _isAdminEmail(v.email) },
+    expiresAt: expiresAt
+  });
+}
+
+function _logout(ss, auth) {
+  var sheet = _sessionSheet(ss);
+  var found = _findSessionRow(sheet, auth.sessionId);
+  if (found) sheet.deleteRow(found.rowIndex);
+  Logger.log('[로그아웃] ' + auth.email + ' / sid=' + String(auth.sessionId).slice(0, 6));
+  return _json({ success: true });
+}
+
+/* 관리자용 — 편집기에서 직접 실행. 모든 세션을 끊어 전원 재로그인시킨다.
+   비밀키가 유출됐다고 의심될 때는 이것만으로 부족하다: Script Properties의 SESSION_SECRET_V1을
+   새 값으로 바꾸면 기존 토큰은 전부 서명 검증에서 떨어진다(시트 삭제보다 확실하다). */
+function revokeAllSessions() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = _sessionSheet(ss);
+  var last = sheet.getLastRow();
+  if (last < 2) { Logger.log('[세션] 끊을 세션이 없습니다'); return 0; }
+  var count = last - 1;
+  sheet.deleteRows(2, count);
+  Logger.log('[세션] 전체 ' + count + '건 종료 — 모든 사용자가 다시 로그인해야 합니다');
+  return count;
+}
+
+/* 특정 사용자의 세션만 끊는다 — 편집기에서 revokeUserSessions('someone@athomecorp.com') */
+function revokeUserSessions(email) {
+  var target = String(email || '').trim().toLowerCase();
+  if (!target) { Logger.log('[세션] 이메일을 지정하세요'); return 0; }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = _sessionSheet(ss);
+  var last = sheet.getLastRow();
+  if (last < 2) return 0;
+  var vals = sheet.getRange(2, 1, last - 1, 6).getValues();
+  var dead = [];
+  for (var i = 0; i < vals.length; i++) {
+    if (String(vals[i][SESSION_COL.email] || '').trim().toLowerCase() === target) dead.push(i + 2);
+  }
+  for (var d = dead.length - 1; d >= 0; d--) sheet.deleteRow(dead[d]);
+  Logger.log('[세션] ' + target + ' 세션 ' + dead.length + '건 종료');
+  return dead.length;
+}
+
+// ── 요청 인증 ──
+/* 이번 응답에 실어 보낼 새 세션 토큰(슬라이딩 연장). _json이 모든 응답에 자동으로 붙인다 —
+   반환 지점이 수십 군데라 호출부마다 챙기게 하면 반드시 빠뜨리는 곳이 생긴다. */
+var _renewedSessionToken = null;
+
+/* 요청 → { ok, email, name, sessionId, reason }
+   reason: 'missing' | 'malformed' | 'badsig' | 'expired' | 'keymissing' | 'revoked' | 'idle' */
+function _authRequest(ss, e) {
+  if (!REQUIRE_AUTH) return { ok: true, email: '', name: '', sessionId: '' };
+  var token = (e && e.parameter) ? (e.parameter.session || '') : '';
+  var v = _verifySessionToken(token);
+  if (!v.ok) return { ok: false, reason: v.reason };
+
+  var sheet = _sessionSheet(ss);
+  var found = _findSessionRow(sheet, v.payload.sid);
+  if (!found) return { ok: false, reason: 'revoked' };  // 로그아웃됐거나 정리된 세션
+
+  var now = Date.now();
+  var expiresAt = Number(found.row[SESSION_COL.expiresAt]) || 0;
+  var lastSeen = Number(found.row[SESSION_COL.lastSeenAt]) || 0;
+  if (now > expiresAt) return { ok: false, reason: 'expired' };
+  if (lastSeen && now - lastSeen > SESSION_IDLE_MS) return { ok: false, reason: 'idle' };
+
+  // 마지막 사용 갱신 — 너무 잦은 쓰기를 피해 1분 간격으로만(위 SESSION_TOUCH_MIN_INTERVAL_MS 주석)
+  if (now - lastSeen >= SESSION_TOUCH_MIN_INTERVAL_MS) {
+    sheet.getRange(found.rowIndex, SESSION_COL.lastSeenAt + 1).setValue(now);
+  }
+
+  // 슬라이딩 연장 — 남은 절대 만료가 얼마 없으면 새 토큰을 발급해 응답에 실어 보낸다
+  if (expiresAt - now < SESSION_SLIDE_MS) {
+    var newExp = now + SESSION_ABSOLUTE_MS;
+    sheet.getRange(found.rowIndex, SESSION_COL.expiresAt + 1).setValue(newExp);
+    _renewedSessionToken = _signSessionToken({
+      sid: v.payload.sid, email: v.payload.email, name: v.payload.name || '',
+      exp: newExp, iat: now, kv: SESSION_KEY_VERSION
+    });
+  }
+
+  return {
+    ok: true,
+    email: String(found.row[SESSION_COL.email] || v.payload.email),
+    name: String(found.row[SESSION_COL.name] || v.payload.name || ''),
+    sessionId: v.payload.sid
+  };
+}
+
+// 관리자 판정 — 세션에서 확인된 이메일로만 본다(토큰 클레임을 그대로 믿지 않는다)
+function _isAdminEmail(email) {
+  var em = String(email || '').trim().toLowerCase();
   for (var i = 0; i < ADMIN_EMAILS.length; i++) {
-    if (ADMIN_EMAILS[i].trim().toLowerCase() === email) return true;
+    if (ADMIN_EMAILS[i].trim().toLowerCase() === em) return true;
   }
   return false;
 }
@@ -661,13 +938,24 @@ function doGet(e) {
   var _t0 = Date.now();
   _reqStartMs = _t0;
   try {
-    // 실행 기록(Executions)에서 이 호출이 조회인지 쓰기인지, 어떤 파라미터가 실려왔는지 진입
-    // 시점에 항상 남김 — 이후 어디서 죽든 최소한 "이런 요청이 왔었다"는 사실은 반드시 남게 함.
+    /* 실행 기록(Executions)에 "이런 요청이 왔었다"는 사실은 항상 남긴다. 다만 **파라미터 키만**
+       남기고 값은 절대 남기지 않는다 — 여기엔 세션 토큰과 구글 ID 토큰이 실려 오고, 실행 로그는
+       스크립트 접근 권한이 있는 사람 모두가 본다. 로그에 남은 토큰은 그 자체로 유효한 자격증명이다. */
     Logger.log('[doGet 진입] action=' + (e && e.parameter ? (e.parameter.action || '(없음, 조회 요청)') : '(e.parameter 없음)') +
       ' / 파라미터 키=' + (e && e.parameter ? Object.keys(e.parameter).join(',') : '(없음)'));
 
-    var idToken = (e && e.parameter) ? (e.parameter.idToken || '') : '';
-    if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED', reason: _authFailureReason(idToken) });
+    _renewedSessionToken = null; // 요청마다 초기화(전역이지만 Apps Script는 요청당 별도 실행이라 안전)
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 로그인만 세션 없이 호출할 수 있다 — 세션을 받으러 오는 요청이므로 당연히 세션이 없다
+    if (e && e.parameter && e.parameter.action === 'login') {
+      return _login(ss, e.parameter.idToken || '');
+    }
+
+    var auth = _authRequest(ss, e);
+    if (!auth.ok) return _json({ error: 'AUTH_REQUIRED', reason: auth.reason });
+
+    if (e && e.parameter && e.parameter.action === 'logout') return _logout(ss, auth);
 
     // ⚠ 2026-07-29: 저장/수정/삭제 등 쓰기 액션을 doPost가 아니라 여기 doGet으로 라우팅함 — POST가
     // Apps Script의 302 리다이렉트 처리에서 본문을 통째로 유실시키는 문제가 여러 형태(JSON body,
@@ -678,7 +966,7 @@ function doGet(e) {
       // 극단적인 경우까지 포함해서), 쓰기 분기에서 발생하는 어떤 예외든 절대 doGet 밖으로 조용히
       // 새어나가지 않고 반드시 JSON으로 응답하도록 여기서 한 번 더 감쌈(요청받은 이중 방어).
       try {
-        return _handleWriteAction(e, idToken);
+        return _handleWriteAction(e, auth);
       } catch (writeErr) {
         Logger.log('[doGet 쓰기 최종방어] action=' + e.parameter.action + ' / 에러=' + writeErr +
           ' / 스택=\n' + (writeErr && writeErr.stack));
@@ -711,7 +999,7 @@ function doGet(e) {
 
     // 디버그 엔드포인트(?debug=...)는 시트 연결정보/원시 데이터를 그대로 노출하므로 관리자 전용.
     if (e && e.parameter && e.parameter.debug) {
-      if (!_isAdmin(idToken)) return _json({ error: 'ADMIN_REQUIRED' });
+      if (!_isAdminEmail(auth.email)) return _json({ error: 'ADMIN_REQUIRED' });
 
       // ?debug=reels&row=123 으로 호출 시 해당 행의 릴스 슬롯/썸네일 원본 상태를 그대로 반환
       if (e.parameter.debug === 'reels' && e.parameter.row) {
@@ -1021,10 +1309,10 @@ var PRESENCE_CACHE_KEY = 'presenceRoster_v1';
 var PRESENCE_CACHE_TTL_SEC = 90; // 하트비트가 끊겨도 90초까지는 로스터 자체를 보존
 var PRESENCE_ACTIVE_WINDOW_MS = 90 * 1000; // 응답에 포함할 "최근 접속" 기준(프론트 하트비트 주기 45초의 2배 — 2026-08-04 30→45초로 완화되면서 같이 조정)
 
-function _presenceHeartbeat(idToken) {
-  var payload = _decodeIdTokenPayload(idToken);
-  var email = (payload && payload.email) || '';
-  var name = (payload && (payload.name || payload.email)) || '';
+// 접속자 표시 — 신원은 세션에서 확인된 값만 쓴다(클라이언트가 보낸 이름/이메일을 믿지 않는다)
+function _presenceHeartbeat(auth) {
+  var email = (auth && auth.email) || '';
+  var name = (auth && (auth.name || auth.email)) || '';
   var cache = CacheService.getScriptCache();
   var now = Date.now();
 
@@ -2296,10 +2584,15 @@ function doPost(e) {
       throw new Error('요청 본문(postData)이 비어있습니다.');
     }
     var body = JSON.parse(e.postData.contents);
-    var idToken = body.idToken || (e.parameter ? e.parameter.idToken : '') || '';
-    if (!_verifyAuth(idToken)) return _json({ error: 'AUTH_REQUIRED', reason: _authFailureReason(idToken) });
+    _renewedSessionToken = null;
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    /* 세션 토큰은 본문으로도, 쿼리로도 올 수 있다 — _authRequest는 e.parameter만 보므로
+       본문으로 온 경우 그쪽에 채워 넣어 한 곳에서만 판정하게 한다(검증 경로를 둘로 만들지 않는다). */
+    if (body.session && e.parameter && !e.parameter.session) e.parameter.session = body.session;
+    var auth = _authRequest(ss, e);
+    if (!auth.ok) return _json({ error: 'AUTH_REQUIRED', reason: auth.reason });
 
-    if (body.action === 'presence') return _presenceHeartbeat(idToken);
+    if (body.action === 'presence') return _presenceHeartbeat(auth);
     throw new Error('doPost는 presence 전용입니다 — 그 외 액션(' + body.action + ')은 doGet(GET)으로 보내야 합니다.');
   } catch (err) {
     return _json({ error: err.toString() });
@@ -2317,7 +2610,7 @@ function doPost(e) {
 // 디코딩해서 e.parameter에 넣어줌)로 옴. 너무 길어서 프론트가 여러 청크로 쪼개 보낸 경우
 // (e.parameter.chunkTotal > 1)는 CacheService에 청크를 모아뒀다가 마지막 청크가 도착했을 때만
 // 조립해서 실제 처리를 실행함 — 그 전 청크들은 "받았다"는 가벼운 확인 응답만 돌려줌.
-function _handleWriteAction(e, idToken) {
+function _handleWriteAction(e, auth) {
   _tmStart();
   _lastJsonObj = null;
   var action = e.parameter.action;
@@ -2395,9 +2688,9 @@ function _handleWriteAction(e, idToken) {
     else if (action === 'writeTiers') resp = _writeTiers(ss, data);
     else if (action === 'updateChannelFields') resp = _updateChannelFields(ss, data);
     else if (action === 'uploadThumbnail') resp = _uploadThumbnail(data);
-    else if (action === 'saveReview') { resp = _saveReview(ss, data, idToken); skipCacheInvalidate = true; }
+    else if (action === 'saveReview') { resp = _saveReview(ss, data, auth); skipCacheInvalidate = true; }
     else if (action === 'deleteReview') { resp = _deleteReview(ss, data); skipCacheInvalidate = true; }
-    else if (action === 'duplicateReview') { resp = _duplicateReview(ss, data, idToken); skipCacheInvalidate = true; }
+    else if (action === 'duplicateReview') { resp = _duplicateReview(ss, data, auth); skipCacheInvalidate = true; }
     else if (action === 'uploadReviewImage') { resp = _uploadReviewImage(data); skipCacheInvalidate = true; }
     else if (action === 'uploadReviewImageByUrl') { resp = _uploadReviewImageByUrl(data); skipCacheInvalidate = true; }
     else if (action === 'shareReviewImages') { resp = _shareReviewImages(data); skipCacheInvalidate = true; }
@@ -3588,10 +3881,9 @@ function _getReviewDoc(ss, id) {
 // 로그인한 athomecorp.com 사용자 누구나 읽기/쓰기 가능(REQUIRE_AUTH 도메인 검증 외 추가 제한 없음).
 // 본문: 신 프론트는 content(Editor.js JSON 문자열), 구 프론트는 blocks(블록 트리 배열)를 보냄 —
 // 재배포 순서와 무관하게 둘 다 수용. 45,000자 초과분은 '본문2','본문3',...(J열~)에 분할 저장.
-function _saveReview(ss, data, idToken) {
+function _saveReview(ss, data, auth) {
   var sheet = _ensureReviewSheet(ss);
-  var payload = _decodeIdTokenPayload(idToken);
-  var editor = (payload && (payload.name || payload.email)) || '';
+  var editor = (auth && (auth.name || auth.email)) || '';
   var id = String((data && data.id) || '').trim() || Utilities.getUuid();
   var now = new Date().toISOString();
   var content = (data && typeof data.content === 'string') ? data.content : JSON.stringify((data && data.blocks) || []);
@@ -3668,7 +3960,7 @@ function _deleteReview(ss, data) {
 // 구분하고, 나머지 메타(담당자/팀/파트/연월)와 본문은 그대로 복제함. 본문에 박힌 이미지는
 // _cloneReviewImages로 Drive 파일 자체를 복사해 원본과 독립시킴 — 원본을 나중에 삭제해도
 // 복사본 이미지가 함께 사라지지 않게 하기 위함(2026-08-25).
-function _duplicateReview(ss, data, idToken) {
+function _duplicateReview(ss, data, auth) {
   var srcId = String((data && data.id) || '').trim();
   var src = _getReviewDoc(ss, srcId);
   if (!src) return _json({ error: '원본 회고를 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.' });
@@ -3676,8 +3968,7 @@ function _duplicateReview(ss, data, idToken) {
   var newContent = _cloneReviewImages(src.content);
   var newTitle = (src.title && src.title.trim() ? src.title.trim() : '제목 없음') + ' - 복사본';
 
-  var payload = _decodeIdTokenPayload(idToken);
-  var editor = (payload && (payload.name || payload.email)) || '';
+  var editor = (auth && (auth.name || auth.email)) || '';
   var sheet = _ensureReviewSheet(ss);
   var newId = Utilities.getUuid();
   var now = new Date().toISOString();
@@ -3805,6 +4096,12 @@ function _shareReviewImages(data) {
 var _lastJsonObj = null;
 function _json(obj) {
   if (obj && typeof obj === 'object' && !Array.isArray(obj)) _lastJsonObj = obj;
+  /* 슬라이딩 연장으로 새 세션 토큰이 발급됐으면 어떤 응답이든 여기에 실어 보낸다.
+     반환 지점이 수십 곳이라 호출부마다 챙기게 하면 반드시 빠뜨리는 곳이 생기고, 그 경로만
+     조용히 연장이 안 돼서 "가끔 로그아웃"이 재발한다 — 출구 한 곳에서 처리한다. */
+  if (obj && typeof obj === 'object' && !Array.isArray(obj) && _renewedSessionToken && !obj.sessionToken) {
+    obj.sessionToken = _renewedSessionToken;
+  }
   if (obj && typeof obj === 'object' && !Array.isArray(obj) && obj.execMs === undefined && _reqStartMs) {
     obj.execMs = Date.now() - _reqStartMs;
   }

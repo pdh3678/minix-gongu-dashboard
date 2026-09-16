@@ -15,7 +15,8 @@ const SUITES = [
   ['save-flow.test.js',    '저장 흐름 — saveSchemeModal/saveDeal을 끝까지 실행'],
   ['multi-code.test.js',   '다중 상품코드 — 같은 dealId+코드순번 구조, 실적 합산, dealId 통일'],
   ['channel-link.test.js', '인플루언서 링크 — 플랫폼 ID로 자동 생성, 수동 수정 보존'],
-  ['id-from-link.test.js','링크 → ID 역추출 + 채널 정보 미입력 목록']
+  ['id-from-link.test.js','링크 → ID 역추출 + 채널 정보 미입력 목록'],
+  ['session-auth.test.js','자체 세션 인증 — 서명 검증, 만료·연장, 허용 목록']
 ];
 
 let failed = 0;

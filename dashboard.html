@@ -1648,7 +1648,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-idlink-2026-09-16-01';
+const DASHBOARD_VERSION='dash-session-2026-09-16-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1661,7 +1661,7 @@ if(IS_EMBED)console.log('[dashboard] 임베드 모드 — 사이드바/헤더 �
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='inflink-2026-09-15-21';
+const REQUIRED_SCRIPT_VERSION='session-2026-09-16-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -6543,7 +6543,7 @@ function showToast(msg,opts){
   _toastT=setTimeout(()=>el.classList.remove('show'),duration);
 }
 
-/* Debug modal — 로그인된 idToken으로 ?debug=1 호출 (시트 값 비인증 노출 없음) */
+/* Debug modal — 로그인 세션으로 ?debug=1 호출 (관리자만 통과, 시트 값 비인증 노출 없음) */
 async function openDebug(){
   const url=_getGasUrl();
   const body=document.getElementById('debugBody');
@@ -6663,21 +6663,12 @@ function _classifyFetchError(e){
 
 // AUTH_REQUIRED 자동 재시도(1회) 예약 — _gasFetch가 이미 내부적으로 토큰 갱신+재시도를 한 번
 // 시도했는데도 AUTH_REQUIRED가 남아있으면, 5초 뒤 토큰을 다시 확인해서 한 번 더 시도함. 여러 호출이
-// 겹쳐도 타이머가 중첩되지 않게 단일 타이머로 관리.
-let _fetchLiveAuthRetryTimer=null;
-function _scheduleFetchLiveAuthRetry(){
-  if(_fetchLiveAuthRetryTimer)return; // 이미 예약돼 있으면 중복 예약 안 함
-  _fetchLiveAuthRetryTimer=setTimeout(()=>{
-    _fetchLiveAuthRetryTimer=null;
-    console.log('[fetchLive] AUTH_REQUIRED 5초 후 1회 자동 재시도 — 현재 토큰 존재='+(!!_getToken()));
-    fetchLive();
-  },5000);
-}
 
 async function fetchLive(forceFresh){
   const url=_getGasUrl();
   const token=_getToken();
-  console.log('[fetchLive] 요청 준비 — GAS URL 설정됨='+(!!url)+', 토큰 존재='+(!!token)+(token?(' (앞 10자: '+token.slice(0,10)+'...)'):''));
+  // 토큰 앞부분도 찍지 않는다 — 콘솔 로그는 화면 공유·스크린샷으로 쉽게 새어나간다
+  console.log('[fetchLive] 요청 준비 — GAS URL 설정됨='+(!!url)+', 세션 존재='+(!!token));
   if(!url){
     // 서버 URL 자체가 없는 건 관리자가 ⚙ 연결 설정에서 등록해야 하는 상태 — 재시도로 해결되지 않으므로
     // "서버 연결 실패"가 아니라 "샘플 데이터"(데모 모드)로 명확히 구분해서 표시
@@ -6696,18 +6687,16 @@ async function fetchLive(forceFresh){
   try{
     // 수동 새로고침(forceFresh)은 서버의 90초 캐시를 건너뛰고 항상 최신 데이터를 받아옴
     const reqUrl=_gasUrl(url)+(forceFresh?'&nocache=1':'');
-    console.log('[fetchLive] 요청 URL(토큰 마스킹)=',reqUrl.replace(/idToken=[^&]+/,'idToken=***'));
+    console.log('[fetchLive] 요청 URL(세션 마스킹)=',reqUrl.replace(/session=[^&]+/,'session=***'));
     const j=await _gasFetch(reqUrl,{});
     console.log('[fetchLive] 응답 버전(Apps Script):',j.version||'(버전 필드 없음 — 구버전 배포본)',j.cached?'(캐시됨, '+j.execMs+'ms)':'(새로 계산, '+j.execMs+'ms)');
     if(j.version&&j.version!==REQUIRED_SCRIPT_VERSION){
       console.warn(`[버전 불일치] 배포된 Apps Script=${j.version} / 프론트가 필요로 하는 버전=${REQUIRED_SCRIPT_VERSION} — Apps Script를 재배포해야 할 수 있습니다(프론트 전용 변경이면 이 경고는 무시해도 됨).`);
     }
     if(j.error==='AUTH_REQUIRED'){
-      // _gasFetch가 이미 토큰 자동 갱신+재시도를 한 번 시도한 뒤에도 실패한 경우 — 배너/배지는
-      // 이미 _gasFetch·_refreshIdToken이 정확히 세팅해뒀으므로 여기서 _connFail()로 덮어쓰지 않되,
-      // 5초 뒤 자동으로 한 번 더 시도해서 사용자가 직접 새로고침을 누를 필요가 없게 함
-      console.error('[fetchLive 실패] 사유: AUTH_REQUIRED — 서버가 토큰을 거부함(사유는 위 [인증 거절] 로그 참고)');
-      _scheduleFetchLiveAuthRetry();
+      /* _gasFetch가 이미 세션을 버리고 로그인 화면을 띄웠다. 예전처럼 5초 뒤 재시도하지 않는다 —
+         세션이 죽은 상태에서 같은 요청을 반복해 봐야 똑같이 거절당하고 로그만 시끄러워진다. */
+      console.error('[fetchLive 실패] 사유: AUTH_REQUIRED — 재로그인 필요(사유는 위 [인증 거절] 로그 참고)');
       return;
     }
     if(j.error){console.error('[fetchLive 실패] 사유: SERVER_ERROR —',j.error);throw new Error(j.error);}
@@ -6744,7 +6733,6 @@ async function fetchLive(forceFresh){
       _tierSyncReady=true; // 실서버 데이터를 받은 뒤에만 시트 기록 허용(샘플/로컬캐시로 덮어쓰기 방지)
       _connOk();setConn('live');render();
       _saveDataCache(j);
-      if(_fetchLiveAuthRetryTimer){clearTimeout(_fetchLiveAuthRetryTimer);_fetchLiveAuthRetryTimer=null;} // 성공했으니 예약된 재시도는 취소
     }else throw new Error('데이터가 비어있습니다');
   }catch(e){
     const reason=_classifyFetchError(e);
@@ -7942,60 +7930,69 @@ const ADMIN_EMAILS=['p_dh_3678@athomecorp.com'];
 function _applyAdminUI(email){
   document.getElementById('hdrAdminControls').style.display=ADMIN_EMAILS.includes(email)?'flex':'none';
 }
-let _gasCredential=null; // Google ID 토큰 (로그인 시 발급, ~1시간 유효)
-let _tokenExpiresAt=0; // ms epoch, JWT exp 클레임 — 선제적 백그라운드 갱신 타이머 예약용
-let _refreshTimer=null; // 만료 5분 전 자동 갱신을 예약하는 setTimeout 핸들
+/* ── 대시보드 자체 세션 (2026-09-16) ────────────────────────────────────────────
+   예전에는 구글 ID 토큰(수명 1시간)을 그대로 세션처럼 썼고, 만료 5분 전에 One Tap 조용한
+   재인증으로 연장했다. 그 갱신이 자주 실패해서(One Tap 쿨다운·FedCM 차단·**iframe에서는 아예
+   표시되지 않음**) 한 시간마다 로그아웃됐다.
 
-// ── 토큰 캐시: 만료 전 idToken을 저장해뒀다가, 다음 방문 때 GSI의 조용한 재인증(One Tap)
-// 왕복을 기다리지 않고 곧바로 그 토큰으로 fetchLive를 시작하기 위함(인증/데이터 요청 병렬화).
-const GAS_TOKEN_LS_KEY='gp_id_token';
-function _saveTokenCache(token,expiresAt){
-  try{localStorage.setItem(GAS_TOKEN_LS_KEY,JSON.stringify({token,expiresAt}));}catch(e){}
-}
-function _loadTokenCache(){
+   이제 구글 로그인은 신원 확인 1회에만 쓴다. 로그인 시 ID 토큰을 GAS에 한 번 넘기면 GAS가
+   서명까지 검증한 뒤 자체 세션 토큰을 내주고, 그 뒤 모든 요청은 그 토큰으로 인증한다.
+   갱신은 응답에 실려 오는 새 토큰을 받아 쓰는 방식이라 **브라우저 UI가 전혀 개입하지 않는다**
+   — iframe이든 잠자기 복귀든 실패할 구석이 없다. */
+let _sessionToken=null;
+const SESSION_LS_KEY='gp_session';
+/* 구 idToken 캐시 키 — 이 배포로 무효가 된다. 남아 있으면 "한 번 더 로그인해야 한다"는 안내를
+   띄우는 신호로만 쓰고 지운다(아래 _consumeLegacyLoginNotice). */
+const LEGACY_TOKEN_LS_KEY='gp_id_token';
+
+// 세션 읽기/쓰기 단일 창구 — 로그인·복원·슬라이딩 연장 세 경로가 전부 여기만 거친다
+function _getToken(){return _sessionToken;}
+function _setSession(token){
+  _sessionToken=token||null;
   try{
-    const raw=localStorage.getItem(GAS_TOKEN_LS_KEY);
-    if(!raw)return null;
-    const t=JSON.parse(raw);
-    if(!t||!t.token||!t.expiresAt)return null;
-    if(Date.now()>=t.expiresAt)return null; // 이미 만료됨 — 캐시 무의미
-    return t;
+    if(token)localStorage.setItem(SESSION_LS_KEY,token);
+    else localStorage.removeItem(SESSION_LS_KEY);
+  }catch(e){}
+}
+function _loadSession(){
+  try{return localStorage.getItem(SESSION_LS_KEY)||null;}catch(e){return null;}
+}
+function _clearSession(){_sessionToken=null;try{localStorage.removeItem(SESSION_LS_KEY);}catch(e){}}
+
+// 세션 토큰의 페이로드(서명 검증은 서버만 한다 — 여기서는 이름/이메일 표시용으로만 읽는다)
+function _decodeSessionPayload(token){
+  try{
+    const b64=String(token||'').split('.')[0].replace(/-/g,'+').replace(/_/g,'/');
+    const padded=b64+'='.repeat((4-b64.length%4)%4);
+    return JSON.parse(decodeURIComponent(
+      atob(padded).split('').map(c=>'%'+c.charCodeAt(0).toString(16).padStart(2,'0')).join('')
+    ));
   }catch(e){return null;}
 }
-function _clearTokenCache(){try{localStorage.removeItem(GAS_TOKEN_LS_KEY);}catch(e){}}
-
-// 토큰 읽기/쓰기 단일 창구 — 신규 로그인/기존 세션 복원/자동 갱신 세 경로 모두 반드시 이 두 함수만
-// 거치게 통일함(과거엔 _gasCredential 전역변수를 여기저기서 직접 대입해서, 저장 위치가 실제로
-// 어긋난 적은 없었지만 다음에 또 저장 경로가 늘어나면 어긋나기 쉬운 구조였음). _getToken()은 항상
-// 그 시점의 최신 in-memory 값을 반환하므로 fetchLive 등 호출부가 캐시된 값을 들고 있을 위험이 없음.
-function _getToken(){return _gasCredential;}
-function _setToken(token,expiresAt,persist){
-  _gasCredential=token||null;
-  _tokenExpiresAt=expiresAt||0;
-  if(persist!==false&&token)_saveTokenCache(token,expiresAt);
+// 구 로그인 흔적이 있으면 1회 안내를 위해 true를 돌려주고 흔적을 지운다
+function _consumeLegacyLoginNotice(){
+  try{
+    if(!localStorage.getItem(LEGACY_TOKEN_LS_KEY))return false;
+    localStorage.removeItem(LEGACY_TOKEN_LS_KEY);
+    return true;
+  }catch(e){return false;}
 }
 
-function _decodeJwt(token){
-  const b64=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
-  return JSON.parse(decodeURIComponent(
-    atob(b64).split('').map(c=>'%'+c.charCodeAt(0).toString(16).padStart(2,'0')).join('')
-  ));
-}
-
-// GAS URL에 idToken 쿼리 파라미터 추가(있으면 교체, 없으면 붙임) — 토큰 자동 갱신 후 재시도할 때도 재사용
+// GAS URL에 session 쿼리 파라미터 추가(있으면 교체, 없으면 붙임)
 function _gasUrl(base){
-  const stripped=base.replace(/([?&])idToken=[^&]*&?/,'$1').replace(/[?&]$/,'');
+  const stripped=base.replace(/([?&])session=[^&]*&?/,'$1').replace(/[?&]$/,'');
   if(!_getToken())return stripped;
-  return stripped+(stripped.includes('?')?'&':'?')+'idToken='+encodeURIComponent(_getToken());
+  return stripped+(stripped.includes('?')?'&':'?')+'session='+encodeURIComponent(_getToken());
 }
 
 // 네트워크 오류/일시 실패(5xx)는 지수 백오프(1s→2s→4s)로 최대 3회 재시도. 응답이 20초 넘게 안 오면(Apps
 // Script 콜드스타트/네트워크 정체 등) 타임아웃으로 끊어서, "그냥 무한정 조용히 멈춤"이 아니라
 // 명확한 실패로 처리되게 함(끊긴 뒤에도 위 재시도 루프를 그대로 탐). AUTH_REQUIRED는 이 백오프 루프와
 // 무관한 별도 분기(아래 j.error==='AUTH_REQUIRED')로 처리됨 — 네트워크/타임아웃 실패만 여기서 재시도하고,
-// 인증 실패는 무조건 silentRefresh(_refreshIdToken) 경로로 가서 두 재시도 전략이 서로 겹치지 않음.
-// 응답이 AUTH_REQUIRED(idToken 만료, ~1시간)면 토큰을 자동 갱신해서 1회만 재시도하고,
-// 갱신까지 실패한 경우에만 재로그인 배너를 띄움. opts.body가 있으면(POST) 그 안의 idToken도 갱신해서 다시 보냄.
+// 인증 실패(AUTH_REQUIRED)는 이 백오프와 무관하게 즉시 로그인 화면으로 간다 — 세션이 죽은 뒤에는
+// 같은 요청을 반복해도 결과가 같으므로 재시도가 의미 없다.
+// 응답에 새 세션 토큰(sessionToken)이 실려 있으면 조용히 갈아끼우고, AUTH_REQUIRED면 세션을 버리고
+// 로그인 화면을 띄운다.
 const GAS_FETCH_TIMEOUT_MS=20000;
 // ⚠ 2026-07-29 확진: POST 본문을 URLSearchParams(application/x-www-form-urlencoded)로 감싸고
 // redirect:'follow'/mode:'cors'/credentials:'omit'을 명시했던 시도(2026-07-28)가 오히려 문제였음 —
@@ -8033,39 +8030,31 @@ async function _gasFetch(url,opts,_authRetried){
   }
   if(lastErr)throw lastErr;
   const j=await res.json();
-  if(j&&j.error==='AUTH_REQUIRED'){
-    // 사유를 항상 콘솔에 남김(재시도 여부와 무관) — 다음에 비슷한 인증 문제가 생기면 바로 원인 확인 가능
-    const reasonLabel={missing:'토큰 없음',expired:'토큰 만료',domain:'도메인 불일치(허용 도메인 아님)',invalid:'토큰 형식 오류/필수 클레임 없음'}[j.reason]||'사유 불명('+j.reason+')';
-    console.warn('[인증 거절] AUTH_REQUIRED — 사유: '+reasonLabel+' (reason="'+j.reason+'")');
+  /* 슬라이딩 연장 — 서버가 남은 수명이 얼마 없다고 판단하면 어떤 응답에든 새 토큰을 실어 보낸다.
+     조용히 받아서 갈아끼우는 게 전부다. 사용자도, 브라우저 UI도 개입하지 않는다. */
+  if(j&&j.sessionToken&&j.sessionToken!==_getToken()){
+    _setSession(j.sessionToken);
+    console.log('[인증] 세션 자동 연장됨');
   }
-  if(j&&j.error==='AUTH_REQUIRED'&&!_authRetried){
-    if(j.reason==='domain'){
-      // 도메인이 안 맞는 계정은 재발급해도 절대 안 풀림 — 조용한 갱신 시도 없이 바로 재로그인 화면
-      setConn('relogin');
-      _showReloginScreen();
-      _showLoginErr('접속 권한이 없는 계정입니다. 앳홈 계정(@'+ALLOWED_DOMAIN+')으로 다시 로그인해주세요.');
-      return j;
-    }
-    const refreshed=await _refreshIdToken();
-    if(refreshed){
-      let retriedUrl=url,retriedOpts=opts;
-      if(url.includes('idToken='))retriedUrl=_gasUrl(url);
-      if(opts&&opts.body){
-        try{
-          const b=JSON.parse(opts.body);b.idToken=_getToken()||'';
-          retriedOpts=Object.assign({},opts,{body:JSON.stringify(b)});
-        }catch(e){}
-      }
-      return _gasFetch(retriedUrl,retriedOpts,true);
-    }
-    _showReloginBanner();
+  if(j&&j.error==='AUTH_REQUIRED'){
+    /* 세션이 죽었다는 뜻이고, 여기서 프론트가 조용히 되살릴 방법은 없다(그게 예전 구조의 문제였다).
+       재시도하지 않고 바로 로그인 화면으로 보낸다 — 401의 의미 그대로. */
+    const reasonLabel={
+      missing:'세션 없음',malformed:'세션 토큰 형식 오류',badsig:'세션 서명 불일치',
+      expired:'세션 만료(절대 12시간)',idle:'미사용 만료(2시간)',revoked:'로그아웃되었거나 종료된 세션',
+      keymissing:'서버에 해당 버전의 세션 키가 없음'
+    }[j.reason]||('사유 불명('+j.reason+')');
+    console.warn('[인증 거절] AUTH_REQUIRED — 사유: '+reasonLabel+' (reason="'+j.reason+'")');
+    _clearSession();
+    setConn('relogin');
+    _showReloginScreen();
   }
   return j;
 }
 
 // ⚠ 2026-07-29: POST(어떤 형태로 시도해도 — JSON body, 폼 인코딩 body 전부)가 Apps Script의 302
 // 리다이렉트 처리에서 본문을 유실시키는 문제가 계속 재현되어, 결국 한 번도 실패한 적 없는
-// fetchLive의 GET 파이프라인을 저장/수정/삭제 등 쓰기 액션에도 그대로 재사용하기로 함. action/idToken은
+// fetchLive의 GET 파이프라인을 저장/수정/삭제 등 쓰기 액션에도 그대로 재사용하기로 함. action/session은
 // 쿼리 파라미터로, 실제 데이터는 JSON 문자열을 URL 인코딩해서 payload= 파라미터에 담아 보냄 — GET은
 // "본문"이 없고 전부 URL에 실리므로, 리다이렉트를 따라가도 유실될 게 없음(URL은 리다이렉트 응답 자체가
 // 아니라 요청 쪽에 속하는 정보라 안전).
@@ -8078,7 +8067,7 @@ const GAS_GET_CHUNK_RAW_SIZE=1200; // 청크 1개당 원본(인코딩 전) 문�
 
 async function _gasWrite(url,action,data,fetchOpts){
   const payloadStr=JSON.stringify(data||{});
-  const base=_gasUrl(url); // idToken을 여기서 붙여줌 — 아래 청크 요청들도 전부 이 base를 재사용
+  const base=_gasUrl(url); // 세션 토큰을 여기서 붙여줌 — 아래 청크 요청들도 전부 이 base를 재사용
   const encoded=encodeURIComponent(payloadStr);
   const sep=base.includes('?')?'&':'?';
   if(encoded.length<=GAS_GET_SINGLE_MAX){
@@ -8119,7 +8108,7 @@ async function _diagWriteStage(stage){
     const minimalPayload=JSON.stringify({product:'진단',ch:'진단',start:'2026-07-29',end:'2026-07-29'});
     reqUrl+='&payload='+encodeURIComponent(minimalPayload);
   }
-  console.log('[진단 stage '+stage+'] 요청 URL(토큰 마스킹)=',reqUrl.replace(/idToken=[^&]+/,'idToken=***'));
+  console.log('[진단 stage '+stage+'] 요청 URL(세션 마스킹)=',reqUrl.replace(/session=[^&]+/,'session=***'));
   try{
     const j=await _gasFetch(reqUrl,{});
     console.log('[진단 stage '+stage+'] 결과:',j);
@@ -8130,78 +8119,12 @@ async function _diagWriteStage(stage){
   }
 }
 
-// 만료된 idToken을 GIS의 자동 로그인(One Tap 무표시 모드)으로 조용히 갱신 시도.
-// prompt()의 notification 콜백만으로는 성공 여부가 애매해서, handleGoogleSignIn이 실제로
-// _gasCredential을 바꿔줄 때까지 짧게 폴링하고, 그래도 안 바뀌면(거부/미표시/타임아웃) 실패로 간주.
-// 단일 비행(single-flight): 이미 갱신이 진행 중이면 새 prompt()를 또 띄우지 않고 같은 Promise를
-// 그대로 돌려줘서 여러 요청이 공유함 — 중복 로그인 프롬프트 방지 + "큐에 모아뒀다가 일괄 재시도"와
-// 동일한 효과(각 호출자는 이 Promise가 풀리면 자기 요청을 이어서 재시도함).
-let _refreshingPromise=null;
-function _refreshIdToken(){
-  if(_refreshingPromise)return _refreshingPromise;
-  setConn('refreshing');
-  _refreshingPromise=new Promise(resolve=>{
-    if(!(window.google&&google.accounts&&google.accounts.id)){resolve(false);return;}
-    const prevCred=_getToken();
-    let settled=false;
-    const finish=ok=>{if(settled)return;settled=true;resolve(ok);};
-    try{
-      google.accounts.id.prompt(n=>{
-        // moment 타입/사유를 항상 로그로 남김 — FedCM/One Tap이 아무 에러 없이 조용히 실패하는 경우
-        // 콘솔에서 유일하게 확인 가능한 단서가 이 콜백이라 최대한 자세히 남겨둠
-        try{
-          let detail='momentType='+(n&&n.getMomentType?n.getMomentType():'?');
-          if(n){
-            if(n.isDisplayed&&n.isDisplayed())detail+=' display';
-            if(n.isNotDisplayed&&n.isNotDisplayed())detail+=' not_displayed(사유:'+(n.getNotDisplayedReason?n.getNotDisplayedReason():'?')+')';
-            if(n.isSkippedMoment&&n.isSkippedMoment())detail+=' skipped(사유:'+(n.getSkippedReason?n.getSkippedReason():'?')+')';
-            if(n.isDismissedMoment&&n.isDismissedMoment())detail+=' dismissed(사유:'+(n.getDismissedReason?n.getDismissedReason():'?')+')';
-          }
-          _gsiLog('자동 로그인 prompt() 결과 — '+detail);
-        }catch(logErr){}
-        // dismissed(사유:credential_returned)는 실패가 아니라 "credential이 정상적으로 반환돼 One Tap이
-        // 닫혔다"는 성공 신호임 — 이걸 무조건 declined로 취급하면 handleGoogleSignIn이 토큰을 이미 정상
-        // 저장했는데도 폴링보다 이 콜백이 먼저 실행되는 타이밍에 재발급을 "실패"로 오판해 배너가 뜸.
-        const dismissed=n&&n.isDismissedMoment&&n.isDismissedMoment();
-        const dismissedReason=dismissed&&n.getDismissedReason?n.getDismissedReason():'';
-        const declined=n&&((n.isNotDisplayed&&n.isNotDisplayed())||(n.isSkippedMoment&&n.isSkippedMoment())||(dismissed&&dismissedReason!=='credential_returned'));
-        if(declined)finish(false);
-      });
-    }catch(e){
-      _gsiLog('자동 로그인 prompt() 호출 자체가 예외 발생: '+e.message);
-      finish(false);return;
-    }
-    const start=Date.now();
-    (function poll(){
-      if(_getToken()&&_getToken()!==prevCred){finish(true);return;}
-      if(Date.now()-start>5000){finish(false);return;}
-      setTimeout(poll,200);
-    })();
-  }).then(ok=>{
-    _refreshingPromise=null;
-    console.log('[인증] 토큰 자동 갱신 '+(ok?'성공':'실패'));
-    if(ok)setConn('live');else{setConn('relogin');_showReloginBanner();}
-    return ok;
-  });
-  return _refreshingPromise;
-}
-
-// 만료 5분 전에 백그라운드에서 조용히 갱신 — 사용자가 실제로 뭔가 요청하기 전에 미리 처리해서
-// "요청이 실패해야 갱신"이 아니라 "만료되기 전에 이미 갱신됨"을 목표로 함
-function _scheduleTokenRefresh(){
-  if(_refreshTimer){clearTimeout(_refreshTimer);_refreshTimer=null;}
-  if(!_tokenExpiresAt)return;
-  const msUntilRefresh=_tokenExpiresAt-Date.now()-5*60*1000;
-  if(msUntilRefresh<=0){_refreshIdToken();return;}
-  _refreshTimer=setTimeout(()=>{_refreshIdToken();},msUntilRefresh);
-}
-// 탭이 백그라운드에 오래 있다가 돌아온 경우 — 예약된 타이머가 그 사이 안 돌았을 수 있으니
-// 다시 보이는 시점에 만료 임박 여부를 즉시 재확인
-document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible'&&_getToken()&&_tokenExpiresAt){
-    if(Date.now()>=_tokenExpiresAt-5*60*1000)_refreshIdToken();
-  }
-});
+/* ⚠ 여기 있던 _refreshIdToken / _scheduleTokenRefresh / visibilitychange 자동 갱신은 전부 삭제됐다
+   (2026-09-16 세션 도입). 구글 ID 토큰을 One Tap으로 조용히 재발급받던 구조였는데, One Tap은
+   iframe에서 아예 표시되지 않고(임베드 모드에서는 100% 실패) 쿨다운·FedCM 차단에도 막혀서
+   "한 시간마다 로그아웃"의 직접 원인이었다. 지금은 세션 연장이 응답(_gasFetch)에 실려 오므로
+   브라우저 UI가 개입할 일이 없다 — 되살리지 말 것.
+   죽은 코드를 주석으로 남기지 않는다: 지운 구현은 git 이력에 있다. */
 
 function _showReloginBanner(){document.getElementById('reloginBanner').classList.add('show');}
 function _hideReloginBanner(){document.getElementById('reloginBanner').classList.remove('show');}
@@ -8213,11 +8136,10 @@ function _reportLoginFlowError(msg){
   document.getElementById('loginFlowErrBanner').classList.add('show');
 }
 
-// credential 콜백 이후 실제로 대시보드 진입(_enterDashboard)까지 완료됐는지 — "_gasCredential이
-// 있냐 없냐"만으로 신규 로그인 여부를 판단하면, auto_select가 사용자 클릭보다 먼저 조용히(또는
-// 처리 도중 실패하며) credential을 발급해둔 경우, 정작 사용자가 누른 버튼 클릭은 "이미 로그인된
-// 상태의 자동 갱신"으로 오인되어 UI 전환(_enterDashboard) 없이 fetchLive()만 조용히 실행되는
-// 문제가 있었음 — credential 유무가 아니라 "실제로 진입을 마쳤는지"를 별도로 추적해서 방지.
+// credential 콜백 이후 실제로 대시보드 진입(_enterDashboard)까지 완료됐는지를 따로 추적한다.
+// "토큰이 있냐 없냐"로 신규 로그인 여부를 판단하면, auto_select가 사용자 클릭보다 먼저 조용히
+// credential을 발급해둔 경우 사용자의 버튼 클릭이 "이미 로그인된 상태"로 오인되어 UI 전환 없이
+// 데이터만 다시 불러오는 문제가 있었음.
 let _dashboardEntered=false;
 
 // GIS 콜백: 로그인 완료 or 자동 갱신 시 호출
@@ -8232,43 +8154,54 @@ function handleGoogleSignIn(response){
   // "credential은 왔는데 그 다음부터 원인 불명으로 멈춤"). 그래서 이 함수 전체를 반드시 우리 쪽에서
   // try-catch로 감싸서 무슨 일이 있어도 콘솔+화면에 직접 노출시킴.
   try{
-    let payload;
-    try{payload=_decodeJwt(response.credential);}
-    catch(e){_gsiLog('JWT 디코드 실패: '+e.message);_showLoginErr('로그인 처리 중 오류가 발생했습니다.');return;}
-    _gsiLog('JWT 디코드 완료 — email='+(payload.email||'?')+', exp='+(payload.exp||'?'));
-
-    const email=payload.email||'';
-    // 서버(_authFailureReason)와 동일한 규칙: hd 클레임(호스팅 도메인)이 있으면 우선 신뢰하고,
-    // 없으면 email의 @ 뒤 문자열로 판정. 대소문자/공백 차이로 정상 계정이 튕기지 않게 정규화 후 비교.
-    const emailNorm=email.trim().toLowerCase();
-    const allowedDomainNorm=ALLOWED_DOMAIN.trim().toLowerCase();
-    const hd=payload.hd?String(payload.hd).trim().toLowerCase():'';
-    const domainOk=hd?(hd===allowedDomainNorm):emailNorm.endsWith('@'+allowedDomainNorm);
-    _gsiLog('도메인 검증 '+(domainOk?'통과':'거절')+' — hd='+(hd||'(없음)')+', 허용 도메인='+ALLOWED_DOMAIN);
-    if(!domainOk){
-      console.warn('[로그인 거절] 클라이언트 도메인 검증 실패 — email='+email+', hd='+(hd||'(없음)')+', 허용 도메인='+ALLOWED_DOMAIN);
-      _showLoginErr(`접속 권한이 없습니다. (${email})\n앳홈 계정(@${ALLOWED_DOMAIN})으로만 로그인할 수 있습니다.`);
-      return;
-    }
-
-    const isNewLogin=!_dashboardEntered; // "처음 로그인인지"는 credential 유무가 아니라 실제 진입 여부 기준
-    _setToken(response.credential,(payload.exp||0)*1000); // 단일 창구 — in-memory + localStorage 캐시 둘 다 여기서 갱신
-    _gsiLog('토큰 저장 완료(isNewLogin='+isNewLogin+', 토큰 앞 10자='+String(response.credential||'').slice(0,10)+'...)');
-    _scheduleTokenRefresh(); // 만료 5분 전 백그라운드 자동 갱신 예약(로그인/자동 갱신 둘 다 여길 지나감)
-    sessionStorage.setItem('gp_user',JSON.stringify({email,name:payload.name,picture:payload.picture}));
-    _hideReloginBanner();
-    if(isNewLogin){
-      _gsiLog('신규 로그인 → _enterDashboard 호출(UI 전환 시작)');
-      _enterDashboard(payload); // 처음 로그인 → 전체 진입
-      _gsiLog('_enterDashboard 반환 완료');
-    } else if(!_refreshingPromise){
-      // _refreshIdToken()에 의한 갱신이면 그 호출부(_gasFetch)가 알아서 원래 요청을 재시도하므로 여기서 또 fetchLive를 부르지 않음
-      _gsiLog('이미 진입한 상태의 자동 갱신 → fetchLive만 재호출');
-      fetchLive(); // auto_select 자동 갱신 → 데이터만 다시 로드
-    }
+    /* 예전엔 여기서 credential을 직접 디코드해 도메인을 먼저 검사했다. 그 판정 규칙이 서버에도
+       똑같이 있어서 둘이 갈라질 수 있었고(2026-09-15에 실제로 갈라져 로그인이 통째로 깨졌다),
+       무엇보다 **클라이언트 검사는 보안상 의미가 없다**(누구든 건너뛸 수 있다).
+       이제 프론트는 credential을 그대로 넘기고, 판정은 서버 한 곳에서만 한다. */
+    _exchangeForSession(response.credential);
   }catch(err){
     _reportLoginFlowError((err&&err.message)||String(err));
   }
+}
+
+/* 구글 ID 토큰 1개 → 대시보드 세션 토큰. 로그인 때 딱 한 번만 일어난다. */
+async function _exchangeForSession(credential){
+  const url=_getGasUrl();
+  if(!url){_showLoginErr('서버 주소가 설정되지 않았습니다. 관리자에게 문의해주세요.');return;}
+  setConn('refreshing');
+  let j;
+  try{
+    j=await _gasFetch(url+(url.includes('?')?'&':'?')+'action=login&idToken='+encodeURIComponent(credential),{});
+  }catch(e){
+    _gsiLog('세션 교환 실패(네트워크): '+e.message);
+    _showLoginErr('서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요.');
+    setConn('relogin');
+    return;
+  }
+  if(!j||!j.sessionToken){
+    const why={
+      not_allowed:'접속이 허용된 계정이 아닙니다. 관리자에게 등록을 요청해주세요.',
+      domain:'앳홈 계정(@'+ALLOWED_DOMAIN+')으로만 로그인할 수 있습니다.',
+      unverified:'이메일이 인증되지 않은 계정입니다.',
+      aud:'로그인 설정이 올바르지 않습니다. 관리자에게 문의해주세요.',
+      iss:'로그인 정보를 확인하지 못했습니다. 다시 시도해주세요.',
+      expired:'로그인 정보가 만료되었습니다. 다시 시도해주세요.',
+      missing:'로그인 정보가 전달되지 않았습니다. 다시 시도해주세요.'
+    }[j&&j.reason]||'로그인에 실패했습니다. 다시 시도해주세요.';
+    _gsiLog('세션 교환 거절 — reason='+((j&&j.reason)||'?'));
+    // 거절된 계정 주소는 서버가 알려줄 때만 보여준다(프론트가 토큰을 뜯어보지 않으므로)
+    _showLoginErr(why+(j&&j.email?('\n('+j.email+')'):''));
+    setConn('relogin');
+    return;
+  }
+
+  _setSession(j.sessionToken);
+  const user=j.user||_decodeSessionPayload(j.sessionToken)||{email:'',name:''};
+  sessionStorage.setItem('gp_user',JSON.stringify(user));
+  _gsiLog('세션 발급 완료 — '+user.email);
+  _hideReloginBanner();
+  if(!_dashboardEntered)_enterDashboard(user);
+  else fetchLive();
 }
 
 function _showLoginErr(msg){
@@ -8293,15 +8226,17 @@ function _enterDashboard(user){
 }
 
 function signOut(){
-  _gasCredential=null;
-  _tokenExpiresAt=0;
+  /* 서버의 _sessions 행도 지운다 — 프론트에서 토큰만 버리면 그 토큰은 만료 전까지 계속 유효하다.
+     응답을 기다리지 않는 이유는 로그아웃 체감 속도 때문이고, 실패해도 절대·미사용 만료로 결국 죽는다. */
+  const _url=_getGasUrl();
+  if(_url&&_getToken()){
+    try{fetch(_gasUrl(_url)+'&action=logout').catch(()=>{});}catch(e){}
+  }
+  _clearSession();
   _dashboardEntered=false; // 다음 로그인은 다시 "신규 진입"으로 취급해 _enterDashboard가 확실히 실행되게 함
-  _refreshingPromise=null;
-  if(_refreshTimer){clearTimeout(_refreshTimer);_refreshTimer=null;}
   _stopPresenceHeartbeat();
   _presenceUsers=[];renderPresencePanel();
   sessionStorage.removeItem('gp_user');
-  _clearTokenCache();
   _clearDataCache(); // 다른 계정으로 다시 로그인했을 때 이전 사용자의 캐시 데이터가 보이면 안 됨
   if(window.google&&google.accounts)google.accounts.id.disableAutoSelect();
   document.getElementById('loginScreen').style.display='flex';
@@ -8317,11 +8252,11 @@ let _presenceUsers=[];
 let _presencePanelOpen=true;
 async function _sendPresenceHeartbeat(){
   if(!_getToken())return; // 로그아웃 상태
-  if(_tokenExpiresAt&&Date.now()>=_tokenExpiresAt)return; // 만료된 토큰으로는 전송하지 않음
   const url=_getGasUrl();
   if(!url)return;
   try{
-    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'presence',idToken:_getToken()})});
+    // 이메일/이름은 보내지 않는다 — 서버가 세션에서 꺼내 쓴다(클라이언트가 신원을 주장하지 못하게)
+    const j=await _gasFetch(_gasUrl(url),{method:'POST',body:JSON.stringify({action:'presence',session:_getToken()})});
     if(j&&j.success&&Array.isArray(j.users)){
       _presenceUsers=j.users;
       renderPresencePanel();
@@ -8383,36 +8318,41 @@ window.onGoogleLibraryLoad=function(){
   );
   _gsiLog('로그인 버튼 렌더 완료');
   _armLoginAttemptWatch();
-  // 부트스트랩이 이미 유효한 캐시 토큰으로 _gasCredential을 채워뒀으면 여기서 또 조용한 재인증을
-  // 시도할 필요 없음 — _scheduleTokenRefresh()가 만료 5분 전에 알아서 처리함. 캐시 토큰이 없거나
-  // 이미 만료된 상태로 세션 흔적(gp_user)만 남아있는 경우에만 지금 한 번 시도.
-  if(!_getToken()&&sessionStorage.getItem('gp_user'))_refreshIdToken();
+  /* 예전에는 여기서 세션 흔적만 있고 토큰이 없으면 _refreshIdToken()으로 조용한 재인증을 시도했다.
+     이제 세션이 없으면 그냥 로그인 화면이 정답이다 — 사용자가 버튼을 누르면 그때 교환한다. */
 };
 
 // ── 초기 진입: 캐시 우선 렌더링(stale-while-revalidate) + 인증/데이터 요청 병렬화 ──
-// 1) 마지막 성공 응답이 로컬에 있으면 인증(GSI 로드/조용한 재인증)을 기다리지 않고 즉시 그
-//    데이터로 화면을 그림 — 체감 로딩 시간을 0에 가깝게 만드는 게 목적.
-// 2) 만료 전 idToken이 로컬에 있으면 그 값으로 _gasCredential을 바로 채워서 fetchLive를
-//    지금 바로 병행 시작함(GSI 스크립트 로드/초기화를 기다리지 않음).
-// 3) 위 둘 다 없으면(캐시 없는 최초 방문 등) 기존과 동일하게 GSI 로드를 기다리는 흐름으로 진행.
+// 1) 마지막 성공 응답이 로컬에 있으면 인증을 기다리지 않고 즉시 그 데이터로 화면을 그림 —
+//    체감 로딩 시간을 0에 가깝게 만드는 게 목적.
+// 2) 세션 토큰이 localStorage에 있으면 그 값으로 바로 fetchLive를 시작함(GSI 스크립트 로드를
+//    기다리지 않음 — 세션은 구글과 무관하므로 애초에 기다릴 이유가 없다).
+// 3) 세션이 없으면 로그인 화면을 그대로 둔다.
 (function _bootstrap(){
+  /* 구 로그인 흔적만 남아 있으면(=이 배포 전에 로그인한 사용자) 한 번은 다시 로그인해야 한다.
+     조용히 로그인 화면만 띄우면 "왜 튕겼지?"가 되므로 이유를 적어 준다. */
+  if(_consumeLegacyLoginNotice()&&!_loadSession()){
+    try{
+      const el=document.getElementById('loginError');
+      el.textContent='로그인 방식이 바뀌었습니다. 한 번만 다시 로그인해주세요.\n(이후에는 한 시간마다 풀리지 않습니다)';
+      el.style.display='block';
+    }catch(e){}
+  }
+
   const savedUserRaw=sessionStorage.getItem('gp_user');
-  const tokenCache=_loadTokenCache();
-  if(!savedUserRaw&&!tokenCache)return; // 로그인 흔적이 전혀 없음 — 정상 로그인 화면 유지
+  const session=_loadSession();
+  if(!session)return; // 세션이 없으면 정상 로그인 화면 유지
+
+  _sessionToken=session; // 이미 localStorage에서 읽어온 값이라 재저장 불필요
 
   let user=null;
   try{user=savedUserRaw?JSON.parse(savedUserRaw):null;}catch(e){user=null;}
-
-  if(tokenCache){
-    _setToken(tokenCache.token,tokenCache.expiresAt,false); // 이미 localStorage에서 읽어온 값이라 재저장 불필요(persist=false)
-    _scheduleTokenRefresh();
-    if(!user){
-      // sessionStorage가 없는 상태(예: 브라우저 완전 재시작)에서도 토큰 캐시만으로 복원
-      try{
-        const p=_decodeJwt(tokenCache.token);
-        user={email:p.email,name:p.name,picture:p.picture};
-        sessionStorage.setItem('gp_user',JSON.stringify(user));
-      }catch(e){}
+  if(!user){
+    // sessionStorage가 비어도(브라우저 완전 재시작) 세션 토큰의 페이로드로 복원한다
+    const p=_decodeSessionPayload(session);
+    if(p&&p.email){
+      user={email:p.email,name:p.name||p.email};
+      try{sessionStorage.setItem('gp_user',JSON.stringify(user));}catch(e){}
     }
   }
   if(!user)return; // 사용자 정보를 하나도 복원 못 하면 정상 로그인 흐름으로 진행

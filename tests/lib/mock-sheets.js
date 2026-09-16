@@ -60,7 +60,8 @@ function makeSheet(name, grid) {
       getRichTextValues() { note('r', 'getRichTextValues', nr * nc); return null; },
       getTextStyles() { note('r', 'getTextStyles', nr * nc); throw new Error('no styles'); },
       getA1Notation() { return 'R' + r + 'C' + c + ':R' + (r + nr - 1) + 'C' + (c + nc - 1); },
-      copyTo() { note('w', 'copyTo', nr * nc); return api; }
+      copyTo() { note('w', 'copyTo', nr * nc); return api; },
+      setFontWeight() { return api; }
     };
     return api;
   }
@@ -78,6 +79,17 @@ function makeSheet(name, grid) {
       for (let i = 0; i < n; i++) grid.splice(after + i, 0, new Array(w).fill(''));
     },
     deleteRow(r) { note('w', 'deleteRow', 1); calls.push({ op: 'deleteRow', r }); grid.splice(r - 1, 1); },
+    deleteRows(r, howMany) {
+      note('w', 'deleteRows', howMany);
+      calls.push({ op: 'deleteRows', r, howMany });
+      grid.splice(r - 1, howMany);
+    },
+    appendRow(vals) {
+      note('w', 'appendRow', vals.length);
+      calls.push({ op: 'appendRow' });
+      grid.push(vals.slice());
+    },
+    setFrozenRows() {}, hideSheet() {}, showSheet() {},
     hideColumns() {}, insertColumnsAfter() {}, copyTo() {},
     getConditionalFormatRules: () => { note('r', 'getConditionalFormatRules', 1); return []; },
     setConditionalFormatRules(rules) { note('w', 'setConditionalFormatRules', rules.length); calls.push({ op: 'setConditionalFormatRules', n: rules.length }); }
@@ -92,6 +104,8 @@ function installGlobals(sheets, opts) {
     getActiveSpreadsheet: () => ({
       getSheetByName: n => { STATS.getSheetByName++; return sheets[n] || null; },
       getSheets: () => Object.values(sheets),
+      // 없는 시트를 만드는 경로(_sessionSheet / _allowedEmails)도 실코드 그대로 돌려야 한다
+      insertSheet: n => { sheets[n] = makeSheet(n, [[]]); return sheets[n]; },
       getId: () => 'mock', getName: () => 'mock-ss'
     }),
     newConditionalFormatRule: () => {
@@ -109,8 +123,14 @@ function installGlobals(sheets, opts) {
     CopyPasteType: { PASTE_FORMAT: 1, PASTE_DATA_VALIDATION: 2 },
     flush() { STATS.flush++; }
   };
+  const scriptProps = opts.scriptProps || {};
   global.PropertiesService = {
-    getDocumentProperties: () => { const m = opts.docProps || {}; return { getProperty: k => m[k] || null, setProperty: (k, v) => { m[k] = v; } }; }
+    getDocumentProperties: () => { const m = opts.docProps || {}; return { getProperty: k => m[k] || null, setProperty: (k, v) => { m[k] = v; } }; },
+    getScriptProperties: () => ({
+      getProperty: k => (k in scriptProps ? scriptProps[k] : null),
+      setProperty: (k, v) => { scriptProps[k] = String(v); },
+      deleteProperty: k => { delete scriptProps[k]; }
+    })
   };
   global.CacheService = {
     getScriptCache: () => ({
@@ -125,7 +145,38 @@ function installGlobals(sheets, opts) {
   global.LockService = {
     getScriptLock: () => ({ tryLock: () => true, waitLock: () => true, releaseLock() {} })
   };
-  global.Utilities = { getUuid: () => 'uuid-fixed', formatDate: () => '20260915_000000' };
+  let _uuidSeq = 0;
+  global.Utilities = {
+    // 세션마다 다른 sid가 필요하므로 매번 다른 값을 준다(예전 고정값에 의존하는 테스트는 없음)
+    getUuid: () => 'uuid-' + (++_uuidSeq) + '-' + Math.random().toString(36).slice(2, 8),
+    formatDate: () => '20260915_000000',
+    newBlob: v => {
+      // byte[]도 받아야 한다 — base64Decode 결과를 그대로 넘기는 경로가 있다(_b64uToString)
+      const buf = Array.isArray(v) ? Buffer.from(v) : (Buffer.isBuffer(v) ? v : Buffer.from(String(v), 'utf8'));
+      return { getBytes: () => Array.from(buf), getDataAsString: () => buf.toString('utf8') };
+    },
+    base64Encode: v => Buffer.from(Buffer.isBuffer(v) ? v : (Array.isArray(v) ? Buffer.from(v) : Buffer.from(String(v), 'utf8'))).toString('base64'),
+    // GAS의 WebSafe 인코딩은 +/ 를 -_ 로 바꾸되 = 패딩은 남긴다(실코드가 패딩을 직접 떼어낸다)
+    base64EncodeWebSafe: v => {
+      const buf = Array.isArray(v) ? Buffer.from(v) : (Buffer.isBuffer(v) ? v : Buffer.from(String(v), 'utf8'));
+      return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+    },
+    base64Decode: s => Array.from(Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64')),
+    computeHmacSha256Signature: (value, key) => {
+      const crypto = require('crypto');
+      const v = Array.isArray(value) ? Buffer.from(value) : Buffer.from(String(value), 'utf8');
+      const k = Array.isArray(key) ? Buffer.from(key) : Buffer.from(String(key), 'utf8');
+      return Array.from(crypto.createHmac('sha256', k).update(v).digest());
+    }
+  };
+  /* UrlFetchApp — 기본은 "호출되면 테스트가 깨지게" 둔다. tokeninfo 응답을 흉내 낼 때만
+     opts.urlFetch로 주입한다(네트워크를 타면 테스트가 느려지고 불안정해진다). */
+  global.UrlFetchApp = {
+    fetch: (url, params) => {
+      if (typeof opts.urlFetch === 'function') return opts.urlFetch(url, params);
+      throw new Error('UrlFetchApp.fetch가 목 없이 호출됐습니다: ' + String(url).slice(0, 60));
+    }
+  };
   global.ScriptApp = { getService: () => ({ getUrl: () => 'mock' }) };
   global.Session = { getScriptTimeZone: () => 'Asia/Seoul', getActiveUser: () => ({ getEmail: () => 'p_dh_3678@athomecorp.com' }) };
   global.ContentService = { createTextOutput: t => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } };

@@ -107,6 +107,9 @@ function loadFrontend(projectPath, extraShimBody, opts) {
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
     performance: { now: () => Date.now() },
     URL, URLSearchParams, TextEncoder, Intl, Symbol, Proxy, Reflect, Function,
+    // 브라우저에는 항상 있는 전역 — 세션 토큰 페이로드 디코드(_decodeSessionPayload)가 쓴다
+    atob: v => Buffer.from(String(v), 'base64').toString('binary'),
+    btoa: v => Buffer.from(String(v), 'binary').toString('base64'),
     addEventListener() {}, removeEventListener() {}, dispatchEvent() {}, scrollTo() {},
     innerWidth: 1280, innerHeight: 900
   };
