@@ -196,6 +196,71 @@ function captureRender(ctx, fn) {
   embed.ctx._routeFromHash();
   check('과거 한글 해시(#product-더슬림)도 같은 페이지로', embed.X.ST.prod === SLIM.st);
 
+  console.log('\n[11] 신규 등록 왕복 — 더 슬림 + 사은품1 "더 슬림 헤파필터"가 시트에 그대로 남는지');
+  {
+    /* 프론트의 saveDeal()을 끝까지 실행하고, HTTP만 생략한 채 진짜 GAS 핸들러에 연결한다
+       (save-path.test.js와 같은 방식). 제품명은 내부 표기 '더슬림'으로 폼에 들어가서
+       시트 표기 '더 슬림'으로 저장돼야 하고, 사은품은 헤더 기반으로 제 열에 들어가야 한다. */
+    const vm = require('vm');
+    const { makeSheet, installGlobals } = require(path.join(__dirname, 'lib', 'mock-sheets.js'));
+    const HEADERS = require(path.join(__dirname, 'lib', 'real-headers.js'));
+    const sheet = makeSheet('실적통합', [new Array(HEADERS.length).fill(''), HEADERS.slice()]);
+    installGlobals({ '실적통합': sheet }, {});
+    const gas = vm.createContext(global);
+    vm.runInContext(fs.readFileSync(path.join(PROJ, 'apps-script.js'), 'utf8'), gas, { filename: 'apps-script.js' });
+
+    const { ctx: f, X: FX } = loadFrontend(PROJ, SHIM);
+    const vals = {
+      fLine: SLIM.key, fModel: '', fInfluencer: '슬림채널', fPlatform: '인스타그램',
+      fIgId: 'slim.ch', fMonth: '9', fStart: '2026-09-20', fEnd: '2026-09-25',
+      fSalePrice: '29000', fCommission: '10', fYear: '2026'
+    };
+    const els = {};
+    f.document.getElementById = id => (els[id] = els[id] || {
+      id, value: vals[id] != null ? vals[id] : '', style: {}, textContent: '', innerHTML: '',
+      classList: { add(){}, remove(){}, contains: () => false },
+      closest: () => ({ querySelector: () => null, appendChild(){} }),
+      parentElement: { querySelector: () => null, appendChild(){} },
+      querySelectorAll: () => [], querySelector: () => null, appendChild(){}, focus(){}, remove(){}
+    });
+    f.document.querySelectorAll = () => [];
+    FX.setFormState({ codes: ['SLIM1'], gifts: [{ item: '더 슬림 헤파필터', qty: '300' }] });
+    // 실제 폼에서는 사은품을 고르는 순간 이 함수가 '구성' 칸을 다시 만든다(읽기전용 칸이라 이 경로뿐)
+    f.fRecalcComposition();
+    const reqs = [];
+    f._getGasUrl = () => 'https://example.test/exec';
+    f._gasWrite = async (url, action, data) => {
+      reqs.push({ action, data });
+      return JSON.parse(gas._handleWriteAction({ parameter: { action, payload: JSON.stringify(data) } }, ''));
+    };
+    f.closeDealForm = () => {}; f.render = () => {}; f.showToast = () => {}; f.setLoad = () => {};
+
+    let threw = null;
+    try { await f.saveDeal(); } catch (e) { threw = e; }
+    await new Promise(r => setTimeout(r, 30));
+    check('saveDeal이 예외 없이 완료', threw === null, threw && threw.message);
+    check('addSalesRow 요청이 1회', reqs.length === 1 && reqs[0].action === 'addSalesRow',
+      reqs.map(r => r.action));
+    const sentProduct = reqs.length ? reqs[0].data.product : null;
+    check('요청의 제품명이 시트 표기 "더 슬림"(내부 표기 그대로 나가면 데이터 확인 규칙 위반)',
+      sentProduct === SLIM.label, sentProduct);
+    check('요청에 사은품1이 실림', reqs.length && reqs[0].data.giftItem1 === '더 슬림 헤파필터',
+      reqs.length && reqs[0].data.giftItem1);
+
+    // 시트에 실제로 쓰인 값을 GAS의 헤더 기반 파서로 다시 읽어 확인한다
+    const back = gas.parseMainSheet(sheet).deals.filter(d => d.channel === '슬림채널');
+    check('시트에 1건 기록됨', back.length === 1, back.length);
+    const row = back[0] || {};
+    check('시트 C열 제품명 = "더 슬림"', row.product === SLIM.label, row.product);
+    check('시트 사은품 품목1(AU열) = "더 슬림 헤파필터"', row.giftItem1 === '더 슬림 헤파필터', row.giftItem1);
+    check('사은품 수량1도 함께 기록됨', String(row.giftQty1) === '300', row.giftQty1);
+    check('구성 문구에 사은품이 조합됨',
+      typeof row.composition === 'string' && row.composition.includes('더 슬림 헤파필터'), row.composition);
+    // 저장된 제품명이 화면 쪽 분류로 되돌아오는지(왕복 일관성)
+    check('되읽은 제품명이 다시 슬림 품목으로 분류됨', f.productColorKey(row.product) === SLIM.st);
+    check('되읽은 제품명의 배지 색이 더 슬림 색', f.productColor(row.product).bg === slimColor.bg);
+  }
+
   console.log('\n' + '─'.repeat(50));
   console.log('통과 ' + pass + ' / 실패 ' + fail);
   process.exit(fail ? 1 : 0);
