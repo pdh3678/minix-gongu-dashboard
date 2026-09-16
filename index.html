@@ -714,11 +714,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
       <div class="sb-sec">
         <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">품목별 실적</span><span class="sb-chev">▾</span></button>
-        <div class="sb-items">
-          <div class="sb-item" data-prod="플렌더" onclick="navSales(this,'플렌더')"><span class="sb-ic">🌀</span><span class="sb-label">더 플렌더</span></div>
-          <div class="sb-item" data-prod="시프트" onclick="navSales(this,'시프트')"><span class="sb-ic">📦</span><span class="sb-label">더 시프트</span></div>
-          <div class="sb-item" data-prod="에어드라이" onclick="navSales(this,'에어드라이')"><span class="sb-ic">💨</span><span class="sb-label">더 에어드라이</span></div>
-        </div>
+        <!-- 품목 항목은 PRODUCT_LINES 상수에서 생성됨(_renderProductNav) — 여기에 직접 쓰지 말 것 -->
+        <div class="sb-items" id="sbProductItems"></div>
       </div>
       <div class="sb-sec">
         <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">공구 관리</span><span class="sb-chev">▾</span></button>
@@ -1161,13 +1158,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           </div>
           <div class="f-grp">
             <label class="f-lbl">품목군 <span class="f-req">*</span></label>
-            <select class="f-inp f-sel" id="mLine" onchange="mOnLineChange()">
-              <option value="">선택</option>
-              <option value="더플렌더">더 플렌더</option>
-              <option value="더시프트">더 시프트</option>
-              <option value="더에어드라이">더 에어드라이</option>
-              <option value="더슬림">더 슬림</option>
-            </select>
+            <!-- 옵션은 PRODUCT_LINES에서 생성됨(_renderLineOptions) -->
+            <select class="f-inp f-sel" id="mLine" onchange="mOnLineChange()"></select>
           </div>
         </div>
         <div class="fg fg-2" id="mModelRow" style="display:none;margin-top:10px">
@@ -1426,13 +1418,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
       <div class="f-grp">
         <label class="f-lbl">품목군 <span class="f-req">*</span></label>
-        <select class="f-inp f-sel" id="fLine" onchange="onLineChange()">
-          <option value="">선택</option>
-          <option value="더플렌더">더 플렌더</option>
-          <option value="더시프트">더 시프트</option>
-          <option value="더에어드라이">더 에어드라이</option>
-          <option value="더슬림">더 슬림</option>
-        </select>
+        <!-- 옵션은 PRODUCT_LINES에서 생성됨(_renderLineOptions) -->
+        <select class="f-inp f-sel" id="fLine" onchange="onLineChange()"></select>
       </div>
     </div>
     <div class="fg fg-2" id="modelRow" style="display:none">
@@ -1648,7 +1635,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-session-2026-09-16-02';
+const DASHBOARD_VERSION='dash-theslim-2026-09-17-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1893,9 +1880,24 @@ const PRODUCT_GROUP_LABELS=Object.assign({},...PRODUCT_TAXONOMY.map(t=>({[t.key]
 // 세부 모델 → 제품 라인(대분류) 매핑도 PRODUCT_TAXONOMY 하나에서 파생 — 새 모델 한 줄 추가만으로
 // 시즌성 제품군 필터 등 라인 단위 집계에 자동 반영됨
 const PRODUCT_LINE_OF=Object.assign({},...PRODUCT_TAXONOMY.map(t=>({[t.key]:t.line})));
-// 라인 자체의 표시 라벨(새 "라인"이 통째로 새로 생길 때만 여기 한 줄 추가 필요 — 기존 라인에 모델만
-// 추가되는 경우는 위 PRODUCT_TAXONOMY만 고치면 됨)
-const PRODUCT_LINE_LABELS={'더플렌더':'더 플렌더','더시프트':'더 시프트','더슬림':'더 슬림','더에어드라이':'더 에어드라이',other:'기타'};
+/* ── 제품 라인(대분류) 정의 — 품목군이 통째로 새로 생길 때 손대는 유일한 곳 ──────────────
+   (기존 라인에 세부 모델만 추가되는 경우는 위 PRODUCT_TAXONOMY만 고치면 됨)
+   배열 순서 = 사이드바 '품목별 실적' 순서 = 대시보드 품목 필터/히트맵 열 순서.
+     key   PRODUCT_TAXONOMY의 line 값(공백 없는 내부 표기). 모달 품목군 드롭다운의 value.
+     st    품목별 실적 페이지의 ST.prod 값(= 사이드바 data-prod, filteredProd의 분기 키)
+     slug  해시 라우팅용 ASCII 슬러그(#product-<slug>) — 한글 슬러그는 퍼센트 인코딩돼 읽을 수 없어짐
+     icon  사이드바 아이콘
+   사이드바 메뉴·해시 라우팅(ST_PRODUCT_TO_HASH/HASH_PRODUCT_TO_ST)·등록/수정 모달의 품목군
+   드롭다운이 전부 이 배열 하나에서 생성됨 — HTML에 품목을 직접 써넣지 말 것.
+   세부 모델이 있는 라인은 LINE_HAS_MODELS/LINE_MODEL_OPTIONS/PRODUCT_MODEL_TABS에도 등록해야
+   하고, 없는 라인(더 슬림·더 에어드라이)은 그 셋 모두에서 빠져 단일 제품으로 동작함. */
+const PRODUCT_LINES=[
+  {key:'더플렌더',    st:'플렌더',    slug:'TheFlender', label:'더 플렌더',    icon:'🌀'},
+  {key:'더시프트',    st:'시프트',    slug:'TheShift',   label:'더 시프트',    icon:'📦'},
+  {key:'더슬림',      st:'슬림',      slug:'TheSlim',    label:'더 슬림',      icon:'🧹'},
+  {key:'더에어드라이', st:'에어드라이', slug:'TheAirDry',  label:'더 에어드라이', icon:'💨'},
+];
+const PRODUCT_LINE_LABELS=Object.assign({},...PRODUCT_LINES.map(l=>({[l.key]:l.label})),{other:'기타'});
 /* ── 인플루언서 등급(한 곳에서 관리) ────────────────────────────────────────
    등급 목록·정렬 순서·배지 색을 이 배열 하나로 정의 — 위 PRODUCT_TAXONOMY와 같은 방식.
    배열 순서가 곧 모든 테이블/차트/범례/정렬의 기준 순서라, 순서를 바꾸면 화면 전체가 따라 바뀜. */
@@ -6904,13 +6906,12 @@ function _sbClearActive(){
    읽을 수도 눈으로 확인할 수도 없는 주소가 된다.
    ⚠ 예전 한글 슬러그(#product-더플렌더)로 저장해둔 링크가 이미 돌아다니므로 별칭으로 계속 받는다.
    새로 만들어지는 주소는 항상 ST_PRODUCT_TO_HASH의 ASCII 슬러그를 쓴다(단방향 전환). */
-const ST_PRODUCT_TO_HASH={'플렌더':'TheFlender','시프트':'TheShift','에어드라이':'TheAirDry'};
-const HASH_PRODUCT_TO_ST={
+const ST_PRODUCT_TO_HASH=Object.assign({},...PRODUCT_LINES.map(l=>({[l.st]:l.slug})));
+const HASH_PRODUCT_TO_ST=Object.assign({},
   // 표준 슬러그
-  'TheFlender':'플렌더','TheShift':'시프트','TheAirDry':'에어드라이',
-  // 과거 한글 슬러그 — 기존 링크/북마크 호환용(계속 유지할 것)
-  '더플렌더':'플렌더','더시프트':'시프트','더에어드라이':'에어드라이'
-};
+  ...PRODUCT_LINES.map(l=>({[l.slug]:l.st})),
+  // 과거 한글 슬러그(#product-더플렌더) — 기존 링크/북마크 호환용(계속 유지할 것)
+  ...PRODUCT_LINES.map(l=>({[l.key]:l.st})));
 // 대소문자는 무시하고 찾는다 — 주소를 손으로 옮겨 적는 경우가 많아 theflender/THEFLENDER도 받아준다
 function _productFromHashSlug(slug){
   if(HASH_PRODUCT_TO_ST[slug])return HASH_PRODUCT_TO_ST[slug];
@@ -7096,7 +7097,9 @@ document.getElementById('hDate').textContent=_NOW.getFullYear()+'년 '+(_NOW.get
 /* ── 사은품/오픈시간/선착순/적립금 공용 상수 + 구성 자동생성 (공구건 모달 드롭다운 개편, 2026-08-18) ──
    apps-script.js의 GIFT_ITEMS/QTY_STANDARD_OPTIONS/OPEN_TIME_OPTIONS/POINTS_OPTIONS와 값이 같아야 함
    (그쪽은 마이그레이션 매칭용, 여긴 드롭다운 렌더용). */
-const GIFT_ITEMS=['하드필터','하드락필터','하드락필터(mini)','저온촉매 탈취필터','락앤락 김치통 2.6L 2P','푸드컨테이너(단종)','실링 컨테이너 2L','실링 컨테이너 3L','탈취제','수동 빙수기'];
+const GIFT_ITEMS=['하드필터','하드락필터','하드락필터(mini)','저온촉매 탈취필터','락앤락 김치통 2.6L 2P','푸드컨테이너(단종)','실링 컨테이너 2L','실링 컨테이너 3L','탈취제','수동 빙수기',
+  // 더 슬림용(2026-09-17 추가) — 사은품 1·2·3 드롭다운은 전부 _giftItemOptionsHtml 하나를 거치므로 여기만 고치면 됨
+  '더 슬림 먼지봉투(3개입)','더 슬림 헤파필터','더 슬림 스테이션 헤파필터','더 슬림 배터리','더 슬림 브러쉬롤러'];
 const QTY_STANDARD_OPTIONS=(()=>{const o=[];for(let q=50;q<=500;q+=50)o.push(q);for(let q=600;q<=3000;q+=100)o.push(q);return o;})();
 const QTY_UNSPECIFIED_LABEL='전원증정';
 const QTY_TIMEDEAL_LABEL='타임딜'; // 선착순 수량 전용 특수 옵션(2026-08-18) — 사은품 수량에는 추가하지 않음
@@ -7155,6 +7158,28 @@ function _rebuildModelOptions(selectEl,line){
   const opts=LINE_MODEL_OPTIONS[line]||[];
   selectEl.innerHTML='<option value="">선택</option>'+opts.map(o=>`<option value="${o}">${PRODUCT_SHEET_NAME[o]||o}</option>`).join('');
 }
+
+/* 사이드바 '품목별 실적' 메뉴 + 등록/수정 모달의 품목군 드롭다운 — 둘 다 PRODUCT_LINES에서 생성.
+   예전엔 HTML에 품목을 직접 써넣어서 품목군 하나를 추가할 때마다 세 군데를 따로 고쳐야 했고,
+   실제로 사이드바에는 없는데 모달 드롭다운에만 있는 품목(더 슬림)이 생겨 있었다.
+   이제 순서·라벨·아이콘·해시 슬러그가 전부 그 배열 하나를 따라감.
+   ⚠ 이 호출은 _bootstrap(파일 맨 아래)보다 먼저 실행돼야 한다 — _routeFromHash가 사이드바에서
+     #product-* 에 해당하는 항목을 찾기 때문. 지금처럼 최상위에서 부르면 순서가 보장됨. */
+function _renderProductNav(){
+  const host=document.getElementById('sbProductItems');
+  if(!host)return;
+  host.innerHTML=PRODUCT_LINES.map(l=>
+    `<div class="sb-item" data-prod="${_escAttr(l.st)}" onclick="navSales(this,'${_escAttr(l.st)}')">`+
+    `<span class="sb-ic">${_escHtml(l.icon)}</span><span class="sb-label">${_escHtml(l.label)}</span></div>`
+  ).join('');
+}
+function _renderLineOptions(){
+  const html='<option value="">선택</option>'+
+    PRODUCT_LINES.map(l=>`<option value="${_escAttr(l.key)}">${_escHtml(l.label)}</option>`).join('');
+  ['mLine','fLine'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=html;});
+}
+_renderProductNav();
+_renderLineOptions();
 
 // 오픈시간/선착순 품목·수량/적립금 드롭다운(모달당 1개씩 고정, 사은품처럼 재렌더되지 않음) —
 // 페이지 로드 시 한 번만 옵션을 채움
