@@ -769,6 +769,33 @@ function _pruneSessions(sheet) {
   return dead.length;
 }
 
+/* 로그인 경로 진단 (2026-09-17) — 편집기에서 diagLogin()을 직접 실행한다. **배포 불필요**.
+   로그인이 'verify_failed'로 떨어질 때, 웹앱 로그를 뒤지는 대신 원인을 한 번에 보려고 만들었다.
+
+   편집기 실행은 **지금 편집기에 로그인한 사람의 권한**으로 돌고, 웹앱은 **배포 시점에 부여된
+   권한**으로 돈다. 그래서 이 둘의 결과가 갈리는지가 그 자체로 답이다:
+     · 여기서도 실패        → 스코프/네트워크 등 진짜 문제
+     · 여기선 성공, 웹앱만 실패 → 배포본의 권한이 낡음(재배포하며 동의해야 함) */
+function diagLogin() {
+  Logger.log('--- diagLogin 시작 ---');
+  var secret = PropertiesService.getScriptProperties().getProperty('SESSION_SECRET_V1');
+  Logger.log('SESSION_SECRET_V1: ' + (secret ? '있음(길이 ' + secret.length + ')' : '❌ 없음'));
+
+  var t0 = Date.now();
+  try {
+    var res = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=dummy',
+      { muteHttpExceptions: true });
+    // 400 + invalid_token 본문이 정상이다(더미 토큰이므로). 여기까지 오면 UrlFetch는 멀쩡하다.
+    Logger.log('✅ UrlFetchApp 정상 — HTTP ' + res.getResponseCode() + ' (' + (Date.now() - t0) + 'ms)');
+    Logger.log('   본문: ' + String(res.getContentText()).slice(0, 200));
+  } catch (e) {
+    Logger.log('❌ UrlFetchApp 예외 (' + (Date.now() - t0) + 'ms)');
+    Logger.log('   원문: ' + e);
+    Logger.log('   스택: ' + (e && e.stack));
+  }
+  Logger.log('--- diagLogin 끝 ---');
+}
+
 // ── 구글 ID 토큰 검증 (로그인 1회) ──
 /* tokeninfo는 구글이 서명까지 확인해 클레임을 돌려주는 엔드포인트다. 자체 JWK 캐싱보다 느리지만
    로그인 시 1회만 타므로 문제되지 않고, 키 롤오버를 구글이 알아서 처리해 준다.
