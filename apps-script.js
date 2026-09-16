@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'session-2026-09-16-01';
+var SCRIPT_VERSION = 'session-2026-09-16-02';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -573,7 +573,12 @@ var GAS_CLIENT_ID = '379680980952-vcvtnv1le4lmma2f0gv6snita17ve7bd.apps.googleus
    저장소를 시트로 둔 이유: CacheService는 최대 6시간이라 절대 만료 12시간을 담지 못하고,
    무엇보다 로그아웃(즉시 무효화)을 보장할 수 없다. 세션은 몇 십 행 수준이라 시트로 충분하다. */
 var SESSION_SHEET = '_sessions';
-var ALLOWED_USERS_SHEET = '_allowed_users';
+/* 차단 목록(선택) — **없는 게 기본이다.** 시트가 존재할 때만 그 A열의 이메일을 거부한다.
+   허용 목록(화이트리스트) 방식을 쓰지 않는 이유: 이 대시보드는 앳홈 구성원 전원이 쓰는 도구라
+   누가 들어올지 미리 적어두는 비용이 계속 발생하고, 신규 입사자가 매번 막힌다.
+   도메인(hd)과 이메일 인증 여부는 구글이 보증하므로 그것으로 충분하고, 예외적으로 특정 인원을
+   막아야 할 때만 이 시트를 손으로 만든다. */
+var BLOCKED_USERS_SHEET = '_blocked_users';
 var SESSION_COL = { sid: 0, email: 1, name: 2, issuedAt: 3, expiresAt: 4, lastSeenAt: 5 };
 
 var SESSION_ABSOLUTE_MS = 12 * 60 * 60 * 1000; // 발급 후 12시간이면 무조건 만료
@@ -713,27 +718,25 @@ function _sessionSheet(ss) {
   return sheet;
 }
 
-/* 허용 이메일 목록. 시트가 없으면 관리자 계정을 넣어 새로 만든다 —
-   "목록이 비었으니 전원 거부"로 시작하면 첫 배포에서 아무도 못 들어와 손쓸 방법이 없어진다. */
-function _allowedEmails(ss) {
-  var sheet = ss.getSheetByName(ALLOWED_USERS_SHEET);
-  if (!sheet) {
-    sheet = ss.insertSheet(ALLOWED_USERS_SHEET);
-    var seed = [['email', '비고']];
-    for (var a = 0; a < ADMIN_EMAILS.length; a++) seed.push([ADMIN_EMAILS[a], '자동 생성(관리자)']);
-    sheet.getRange(1, 1, seed.length, 2).setValues(seed);
-    sheet.getRange(1, 1, 1, 2).setFontWeight('bold');
-    sheet.setFrozenRows(1);
-    try { sheet.hideSheet(); } catch (e) {}
-    Logger.log('[세션] ' + ALLOWED_USERS_SHEET + ' 시트를 만들고 관리자 계정을 넣었습니다 — 나머지 팀원은 직접 추가하세요');
-  }
+/* 차단 이메일 목록. **시트가 없으면 빈 목록**(= 아무도 차단하지 않음)이고, 없다고 만들지 않는다.
+   차단이 필요할 때만 사람이 '_blocked_users' 시트를 손으로 만들고 A열에 이메일을 적는다.
+
+   ⚠ 시트를 자동 생성하지 않는 건 의도된 선택이다. 자동 생성하면 "차단 기능이 켜져 있다"는
+      인상을 주고, 빈 시트를 보고 거기에 **허용할** 사람을 적는 오해가 실제로 생긴다.
+      (그렇게 적으면 그 사람들만 정확히 차단된다 — 조용히 반대로 동작하는 최악의 실수다.)
+
+   헤더 행 유무를 따지지 않고 A열 전체를 훑는다. 사람이 손으로 만드는 시트라 헤더를 넣을지
+   말지 알 수 없고, '@'가 없는 값은 어차피 이메일이 아니라 걸러진다. */
+function _blockedEmails(ss) {
+  var sheet = ss.getSheetByName(BLOCKED_USERS_SHEET);
+  if (!sheet) return {};            // 시트 없음 = 제한 없음
   var last = sheet.getLastRow();
-  if (last < 2) return {};
-  var vals = sheet.getRange(2, 1, last - 1, 1).getValues();
+  if (last < 1) return {};
+  var vals = sheet.getRange(1, 1, last, 1).getValues();
   var out = {};
   for (var i = 0; i < vals.length; i++) {
     var em = String(vals[i][0] || '').trim().toLowerCase();
-    if (em) out[em] = true;
+    if (em && em.indexOf('@') > 0) out[em] = true;   // 'email' 같은 헤더 문자열은 자연히 걸러진다
   }
   return out;
 }
@@ -812,10 +815,11 @@ function _login(ss, idToken) {
     Logger.log('[로그인 거절] 사유=' + v.reason); // 토큰 값은 절대 남기지 않는다
     return _json({ error: 'LOGIN_REJECTED', reason: v.reason });
   }
-  var allowed = _allowedEmails(ss);
-  if (!allowed[v.email]) {
-    Logger.log('[로그인 거절] 허용 목록에 없음 — ' + v.email);
-    return _json({ error: 'LOGIN_REJECTED', reason: 'not_allowed', email: v.email });
+  /* 여기까지 왔다는 건 구글이 서명한 토큰이고, hd가 athomecorp.com이며, 이메일이 인증됐다는 뜻이다
+     (_verifyGoogleIdToken에서 전부 확인). 앳홈 구성원이면 그것으로 충분하다. */
+  if (_blockedEmails(ss)[v.email]) {
+    Logger.log('[로그인 거절] 차단 목록 — ' + v.email);
+    return _json({ error: 'LOGIN_REJECTED', reason: 'blocked', email: v.email });
   }
 
   var sheet = _sessionSheet(ss);

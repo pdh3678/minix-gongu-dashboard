@@ -11,7 +11,7 @@
      · 시트가 진실의 원천 — 로그아웃한 세션은 서명이 멀쩡해도 즉시 거부
      · 절대 만료(12h) / 미사용 만료(2h) / 슬라이딩 연장(6h 미만 남으면 새 토큰)
      · 구글 ID 토큰은 aud·iss·email_verified·hd를 전부 확인. 하나라도 어긋나면 로그인 거부
-     · 허용 목록(_allowed_users)에 없으면 도메인이 맞아도 거부
+     · 도메인(hd)과 이메일 인증만 맞으면 누구나 통과. 차단 목록은 있을 때만 적용된다
      · lastSeenAt 쓰기는 1분에 한 번만(요청마다 쓰지 않는다)
      · 로그에 토큰 값이 남지 않는다
 
@@ -23,7 +23,7 @@ const BASE_HEADERS = require(path.join(__dirname, 'lib', 'real-headers.js'));
 const GAS_PATH = process.argv[2] || path.join(__dirname, '..', 'apps-script.js');
 const SECRET = 'test-secret-v1-0123456789';
 const CLIENT_ID = '379680980952-vcvtnv1le4lmma2f0gv6snita17ve7bd.apps.googleusercontent.com';
-// 기본 로그인 계정은 관리자 — _allowed_users가 자동 생성될 때 관리자만 시드되기 때문이다
+// 관리자 전용 엔드포인트 판정에 쓰는 계정(ADMIN_EMAILS에 들어 있는 주소)
 const ADMIN_EMAIL = 'p_dh_3678@athomecorp.com';
 
 let pass = 0, fail = 0;
@@ -85,7 +85,9 @@ console.log('\n[1] 로그인 — 구글 ID 토큰 검증 후 세션 발급');
   check('세션 토큰 발급', typeof r.sessionToken === 'string' && r.sessionToken.split('.').length === 2, r);
   check('사용자 정보 반환', r.user && r.user.email === ADMIN_EMAIL, r.user);
   check('_sessions 시트에 1행 기록', sessionRows(ctx).length === 1, sessionRows(ctx));
-  check('_allowed_users 시트가 자동 생성됨', !!ctx.__sheets['_allowed_users']);
+  check('시트를 임의로 만들지 않는다(_allowed_users/_blocked_users 둘 다)',
+    !ctx.__sheets['_allowed_users'] && !ctx.__sheets['_blocked_users'],
+    Object.keys(ctx.__sheets));
   check('절대 만료가 12시간 뒤', Math.abs(r.expiresAt - Date.now() - 12 * 3600 * 1000) < 5000, r.expiresAt);
 
   // 로그인 액션은 세션 없이 통과해야 한다(세션을 받으러 오는 요청이므로)
@@ -243,22 +245,43 @@ console.log('\n[8] 구글 ID 토큰 — 클레임을 하나라도 어기면 로�
     call(ctx, { action: 'login', idToken: '' }).reason === 'missing');
 }
 
-console.log('\n[9] 허용 목록(_allowed_users)');
+console.log('\n[9] 접속 허용 규칙 — 도메인만 맞으면 통과, 차단 목록은 있을 때만');
 {
-  const allowed = makeSheet('_allowed_users', [
-    ['email', '비고'],
-    ['someone@athomecorp.com', ''],
-  ]);
   const asSomeone = tokenInfoMock({ email: 'someone@athomecorp.com' });
-  const ctx = load({ sheets: { '_allowed_users': allowed }, urlFetch: asSomeone });
-  check('목록에 있으면 로그인 성공', !!call(ctx, { action: 'login', idToken: 'x' }).sessionToken);
 
-  const other = makeSheet('_allowed_users', [['email', '비고'], ['nobody@athomecorp.com', '']]);
-  const ctx2 = load({ sheets: { '_allowed_users': other }, urlFetch: asSomeone });
+  // 기본: 명단에 없어도 앳홈 계정이면 들어온다(신규 입사자가 막히지 않는다)
+  const ctx = load({ urlFetch: asSomeone });
+  check('명단 없이도 앳홈 계정이면 로그인 성공', !!call(ctx, { action: 'login', idToken: 'x' }).sessionToken);
+  check('  차단 시트를 임의로 만들지 않는다', !ctx.__sheets['_blocked_users'], Object.keys(ctx.__sheets));
+
+  // 차단 시트가 있고 그 계정이 적혀 있으면 거부
+  const blocked = makeSheet('_blocked_users', [['email', '비고'], ['someone@athomecorp.com', '퇴사']]);
+  const ctx2 = load({ sheets: { '_blocked_users': blocked }, urlFetch: asSomeone });
   const r = call(ctx2, { action: 'login', idToken: 'x' });
-  check('도메인이 맞아도 목록에 없으면 거부', r.error === 'LOGIN_REJECTED' && r.reason === 'not_allowed', r);
+  check('차단 목록에 있으면 거부', r.error === 'LOGIN_REJECTED' && r.reason === 'blocked', r);
   check('  거부 로그에 이메일은 남긴다(추적용)',
     ctx2.__logs.join('\n').indexOf('someone@athomecorp.com') >= 0);
+
+  // 남이 차단돼 있어도 나는 통과해야 한다 — 차단은 "그 계정만" 막는다
+  const ctx3 = load({
+    sheets: { '_blocked_users': makeSheet('_blocked_users', [['email', ''], ['nobody@athomecorp.com', '']]) },
+    urlFetch: asSomeone
+  });
+  check('다른 사람이 차단돼 있어도 나는 통과', !!call(ctx3, { action: 'login', idToken: 'x' }).sessionToken);
+
+  // 헤더 행이 있든 없든 동작해야 한다(사람이 손으로 만드는 시트라 형식을 강제할 수 없다)
+  const noHeader = makeSheet('_blocked_users', [['someone@athomecorp.com']]);
+  const ctx4 = load({ sheets: { '_blocked_users': noHeader }, urlFetch: asSomeone });
+  check('헤더 없이 1행부터 적어도 차단된다', call(ctx4, { action: 'login', idToken: 'x' }).reason === 'blocked');
+
+  // 대소문자·공백이 달라도 같은 계정으로 본다
+  const messy = makeSheet('_blocked_users', [['email', ''], ['  SomeOne@AtHomeCorp.com  ', '']]);
+  const ctx5 = load({ sheets: { '_blocked_users': messy }, urlFetch: asSomeone });
+  check('대소문자/공백이 달라도 차단된다', call(ctx5, { action: 'login', idToken: 'x' }).reason === 'blocked');
+
+  // 도메인이 다르면 차단 목록과 무관하게 거부(구글 토큰 검증 단계에서 이미 걸린다)
+  const ctx6 = load({ urlFetch: tokenInfoMock({ email: 'someone@gmail.com', hd: '' }) });
+  check('개인 지메일은 여전히 거부', call(ctx6, { action: 'login', idToken: 'x' }).reason === 'domain');
 }
 
 console.log('\n[10] 관리자 세션 종료');
@@ -277,11 +300,14 @@ console.log('\n[10] 관리자 세션 종료');
 
 console.log('\n[11] 관리자 전용 엔드포인트는 세션 이메일로 판정');
 {
-  const allowed = makeSheet('_allowed_users', [['email', ''], ['someone@athomecorp.com', '']]);
-  const ctx = load({ sheets: { '_allowed_users': allowed }, urlFetch: tokenInfoMock({ email: 'someone@athomecorp.com' }) });
-  const token = loginToken(ctx);   // someone@ — ADMIN_EMAILS에 없음
+  /* 로그인은 앳홈 계정이면 전부 되지만, 관리자 전용 엔드포인트는 그와 별개다.
+     "들어올 수 있다"와 "무엇을 할 수 있다"를 분리해 두는 자리 — 허용 규칙을 넓힌 뒤에도
+     시트 원본을 덤프하는 debug는 여전히 ADMIN_EMAILS만 통과해야 한다. */
+  const ctx = load({ urlFetch: tokenInfoMock({ email: 'someone@athomecorp.com' }) });
+  const token = loginToken(ctx);   // 앳홈 계정이지만 ADMIN_EMAILS에는 없음
   const r = call(ctx, { session: token, debug: '1' });
-  check('관리자가 아니면 debug 거부', r.error === 'ADMIN_REQUIRED', r);
+  check('로그인은 되지만', typeof token === 'string' && token.length > 0);
+  check('  관리자가 아니면 debug 거부', r.error === 'ADMIN_REQUIRED', r);
 }
 
 /* ────────────────────────────── 프론트 ──────────────────────────────
