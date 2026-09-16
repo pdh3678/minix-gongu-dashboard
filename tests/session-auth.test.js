@@ -368,10 +368,83 @@ console.log('\n[14] 프론트 — 복원 / 로그아웃 / 하트비트');
   });
 }
 
-// 위 세 블록의 Promise가 풀린 뒤 집계 — 마이크로태스크 큐를 한 번 비운다
+/* ──────────────── [15] 프론트 ↔ GAS 통합 (HTTP만 생략) ────────────────
+   지금까지는 양쪽을 따로 봤다. 여기서는 **진짜 프론트 코드**가 **진짜 GAS 코드**와
+   로그인 → 인증된 요청 → 슬라이딩 연장 → 로그아웃까지 한 바퀴 돈다.
+   인증은 양쪽 규칙이 정확히 맞물려야 동작하므로, 한쪽만 맞는 상태를 여기서 걸러낸다. */
+const _e2e = (async () => {
+  console.log('\n[15] 프론트 ↔ GAS 한 바퀴');
+
+  const mainSheet = makeSheet('실적통합', [[], BASE_HEADERS.slice()]);
+  const sheets = { '실적통합': mainSheet };
+  installGlobals(sheets, { scriptProps: { SESSION_SECRET_V1: SECRET }, urlFetch: tokenInfoMock() });
+  global.Logger = { log: () => {} };
+  const gas = vm.createContext(global);
+  vm.runInContext(fs.readFileSync(GAS_PATH, 'utf8'), gas, { filename: 'apps-script.js' });
+
+  const { ctx: front } = loadFrontend(PROJ);
+  front._getGasUrl = () => 'https://example.test/exec';
+  front.showToast = () => {};
+  let loginScreenShown = false;
+  front._showReloginScreen = () => { loginScreenShown = true; };
+  front._enterDashboard = () => {};
+  front.fetchLive = () => {};
+
+  // HTTP만 직결로 대체 — 쿼리스트링을 e.parameter로 옮겨 doGet/doPost에 그대로 넣는다
+  const calls = [];
+  front.fetch = async (url, opts) => {
+    const u = new URL(String(url));
+    const parameter = {};
+    u.searchParams.forEach((v, k) => { parameter[k] = v; });
+    calls.push({ action: parameter.action || '(조회)', hasSession: !!parameter.session });
+    const body = opts && opts.body;
+    const raw = body
+      ? gas.doPost({ parameter, postData: { contents: body } })
+      : gas.doGet({ parameter });
+    return { status: 200, json: async () => JSON.parse(raw) };
+  };
+
+  // ① 로그인 — 구글 credential을 세션으로 교환
+  await front._exchangeForSession('google-credential');
+  const token = front._getToken();
+  check('로그인 후 프론트가 세션을 들고 있다', typeof token === 'string' && token.split('.').length === 2, token);
+  check('  GAS의 _sessions에 행이 생겼다', sheets['_sessions']._grid.slice(1).filter(r => r[0]).length === 1);
+  check('  교환 요청에는 세션이 실리지 않는다(아직 없으니까)', calls[0].hasSession === false, calls[0]);
+
+  // ② 인증된 조회 — 세션이 URL에 붙고 서버가 통과시킨다
+  const data = await front._gasFetch(front._gasUrl('https://example.test/exec'), {});
+  check('인증된 조회가 통과한다', data.error !== 'AUTH_REQUIRED', data.error);
+  check('  요청에 세션이 실렸다', calls[calls.length - 1].hasSession === true);
+
+  // ③ 슬라이딩 연장 — 서버가 새 토큰을 실어 보내고 프론트가 조용히 갈아끼운다
+  sheets['_sessions']._grid[1][4] = Date.now() + 5 * 3600 * 1000; // 남은 수명 5시간
+  await front._gasFetch(front._gasUrl('https://example.test/exec'), {});
+  const renewed = front._getToken();
+  check('연장된 새 토큰을 받아 저장했다', typeof renewed === 'string' && renewed !== token, { before: !!token, after: !!renewed });
+  check('  사용자 개입 없이 끝났다(로그인 화면 안 뜸)', loginScreenShown === false);
+  const after = await front._gasFetch(front._gasUrl('https://example.test/exec'), {});
+  check('  새 토큰으로도 계속 통과한다', after.error !== 'AUTH_REQUIRED', after.error);
+
+  // ④ 하트비트(POST) — 세션으로 인증되고 서버가 신원을 직접 판단한다
+  const beat = await front._gasFetch(front._gasUrl('https://example.test/exec'),
+    { method: 'POST', body: JSON.stringify({ action: 'presence', session: front._getToken() }) });
+  check('하트비트가 세션으로 통과한다', beat.success === true, beat);
+  check('  접속자 이메일을 서버가 채운다',
+    Array.isArray(beat.users) && beat.users.length === 1 && beat.users[0].email === ADMIN_EMAIL, beat.users);
+
+  // ⑤ 로그아웃 — 서버 원장에서 지워지고, 같은 토큰은 즉시 거부된다
+  const dead = front._getToken();
+  await front.fetch(front._gasUrl('https://example.test/exec') + '&action=logout');
+  check('로그아웃하면 _sessions가 빈다', sheets['_sessions']._grid.slice(1).filter(r => r[0]).length === 0);
+  const rejected = await front._gasFetch('https://example.test/exec?session=' + encodeURIComponent(dead), {});
+  check('이전 토큰으로 요청하면 거부된다', rejected.error === 'AUTH_REQUIRED' && rejected.reason === 'revoked', rejected);
+  check('  프론트가 세션을 버리고 로그인 화면을 띄운다', front._getToken() === null && loginScreenShown === true);
+})();
+
+// 비동기 블록이 전부 끝난 뒤 집계한다
 const _summary = () => {
   console.log('\n' + '─'.repeat(52));
   console.log('통과 ' + pass + ' / 실패 ' + fail);
   process.exit(fail ? 1 : 0);
 };
-setTimeout(_summary, 50);
+_e2e.then(() => setTimeout(_summary, 30), e => { console.error("[15] 예외:", e); fail++; setTimeout(_summary, 30); });

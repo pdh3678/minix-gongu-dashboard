@@ -15,6 +15,7 @@
     "@blocknote/xl-multi-column": "0.53.0",
     "@mantine/core": "^9.5.1",
     "@mantine/hooks": "^9.5.1",
+    "dompurify": "^3.4.15",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

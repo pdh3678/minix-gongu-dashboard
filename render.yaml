@@ -17,6 +17,37 @@ services:
       #   부모 페이지에서 iframe이 "연결 거부"처럼 빈 화면으로만 보이고 콘솔에만 CSP 오류가 남는다.
       # ⚠ X-Frame-Options는 일부러 넣지 않는다. ALLOW-FROM은 모든 최신 브라우저에서 폐기됐고,
       #   DENY/SAMEORIGIN을 넣으면 frame-ancestors보다 우선 적용돼 임베드가 막힌다.
+      #
+      # 강제 적용분 (2026-09-16에 세 가지 추가) — 셋 다 이 앱이 원래 쓰지 않는 기능이라
+      # 켜도 깨질 것이 없고, 켜두면 공격자가 쓸 수 있는 수단만 줄어든다.
+      #   object-src 'none'  : <object>/<embed> 플러그인 삽입 차단
+      #   base-uri 'self'    : <base> 태그로 모든 상대경로를 남의 서버로 돌리는 수법 차단
+      #   form-action 'self' : 주입된 폼이 외부로 전송되는 것 차단
       - path: /*
         name: Content-Security-Policy
-        value: "frame-ancestors 'self' https://minix-workspace.onrender.com"
+        value: "frame-ancestors 'self' https://minix-workspace.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+
+      # ── script-src 등 전체 정책은 아직 Report-Only다 (2026-09-16) ─────────────
+      # 왜 바로 강제하지 않는가: 이 대시보드는 본문 전체가 하나의 거대한 **인라인 <script>**라
+      # script-src에 'unsafe-inline'을 넣을 수밖에 없다. Render는 정적 호스팅이라 요청마다
+      # nonce를 심을 수 없고, 해시 방식은 배포할 때마다 값이 바뀌어 유지가 안 된다.
+      #
+      # 그래도 의미가 있다: 'unsafe-inline'이 있어도 **외부 스크립트 로드는 막힌다**.
+      # 저장형 XSS의 실제 페이로드는 대부분 <script src="공격자서버">라서, 그 경로가 닫힌다.
+      #
+      # Report-Only는 차단하지 않고 위반만 콘솔에 남긴다. 아래 순서로 검증 후 전환할 것:
+      #   1) 배포 후 대시보드를 평소처럼 한 바퀴 쓴다 — 로그인, 캘린더, 회고 열기/이미지 업로드,
+      #      릴스 썸네일, 워크스페이스 iframe 진입까지 전부.
+      #   2) 콘솔에 "Content-Security-Policy-Report-Only" 위반이 하나도 안 뜨면,
+      #      위 강제 헤더의 value를 아래 value로 통째로 교체하고 이 Report-Only 블록을 지운다.
+      #   3) 위반이 뜨면 그 origin을 해당 지시어에 추가한 뒤 1)부터 다시.
+      #
+      # 각 출처가 필요한 이유:
+      #   accounts.google.com  로그인(GSI 스크립트 + FedCM/One Tap iframe)
+      #   cdn.jsdelivr.net     Chart.js, Pretendard 폰트 CSS·woff2
+      #   script.google.com    Apps Script 웹앱 호출(모든 데이터 왕복)
+      #   *.googleusercontent.com  구글 프로필 사진
+      #   data: / blob:        릴스 썸네일(GAS가 base64로 내려줌)과 이미지 업로드 미리보기
+      - path: /*
+        name: Content-Security-Policy-Report-Only
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data: https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.googleusercontent.com https://script.google.com; connect-src 'self' https://script.google.com https://accounts.google.com; frame-src https://accounts.google.com; frame-ancestors 'self' https://minix-workspace.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'"
