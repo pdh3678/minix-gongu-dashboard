@@ -172,8 +172,10 @@ function thParts(html) {
   console.log('\n[7] CSS — 두 줄 헤더의 모양과 최소 폭');
   {
     const css = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
-    check('헤더 셀이 하단 기준선 정렬(vertical-align:bottom)',
-      /thead th\{[^}]*vertical-align:bottom/.test(css));
+    check('헤더 셀이 상단 정렬(vertical-align:top) — 주 라벨들이 첫 줄에서 맞음',
+      /thead th\{[^}]*vertical-align:top/.test(css));
+    check('보조 라벨 래퍼도 같은 기준(top)이라 첫 줄이 어긋나지 않음',
+      /\.th-lb\{[^}]*vertical-align:top/.test(css));
     check('th-2line 최소 폭 72px', /th\.th-2line\{[^}]*min-width:72px/.test(css));
     const sub = (css.match(/\.th-sub\{([^}]*)\}/) || [])[1] || '';
     check('보조 라벨이 작은 글씨', /font-size:9px/.test(sub), sub);

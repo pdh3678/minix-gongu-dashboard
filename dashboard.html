@@ -236,7 +236,7 @@ html.embed .login-logo{font-size:17px;margin-bottom:18px} /* iframe은 대개 �
 
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-thead th{text-align:left;padding:8px 12px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3);border-bottom:2px solid var(--border);white-space:nowrap;background:var(--surface-2);vertical-align:bottom}
+thead th{text-align:left;padding:8px 12px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3);border-bottom:2px solid var(--border);white-space:nowrap;background:var(--surface-2);vertical-align:top}
 tbody td{padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
 tbody tr:last-child td{border-bottom:none}
 tbody tr{cursor:pointer;transition:background .12s}
@@ -255,8 +255,9 @@ th.sortable.sorted .sort-ic{opacity:1;color:var(--minix)}
 
 /* 두 줄 헤더 — 컬럼 정의에 subLabel이 있으면 sortableThHtml이 이 구조를 만든다.
    inline-block이라 안쪽 줄들이 th의 text-align을 그대로 따른다(num-col은 오른쪽 정렬).
-   thead th의 vertical-align:bottom과 함께 쓰여, 한 줄 헤더들과 아랫변이 맞는다. */
-.th-lb{display:inline-block;vertical-align:bottom;line-height:1.3}
+   thead th의 vertical-align:top과 함께 쓰여, 주 라벨들이 전부 첫 줄에서 가지런히 맞고
+   보조 라벨만 그 아래로 내려온다(두 줄짜리 헤더가 한 줄 헤더를 아래로 끌어내리지 않는다). */
+.th-lb{display:inline-block;vertical-align:top;line-height:1.3}
 .th-sub{display:block;margin-top:1px;font-size:9px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--text-3);line-height:1.2}
 /* 라벨을 두 줄로 쪼갠 만큼 열이 좁아지되, 숫자가 헤더보다 길어질 때를 대비해 하한을 둔다 */
 th.th-2line{min-width:72px}
@@ -1632,7 +1633,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-subhdr-2026-09-18-02';
+const DASHBOARD_VERSION='dash-subhdr-2026-09-18-03';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
