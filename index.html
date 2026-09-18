@@ -236,7 +236,7 @@ html.embed .login-logo{font-size:17px;margin-bottom:18px} /* iframe은 대개 �
 
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-thead th{text-align:left;padding:8px 12px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3);border-bottom:2px solid var(--border);white-space:nowrap;background:var(--surface-2)}
+thead th{text-align:left;padding:8px 12px;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-3);border-bottom:2px solid var(--border);white-space:nowrap;background:var(--surface-2);vertical-align:bottom}
 tbody td{padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
 tbody tr:last-child td{border-bottom:none}
 tbody tr{cursor:pointer;transition:background .12s}
@@ -252,6 +252,14 @@ th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{color:var(--text)}
 .sort-ic{display:inline-block;margin-left:3px;opacity:.4;font-size:9px}
 th.sortable.sorted .sort-ic{opacity:1;color:var(--minix)}
+
+/* 두 줄 헤더 — 컬럼 정의에 subLabel이 있으면 sortableThHtml이 이 구조를 만든다.
+   inline-block이라 안쪽 줄들이 th의 text-align을 그대로 따른다(num-col은 오른쪽 정렬).
+   thead th의 vertical-align:bottom과 함께 쓰여, 한 줄 헤더들과 아랫변이 맞는다. */
+.th-lb{display:inline-block;vertical-align:bottom;line-height:1.3}
+.th-sub{display:block;margin-top:1px;font-size:9px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--text-3);line-height:1.2}
+/* 라벨을 두 줄로 쪼갠 만큼 열이 좁아지되, 숫자가 헤더보다 길어질 때를 대비해 하한을 둔다 */
+th.th-2line{min-width:72px}
 
 /* 토스트 */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);background:#1B2035;color:#fff;font-size:12px;font-weight:600;padding:10px 18px;border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,.3);opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:300}
@@ -953,19 +961,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="card-hd"><span>채널(인플루언서)별 성과<button type="button" class="fol-missing-btn" id="dashChFolMissing" onclick="_toggleDashChFollowerMissing()" style="display:none"></button><button type="button" class="fol-missing-btn" id="dashChIdMissing" onclick="_toggleDashChIdMissing()" style="display:none"></button></span><span class="card-hd-r">완료+진행중 기준</span></div>
         <div class="analytics-split analytics-split-wide">
           <div class="tbl-wrap">
-            <table><thead><tr>
-              <th class="sortable" id="dashChHdCh" onclick="_sortDashChannelTable('ch')">채널<span class="sort-ic">⇕</span></th>
-              <th class="sortable" id="dashChHdTier" onclick="_sortDashChannelTable('tier')">매출등급<span class="hd-info" title="등급은 필터와 무관하게 채널의 전체 기간 실적으로 산정됩니다" onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
-              <th class="sortable" id="dashChHdFTier" onclick="_sortDashChannelTable('followerTier')">팔로워등급<span class="hd-info" id="dashChHdFTierInfo" onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
-              <th class="sortable" id="dashChHdGap" onclick="_sortDashChannelTable('gap')">갭<span class="hd-info" title="매출등급 순위 − 팔로워등급 순위 (나노=0 … 메가=3). +면 팔로워 규모 대비 잘 파는 채널(고효율), −면 그 반대(저효율)." onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
-              <th class="num-col sortable" id="dashChHdFol" onclick="_sortDashChannelTable('followerCount')">팔로워 수<span class="hd-info" title="셀을 클릭하면 바로 수정할 수 있습니다 — 저장하면 그 채널의 가장 최근 공구건 행에 기록됩니다" onclick="event.stopPropagation()">ⓘ</span><span class="sort-ic">⇕</span></th>
-              <th class="num-col sortable" id="dashChHdCount" onclick="_sortDashChannelTable('count')">공구 횟수 (기간 내)<span class="sort-ic">⇕</span></th>
-              <th class="num-col sortable" id="dashChHdRev" onclick="_sortDashChannelTable('revSum')">누적 매출<span class="sort-ic">⇕</span></th>
-              <th class="num-col sortable" id="dashChHdQty" onclick="_sortDashChannelTable('avgQty')">평균 판매수량<span class="sort-ic">⇕</span></th>
-              <th class="num-col sortable" id="dashChHdViews" onclick="_sortDashChannelTable('avgViews')">평균 조회수<span class="sort-ic">⇕</span></th>
-              <th class="num-col sortable" id="dashChHdConv" onclick="_sortDashChannelTable('conv')">전환율<span class="sort-ic">⇕</span></th>
-              <th class="sortable" id="dashChHdTrend" onclick="_sortDashChannelTable('trend')">추세<span class="sort-ic">⇕</span></th>
-            </tr></thead><tbody id="dashChannelBody"></tbody></table>
+            <!-- 헤더는 DASH_CHANNEL_COLS에서 생성됨(_renderDashChannelHead) — 여기에 직접 쓰지 말 것 -->
+            <table><thead><tr id="dashChannelHead"></tr></thead><tbody id="dashChannelBody"></tbody></table>
           </div>
           <div style="height:280px"><canvas id="dashChannelChart"></canvas></div>
         </div>
@@ -1635,7 +1632,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-relogin-2026-09-18-01';
+const DASHBOARD_VERSION='dash-subhdr-2026-09-18-02';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -3213,11 +3210,9 @@ function _dashSelCompare(a,b){
 /* 목록: 상단 기간 필터로 걸러진 공구건 전체를 조회 전용으로 표시 (선택/체크박스 없음) */
 function renderDashList(){
   const list=dashData().sort(_dashSelCompare);
-  document.getElementById('dashSelHead').innerHTML=DASH_SEL_COLS.map(c=>{
-    const sorted=DASH_SEL_SORT.key===c.key;
-    const arrow=sorted?(DASH_SEL_SORT.dir>0?'▲':'▼'):'⇕';
-    return`<th class="sortable${sorted?' sorted':''}" onclick="sortDashSel('${c.key}')">${c.lb}<span class="sort-ic">${arrow}</span></th>`;
-  }).join('');
+  document.getElementById('dashSelHead').innerHTML=DASH_SEL_COLS.map(c=>
+    sortableThHtml(c,{sorted:DASH_SEL_SORT.key===c.key,dir:DASH_SEL_SORT.dir,
+      onclick:`sortDashSel('${c.key}')`})).join('');
   document.getElementById('dashSelBody').innerHTML=list.length?list.map(d=>`
     <tr>
       <td>${productBadge(d.product)}</td>
@@ -4322,15 +4317,27 @@ function _dashChannelCompare(a,b,key,dir){
   if(bv==null)return -1;
   return (av-bv)*dir;
 }
-const DASH_CHANNEL_HD_IDS={ch:'dashChHdCh',tier:'dashChHdTier',followerTier:'dashChHdFTier',gap:'dashChHdGap',
-  followerCount:'dashChHdFol',count:'dashChHdCount',revSum:'dashChHdRev',avgQty:'dashChHdQty',avgViews:'dashChHdViews',conv:'dashChHdConv',trend:'dashChHdTrend'};
-function _renderDashChannelSortIcons(){
-  Object.keys(DASH_CHANNEL_HD_IDS).forEach(k=>{
-    const el=document.getElementById(DASH_CHANNEL_HD_IDS[k]);
-    const sorted=_dashChannelSort.key===k;
-    el.classList.toggle('sorted',sorted);
-    el.querySelector('.sort-ic').textContent=sorted?(_dashChannelSort.dir>0?'▲':'▼'):'⇕';
-  });
+/* 채널별 성과 표의 컬럼 정의 — 라벨·툴팁·정렬키·정렬(숫자/문자)이 전부 여기 모여 있다.
+   '공구 횟수'는 라벨이 길어 열을 넓게 잡아먹던 컬럼이라 subLabel로 둘째 줄을 분리했다.
+   팔로워등급 툴팁은 기준값이 상수에서 만들어지므로 함수로 둬서 렌더 시점에 계산한다
+   (예전엔 헤더에 id를 박아두고 렌더 때마다 title을 따로 덮어썼다). */
+const DASH_CHANNEL_COLS=[
+  {key:'ch',           lb:'채널'},
+  {key:'tier',         lb:'매출등급',      info:'등급은 필터와 무관하게 채널의 전체 기간 실적으로 산정됩니다'},
+  {key:'followerTier', lb:'팔로워등급',    info:()=>followerCriteriaText()},
+  {key:'gap',          lb:'갭',            info:'매출등급 순위 − 팔로워등급 순위 (나노=0 … 메가=3). +면 팔로워 규모 대비 잘 파는 채널(고효율), −면 그 반대(저효율).'},
+  {key:'followerCount',lb:'팔로워 수',     num:true, info:'셀을 클릭하면 바로 수정할 수 있습니다 — 저장하면 그 채널의 가장 최근 공구건 행에 기록됩니다'},
+  {key:'count',        lb:'공구 횟수',     num:true, subLabel:'(기간 내)'},
+  {key:'revSum',       lb:'누적 매출',     num:true},
+  {key:'avgQty',       lb:'평균 판매수량', num:true},
+  {key:'avgViews',     lb:'평균 조회수',   num:true},
+  {key:'conv',         lb:'전환율',        num:true},
+  {key:'trend',        lb:'추세'},
+];
+function _renderDashChannelHead(){
+  document.getElementById('dashChannelHead').innerHTML=DASH_CHANNEL_COLS.map(c=>
+    sortableThHtml(c,{sorted:_dashChannelSort.key===c.key,dir:_dashChannelSort.dir,
+      onclick:`_sortDashChannelTable('${c.key}')`})).join('');
 }
 function renderDashChannelAnalytics(){
   const scope=_dashRevScope(); // 품목 조건은 상단 전역 필터가 이미 반영해 줌
@@ -4338,10 +4345,10 @@ function renderDashChannelAnalytics(){
   const body=document.getElementById('dashChannelBody');
   const note=document.getElementById('dashChannelNote');
   const chartEl=document.getElementById('dashChannelChart');
-  const info=document.getElementById('dashChHdFTierInfo');
-  if(info)info.title=followerCriteriaText();
+  // 데이터가 없어 아래에서 바로 빠져나가도 헤더는 남아 있어야 하므로 맨 앞에서 그린다
+  _renderDashChannelHead();
   if(!scope.length){
-    body.innerHTML=`<tr><td colspan="11" class="dash-analytics-empty">${_dashProductLabel()?'해당 기간·품목 조건에 완료·진행중인 공구건이 없습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
+    body.innerHTML=`<tr><td colspan="${DASH_CHANNEL_COLS.length}" class="dash-analytics-empty">${_dashProductLabel()?'해당 기간·품목 조건에 완료·진행중인 공구건이 없습니다':'해당 기간에 완료·진행중인 공구건이 없습니다'}</td></tr>`;
     note.textContent='';
     document.getElementById('dashChFolMissing').style.display='none';
     document.getElementById('dashChIdMissing').style.display='none';
@@ -4431,7 +4438,6 @@ function renderDashChannelAnalytics(){
       <td class="num-col">${_pct1(r.conv!=null?r.conv*100:null)}</td>
       <td>${r.trend?`<span class="trend-${r.trend.dir}">${trendIcon[r.trend.dir]} ${r.trend.pct.toFixed(0)}%</span>`:'<span style="color:var(--text-3)">—</span>'}</td>
     </tr>`).join('');
-  _renderDashChannelSortIcons();
 
   if(typeof Chart==='undefined')return;
   if(_dashChannelChartInst)_dashChannelChartInst.destroy();
@@ -4984,6 +4990,33 @@ const SALES_ACC={
 };
 function colClass(c){return`${c.num?' num-col':''}${c.sticky===1?' sticky-col1':''}${c.sticky===2?' sticky-col2':''}`;}
 
+/* ── 정렬 가능한 표 헤더 셀(공용) ──────────────────────────────────────────────
+   채널별 성과 / 개별 공구 건 / 실적 표 세 곳이 같은 컬럼 정의로 <th>를 만든다.
+   예전엔 세 곳이 각자 문자열을 조립했고(채널 표는 아예 HTML에 박혀 있었다), 그래서
+   헤더에 뭔가 하나 추가하려면 세 군데를 따로 고쳐야 했다.
+
+   컬럼 정의 필드
+     lb        주 라벨(첫 줄)
+     subLabel  보조 라벨(둘째 줄, 작은 회색 글씨). 있으면 두 줄 헤더가 되어 열 폭이 줄어든다.
+               예: {key:'count', lb:'공구 횟수', subLabel:'(기간 내)'}
+     info      ⓘ 툴팁 문구. 함수를 주면 렌더 시점에 호출한다(내용이 상황에 따라 바뀌는 경우).
+     num/sticky  colClass가 해석하는 기존 필드 그대로
+
+   ⚠ 정렬 아이콘(⇕)과 ⓘ는 반드시 **첫 줄 끝**에 붙인다. 보조 라벨이 아래로 내려가도
+   아이콘은 한 줄 헤더와 같은 높이·같은 자리에 남아, 헤더 행에서 아이콘 줄이 어긋나 보이지 않는다. */
+function sortableThHtml(c,o){
+  o=o||{};
+  const info=typeof c.info==='function'?c.info():c.info;
+  const infoHtml=info?`<span class="hd-info" title="${_escAttr(info)}" onclick="event.stopPropagation()">ⓘ</span>`:'';
+  const sortHtml=o.onclick?`<span class="sort-ic">${o.sorted?(o.dir>0?'▲':'▼'):'⇕'}</span>`:'';
+  const head=`${_escHtml(c.lb)}${infoHtml}${sortHtml}`;
+  const inner=c.subLabel
+    ?`<span class="th-lb">${head}<span class="th-sub">${_escHtml(c.subLabel)}</span></span>`
+    :head;
+  const cls=`${o.onclick?'sortable':''}${o.sorted?' sorted':''}${colClass(c)}${c.subLabel?' th-2line':''}`.trim();
+  return `<th class="${cls}"${o.onclick?` onclick="${o.onclick}"`:''}>${inner}</th>`;
+}
+
 // 상품코드(네이버 브랜드스토어 상품 번호)로 상품 페이지 링크 생성
 function naverProductLink(code){
   const c=String(code||'').trim();
@@ -5158,11 +5191,9 @@ function renderTbl(){
   renderYMFilterBar();
   renderSalesKpi();
 
-  document.getElementById('tHead').innerHTML=SALES_COLS.map(c=>{
-    const sorted=SALES_SORT.key===c.key;
-    const arrow=sorted?(SALES_SORT.dir>0?'▲':'▼'):'⇕';
-    return`<th class="sortable${sorted?' sorted':''}${colClass(c)}" onclick="sortSales('${c.key}')">${c.lb}<span class="sort-ic">${arrow}</span></th>`;
-  }).join('');
+  document.getElementById('tHead').innerHTML=SALES_COLS.map(c=>
+    sortableThHtml(c,{sorted:SALES_SORT.key===c.key,dir:SALES_SORT.dir,
+      onclick:`sortSales('${c.key}')`})).join('');
 
   const f=filteredProd(DATA).filter(salesYMMatch);
   if(SALES_SORT.key){
