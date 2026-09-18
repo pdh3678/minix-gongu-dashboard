@@ -1635,7 +1635,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-theslim-2026-09-17-01';
+const DASHBOARD_VERSION='dash-relogin-2026-09-18-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1648,7 +1648,7 @@ if(IS_EMBED)console.log('[dashboard] 임베드 모드 — 사이드바/헤더 �
 // "버전 불일치" 오탐 경고가 떴음(실제로 재배포가 필요 없는데도). 이 값은 Code.gs가 실제로 바뀌어서
 // 프론트가 그 변경에 의존하게 될 때만 그 시점의 SCRIPT_VERSION으로 갱신할 것 — 프론트 전용 변경으로는
 // 절대 건드리지 말 것.
-const REQUIRED_SCRIPT_VERSION='session-2026-09-16-02';
+const REQUIRED_SCRIPT_VERSION='session-2026-09-18-01';
 
 // Apps Script Web App 기본 URL — ⚙ 연결 설정에서 URL을 저장한 적 없는 브라우저(신규 로그인,
 // 시크릿 모드, 새 팀원 PC 등)는 localStorage가 비어있어 요청을 보낼 곳이 없었고, 그 결과 fetchLive가
@@ -6691,15 +6691,20 @@ async function fetchLive(forceFresh){
     const reqUrl=_gasUrl(url)+(forceFresh?'&nocache=1':'');
     console.log('[fetchLive] 요청 URL(세션 마스킹)=',reqUrl.replace(/session=[^&]+/,'session=***'));
     const j=await _gasFetch(reqUrl,{});
+    /* ⚠ 인증 실패를 버전 로그보다 **먼저** 처리한다. 예전엔 순서가 반대라, 세션이 만료된 응답
+       (`{error:'AUTH_REQUIRED',reason}`)에도 버전 로그가 먼저 찍혀 "버전 필드 없음 — 구버전
+       배포본"이 남았다. 실제로는 배포본이 낡은 게 아니라 인증에 막힌 것이라, 만료 문제를
+       배포 문제로 오해하게 만드는 로그였다. 서버도 이제 에러 응답에 version을 싣는다. */
+    if(j.error==='AUTH_REQUIRED'){
+      /* _gasFetch가 이미 세션을 버리고 로그인 화면을 띄웠다. 예전처럼 5초 뒤 재시도하지 않는다 —
+         세션이 죽은 상태에서 같은 요청을 반복해 봐야 똑같이 거절당하고 로그만 시끄러워진다.
+         재로그인에 성공하면 onLoginSuccess → _enterDashboard가 이 요청을 다시 보낸다. */
+      console.error('[fetchLive 실패] 사유: AUTH_REQUIRED — 재로그인 필요(사유는 위 [인증 거절] 로그 참고)');
+      return;
+    }
     console.log('[fetchLive] 응답 버전(Apps Script):',j.version||'(버전 필드 없음 — 구버전 배포본)',j.cached?'(캐시됨, '+j.execMs+'ms)':'(새로 계산, '+j.execMs+'ms)');
     if(j.version&&j.version!==REQUIRED_SCRIPT_VERSION){
       console.warn(`[버전 불일치] 배포된 Apps Script=${j.version} / 프론트가 필요로 하는 버전=${REQUIRED_SCRIPT_VERSION} — Apps Script를 재배포해야 할 수 있습니다(프론트 전용 변경이면 이 경고는 무시해도 됨).`);
-    }
-    if(j.error==='AUTH_REQUIRED'){
-      /* _gasFetch가 이미 세션을 버리고 로그인 화면을 띄웠다. 예전처럼 5초 뒤 재시도하지 않는다 —
-         세션이 죽은 상태에서 같은 요청을 반복해 봐야 똑같이 거절당하고 로그만 시끄러워진다. */
-      console.error('[fetchLive 실패] 사유: AUTH_REQUIRED — 재로그인 필요(사유는 위 [인증 거절] 로그 참고)');
-      return;
     }
     if(j.error){console.error('[fetchLive 실패] 사유: SERVER_ERROR —',j.error);throw new Error(j.error);}
     _hideReloginBanner();
@@ -7930,7 +7935,7 @@ function _armLoginAttemptWatch(){
   _loginAttemptWatchArmed=true;
   window.addEventListener('blur',function(){
     const gisBtn=document.getElementById('gisBtn');
-    const loginVisible=document.getElementById('loginScreen').style.display!=='none';
+    const loginVisible=!_isAuthed;
     if(!loginVisible||!gisBtn||!gisBtn.contains(document.activeElement))return;
     _gsiLog('로그인 버튼 클릭 감지(포커스가 버튼 iframe으로 이동) — 5초 내 credential 대기');
     _startLoginAttemptWatchdog();
@@ -8153,19 +8158,29 @@ async function _diagWriteStage(stage){
 
 function _showReloginBanner(){document.getElementById('reloginBanner').classList.add('show');}
 function _hideReloginBanner(){document.getElementById('reloginBanner').classList.remove('show');}
-function _showReloginScreen(){_hideReloginBanner();document.getElementById('loginScreen').style.display='flex';}
+
+/* ── 인증 상태 단일 소스 (2026-09-18) ──────────────────────────────────────────
+   로그인 오버레이(#loginScreen)의 표시 여부는 이 상태 하나로만 결정한다.
+   style.display를 직접 건드리는 코드를 다시 만들지 말 것.
+
+   ⚠ 이 함수가 생긴 이유(실제 버그): 예전엔 _enterDashboard가 display='none'을,
+   _showReloginScreen이 display='flex'를 각각 직접 썼고, 그와 **별개로** "이미 진입했는가"를
+   _dashboardEntered 플래그로 따로 들고 있었다. 세션 만료로 오버레이를 다시 띄울 때 그 플래그를
+   되돌리지 않아서, 재로그인에 성공해도 "이미 진입함"으로 판정돼 데이터만 다시 받고 오버레이는
+   영영 걷히지 않았다(로그상 _enterDashboard가 아예 안 불림). 화면 상태와 판정 플래그를 둘로
+   나눠 가진 것이 원인이었으므로 하나로 합친다. */
+let _isAuthed=false;
+function _setAuthed(v){
+  _isAuthed=!!v;
+  document.getElementById('loginScreen').style.display=_isAuthed?'none':'flex';
+}
+function _showReloginScreen(){_hideReloginBanner();_setAuthed(false);}
 
 function _reportLoginFlowError(msg){
   console.error('[GSI] 로그인 후처리 실패 — '+msg);
   document.getElementById('loginFlowErrMsg').textContent='로그인 후 처리 중 오류가 발생했습니다: '+msg+' (콘솔에 상세 내용이 남았습니다)';
   document.getElementById('loginFlowErrBanner').classList.add('show');
 }
-
-// credential 콜백 이후 실제로 대시보드 진입(_enterDashboard)까지 완료됐는지를 따로 추적한다.
-// "토큰이 있냐 없냐"로 신규 로그인 여부를 판단하면, auto_select가 사용자 클릭보다 먼저 조용히
-// credential을 발급해둔 경우 사용자의 버튼 클릭이 "이미 로그인된 상태"로 오인되어 UI 전환 없이
-// 데이터만 다시 불러오는 문제가 있었음.
-let _dashboardEntered=false;
 
 // GIS 콜백: 로그인 완료 or 자동 갱신 시 호출
 function handleGoogleSignIn(response){
@@ -8224,13 +8239,25 @@ async function _exchangeForSession(credential){
     return;
   }
 
+  onLoginSuccess(j);
+}
+
+/* ── 로그인 성공 단일 창구 (2026-09-18) ────────────────────────────────────────
+   세션 저장 → 사용자 정보 확정 → 대시보드 진입(오버레이 제거 포함)을 한 함수로 묶는다.
+   첫 로그인 / 세션 만료 후 재로그인(AUTH_REQUIRED 이후) / 새로고침 시 세션 복원이 전부 이
+   경로를 지난다 — 경로별로 분기를 두지 않는 것이 이 함수의 존재 이유다.
+
+   ⚠ 여기에 "이미 로그인돼 있으니 데이터만 새로 받자" 같은 최적화를 다시 넣지 말 것.
+   그 분기(if(!_dashboardEntered)...else fetchLive())가 바로 재로그인 후 로그인 화면이
+   안 사라지던 버그였다. _enterDashboard는 여러 번 불려도 안전하게 만들어져 있고, 중복 진입
+   비용보다 오버레이가 남아 화면이 갇히는 사고가 훨씬 비싸다. */
+function onLoginSuccess(j){
   _setSession(j.sessionToken);
   const user=j.user||_decodeSessionPayload(j.sessionToken)||{email:'',name:''};
-  sessionStorage.setItem('gp_user',JSON.stringify(user));
+  try{sessionStorage.setItem('gp_user',JSON.stringify(user));}catch(e){}
   _gsiLog('세션 발급 완료 — '+user.email);
   _hideReloginBanner();
-  if(!_dashboardEntered)_enterDashboard(user);
-  else fetchLive();
+  _enterDashboard(user);
 }
 
 function _showLoginErr(msg){
@@ -8238,20 +8265,30 @@ function _showLoginErr(msg){
   el.textContent=msg;el.style.display='block';
 }
 
+/* 대시보드 진입 — 오버레이 제거부터 데이터 로드·라우팅·하트비트까지.
+   **여러 번 호출해도 안전해야 한다** (세션 만료 후 재로그인이 곧 두 번째 호출이다):
+     · _setAuthed(true)  멱등
+     · fetchLive()       실패했던 원래 요청(세션 만료로 거절당한 그 요청)을 다시 보내는 자리 —
+                         읽기라서 재시도가 안전하다. 쓰기(_gasWrite)는 일부러 재시도하지 않는다:
+                         서버가 거절해 시트는 안 바뀌었지만 프론트는 이미 낙관적 반영을 롤백하고
+                         사용자에게 실패를 알린 뒤라, 조용히 재전송하면 "실패했다고 알고 있는
+                         저장"이 되살아나 화면과 시트가 어긋난다.
+     · _routeFromHash()  지금 주소의 해시를 다시 읽으므로 보던 페이지로 그대로 복귀한다
+                         (워크스페이스 메뉴별 iframe이 각자 자기 해시로 돌아오는 근거)
+     · _startPresenceHeartbeat()  기존 타이머를 지우고 다시 건다(중복 누적 없음) */
 function _enterDashboard(user){
   _gsiLog('_enterDashboard: 시작 — 로그인화면 숨김+이름표시');
-  document.getElementById('loginScreen').style.display='none';
+  /* 오버레이 제거가 가장 먼저다. 아래 어느 단계가 예외로 죽더라도 화면이 로그인 상태로
+     갇히지는 않게 한다 — 갇힌 화면은 사용자가 스스로 빠져나올 방법이 없다. */
+  _setAuthed(true);
   document.getElementById('sbUserName').textContent=user.name||user.email||'—';
   document.getElementById('sbUserEmail').textContent=user.email||'';
   _applyAdminUI(user.email||'');
   _gsiLog('_enterDashboard: fetchLive/render 호출');
   fetchLive();render();
-  _routeFromHash(); // 주소의 해시(#calendar, #product-더플렌더 등)에 맞는 탭을 열어줌(없으면 기본 탭)
+  _routeFromHash(); // 주소의 해시(#calendar, #product-TheSlim 등)에 맞는 탭을 열어줌(없으면 기본 탭)
   _startPresenceHeartbeat();
   _gsiLog('_enterDashboard: 완료(routeFromHash/presence 포함)');
-  // 여기까지 예외 없이 도달해야만 "진입 완료"로 인정 — 도중에 던지면 _dashboardEntered가 false로
-  // 남아, 사용자가 다시 시도했을 때도 정상적으로 재진입(전체 UI 전환) 흐름을 다시 탐
-  _dashboardEntered=true;
 }
 
 function signOut(){
@@ -8262,13 +8299,12 @@ function signOut(){
     try{fetch(_gasUrl(_url)+'&action=logout').catch(()=>{});}catch(e){}
   }
   _clearSession();
-  _dashboardEntered=false; // 다음 로그인은 다시 "신규 진입"으로 취급해 _enterDashboard가 확실히 실행되게 함
   _stopPresenceHeartbeat();
   _presenceUsers=[];renderPresencePanel();
   sessionStorage.removeItem('gp_user');
   _clearDataCache(); // 다른 계정으로 다시 로그인했을 때 이전 사용자의 캐시 데이터가 보이면 안 됨
   if(window.google&&google.accounts)google.accounts.id.disableAutoSelect();
-  document.getElementById('loginScreen').style.display='flex';
+  _setAuthed(false);
   document.getElementById('sbUserName').textContent='—';
   document.getElementById('sbUserEmail').textContent='';
   _applyAdminUI('');
@@ -8372,8 +8408,6 @@ window.onGoogleLibraryLoad=function(){
   const session=_loadSession();
   if(!session)return; // 세션이 없으면 정상 로그인 화면 유지
 
-  _sessionToken=session; // 이미 localStorage에서 읽어온 값이라 재저장 불필요
-
   let user=null;
   try{user=savedUserRaw?JSON.parse(savedUserRaw):null;}catch(e){user=null;}
   if(!user){
@@ -8399,7 +8433,9 @@ window.onGoogleLibraryLoad=function(){
   }
 
   if(_usingCachedRender)_showCacheBadge(dataCache.cachedAt);
-  _enterDashboard(user); // fetchLive()는 유효한 토큰이 있으면 바로 시작되고, render()는 캐시로 채워진 DATA를 즉시 그림
+  // 새로고침 시 세션 복원도 로그인 성공과 같은 창구를 지난다(경로를 둘로 만들지 않는다).
+  // fetchLive()는 유효한 토큰이 있으면 바로 시작되고, render()는 캐시로 채워진 DATA를 즉시 그림.
+  onLoginSuccess({sessionToken:session,user:user});
 })();
 
 // ── 로컬 테스트 우회 ──

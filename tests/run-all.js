@@ -17,7 +17,8 @@ const SUITES = [
   ['channel-link.test.js', '인플루언서 링크 — 플랫폼 ID로 자동 생성, 수동 수정 보존'],
   ['id-from-link.test.js','링크 → ID 역추출 + 채널 정보 미입력 목록'],
   ['session-auth.test.js','자체 세션 인증 — 서명 검증, 만료·연장, 도메인 허용/차단'],
-  ['product-line.test.js','품목군 — 상수 하나로 사이드바·해시·드롭다운·사은품이 따라오는지']
+  ['product-line.test.js','품목군 — 상수 하나로 사이드바·해시·드롭다운·사은품이 따라오는지'],
+  ['relogin.test.js',     '세션 만료 → 재로그인 — 오버레이가 반드시 걷히고 보던 페이지로 복귀']
 ];
 
 let failed = 0;

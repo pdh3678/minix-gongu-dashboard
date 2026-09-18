@@ -19,7 +19,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'session-2026-09-16-02';
+var SCRIPT_VERSION = 'session-2026-09-18-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -4145,6 +4145,12 @@ function _json(obj) {
   }
   if (obj && typeof obj === 'object' && !Array.isArray(obj) && obj.execMs === undefined && _reqStartMs) {
     obj.execMs = Date.now() - _reqStartMs;
+  }
+  /* 버전도 같은 이유로 출구에서 싣는다. 예전엔 성공 payload에만 있어서, AUTH_REQUIRED 같은
+     에러 응답을 받은 프론트가 "버전 필드 없음 — 구버전 배포본"으로 로그를 남겼다. 인증 실패를
+     배포 문제로 오해하게 만드는 로그였으므로, 어떤 응답에든 실려 나가게 한다. */
+  if (obj && typeof obj === 'object' && !Array.isArray(obj) && obj.version === undefined) {
+    obj.version = SCRIPT_VERSION;
   }
   return ContentService
     .createTextOutput(JSON.stringify(obj))
