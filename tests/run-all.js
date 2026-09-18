@@ -19,7 +19,8 @@ const SUITES = [
   ['session-auth.test.js','자체 세션 인증 — 서명 검증, 만료·연장, 도메인 허용/차단'],
   ['product-line.test.js','품목군 — 상수 하나로 사이드바·해시·드롭다운·사은품이 따라오는지'],
   ['relogin.test.js',     '세션 만료 → 재로그인 — 오버레이가 반드시 걷히고 보던 페이지로 복귀'],
-  ['table-header.test.js','표 헤더 공용 컴포넌트 — 두 줄 헤더(subLabel)와 아이콘 위치']
+  ['table-header.test.js','표 헤더 공용 컴포넌트 — 두 줄 헤더(subLabel)와 아이콘 위치'],
+  ['tier-tooltip.test.js', '등급 기준표 툴팁 — 상수에서 파생, 임계값 표기, 표/모달 공유']
 ];
 
 let failed = 0;

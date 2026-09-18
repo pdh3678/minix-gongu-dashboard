@@ -1208,7 +1208,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <select class="f-inp f-sel" id="mTier" onchange="_onModalTierChange()"></select>
           </div>
           <div class="f-grp span2">
-            <label class="f-lbl">등급 상태</label>
+            <label class="f-lbl">등급 상태 <span class="f-info tier-help" id="mTierStateHelp">ⓘ</span></label>
             <div class="tier-auto-line" id="mTierAuto"></div>
           </div>
         </div>
@@ -1470,7 +1470,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <select class="f-inp f-sel" id="fTier" onchange="_onFormTierChange()"></select>
       </div>
       <div class="f-grp span2">
-        <label class="f-lbl">등급 상태</label>
+        <label class="f-lbl">등급 상태 <span class="f-info tier-help" id="fTierStateHelp">ⓘ</span></label>
         <div class="tier-auto-line" id="fTierAuto"></div>
       </div>
     </div>
@@ -1633,7 +1633,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-subhdr-2026-09-18-03';
+const DASHBOARD_VERSION='dash-tiertip-2026-09-18-04';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -1974,17 +1974,20 @@ function gapBadge(g){
    (조회수는 시트에 이미 만 단위로 저장돼 있어 재사용할 포맷터가 없었고, 이 함수가 그 역할을 겸함.)
      100만 이상    → 정수 만 (152만, 1,230만)
      1만~100만 미만 → 소수 1자리 (8.5만, 44.3만)
-     1만 미만      → 천 단위 콤마 (8,500) */
-function formatMan(n){
+     1만 미만      → 천 단위 콤마 (8,500)
+   opts.decimals로 소수 자릿수를 바꿀 수 있다(기본 1). 기준표 툴팁처럼 "딱 떨어지는 임계값"을
+   보여주는 자리에서는 0을 줘서 "10.0만/1.0만"이 아니라 "10만/1만"으로 읽히게 한다 — 실측값과
+   달리 임계값은 소수 자리가 정보가 아니라 잡음이다. */
+function formatMan(n,opts){
   if(n==null)return'—';
   if(n>=1000000)return Math.round(n/10000).toLocaleString('ko-KR')+'만';
-  if(n>=10000)return(n/10000).toFixed(1)+'만';
+  if(n>=10000)return(n/10000).toFixed((opts&&opts.decimals!=null)?opts.decimals:1)+'만';
   return Math.round(n).toLocaleString('ko-KR');
 }
 // 팔로워등급 기준표 툴팁 — FOLLOWER_RULES에서 생성(매출등급의 tierCriteriaText와 같은 방식)
 function followerCriteriaText(){
   return['팔로워등급 기준 (채널의 가장 최근 팔로워 수)']
-    .concat(FOLLOWER_RULES.map(r=>`${r.tier}: ${formatMan(r.min)} 이상`))
+    .concat(FOLLOWER_RULES.map(r=>`${r.tier}: ${formatMan(r.min,{decimals:0})} 이상`))
     .concat([`${FOLLOWER_FALLBACK}: 그 외`,`${TIER_FOLLOWER_UNSET}: 팔로워 수가 입력되지 않은 채널`,
       '입력·표시는 모두 만 단위(수동 입력값)'])
     .join('\n');
@@ -1998,12 +2001,32 @@ function wonShort(n){
   if(a>=10000)return Math.round(n/10000).toLocaleString('ko-KR')+'만';
   return won(n);
 }
-// 기준표 툴팁 — TIER_RULES에서 생성해 상수와 화면 문구가 어긋날 수 없게 함
+/* 등급 임계값 전용 금액 표기 — 억/천만으로 끊어 읽는다.
+   wonShort는 실측 금액용이라 5천만을 "5,000만"으로 내놓는데, 기준표에서는 자릿수를 세게 만들어
+   비교가 느려진다. 임계값은 늘 억·천만 단위로 딱 떨어지므로 그 단위로 보여주는 게 읽기 쉽다. */
+function tierAmountShort(n){
+  if(n==null)return'—';
+  const q=(v,d)=>(Math.round(v/d*10)/10).toLocaleString('ko-KR');
+  if(n>=100000000)return q(n,100000000)+'억';
+  if(n>=10000000)return q(n,10000000)+'천만';
+  return wonShort(n);
+}
+/* 매출등급 기준표 툴팁 — TIER_RULES에서 생성해 상수와 화면 문구가 어긋날 수 없게 함.
+   채널별 성과 표의 '매출등급' 헤더 ⓘ, 모달/등록 폼의 '등급 수동 지정'·'등급 상태' ⓘ가 전부
+   이 한 함수를 쓴다(문구를 손댈 일이 생기면 여기만 고치면 된다).
+   구성은 followerCriteriaText와 같은 순서로 맞춘다 — 헤더 → 등급별 임계값 → 나머지 → 보조 설명.
+   두 툴팁을 나란히 띄웠을 때 같은 자리에서 같은 종류의 정보를 읽게 하기 위한 것. */
 function tierCriteriaText(){
-  return['자동 산정 기준 (완료 + 매출 기록 건)']
-    .concat(TIER_RULES.map(r=>`${r.tier}: 평균 ${wonShort(r.avg)} 이상 또는 최대 ${wonShort(r.max)} 이상`))
-    .concat([`${TIER_FALLBACK}: 그 외`,'평균 기준과 최대 기준 중 더 높은 등급을 채택','수동 지정이 있으면 자동 산정보다 우선'])
+  return['매출등급 기준 (채널의 전체 기간 완료 건 매출, 필터와 무관)']
+    .concat(TIER_RULES.map(r=>`${r.tier}: 평균 ${tierAmountShort(r.avg)} 이상 또는 최대 ${tierAmountShort(r.max)} 이상`))
+    .concat([`${TIER_FALLBACK}: 그 외`,
+      '판정: 평균 기준 등급과 최대 기준 등급 중 높은 쪽',
+      `잠정: 완료 건이 1건일 때 / ${TIER_UNRATED}: 완료 건이 없을 때 / 수동: 수동 지정 값이 자동 산정을 덮어쓴 경우`])
     .join('\n');
+}
+// 매출·팔로워 두 기준을 한 번에 보여주는 자리(모달 '등급 상태' 박스)용 — 두 문구를 그대로 재사용한다
+function tierAndFollowerCriteriaText(){
+  return tierCriteriaText()+'\n\n'+followerCriteriaText();
 }
 
 function _tierByRule(value,key){
@@ -4324,7 +4347,7 @@ function _dashChannelCompare(a,b,key,dir){
    (예전엔 헤더에 id를 박아두고 렌더 때마다 title을 따로 덮어썼다). */
 const DASH_CHANNEL_COLS=[
   {key:'ch',           lb:'채널'},
-  {key:'tier',         lb:'매출등급',      info:'등급은 필터와 무관하게 채널의 전체 기간 실적으로 산정됩니다'},
+  {key:'tier',         lb:'매출등급',      info:()=>tierCriteriaText()},
   {key:'followerTier', lb:'팔로워등급',    info:()=>followerCriteriaText()},
   {key:'gap',          lb:'갭',            info:'매출등급 순위 − 팔로워등급 순위 (나노=0 … 메가=3). +면 팔로워 규모 대비 잘 파는 채널(고효율), −면 그 반대(저효율).'},
   {key:'followerCount',lb:'팔로워 수',     num:true, info:'셀을 클릭하면 바로 수정할 수 있습니다 — 저장하면 그 채널의 가장 최근 공구건 행에 기록됩니다'},
@@ -7226,8 +7249,18 @@ _renderLineOptions();
 ['mPoints','fPoints'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_pointsOptionsHtml();});
 // 등급 '수동 지정' 드롭다운 + 기준표 툴팁 — 기준 문구는 TIER_RULES에서 생성해 상수와 어긋나지 않게 함
 ['mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=_tierManualOptionsHtml();});
-['mTierHelp','fTierHelp','mTier','fTier'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=tierCriteriaText();});
-['mFollowerHelp','fFollowerHelp','mFollowers','fFollowers'].forEach(id=>{const el=document.getElementById(id);if(el)el.title=followerCriteriaText();});
+/* 모달·등록 폼의 등급 관련 ⓘ 툴팁을 한 번에 건다. 채널별 성과 표 헤더의 ⓘ와 **같은 함수**에서
+   문구를 받아오므로 표와 모달의 설명이 갈라질 수 없다.
+   함수로 묶어둔 이유: 붙이는 자리가 세 종류(매출/팔로워/둘 다)로 늘어나 한 줄씩 흩어두면
+   새 ⓘ를 추가할 때 빠뜨리기 쉽고, 이 상태 그대로는 테스트에서 호출해 볼 수도 없었다. */
+function _applyTierHelpTitles(){
+  const set=(ids,text)=>ids.forEach(id=>{const el=document.getElementById(id);if(el)el.title=text;});
+  set(['mTierHelp','fTierHelp','mTier','fTier'],tierCriteriaText());
+  set(['mFollowerHelp','fFollowerHelp','mFollowers','fFollowers'],followerCriteriaText());
+  // '등급 상태' 박스는 매출등급과 팔로워등급을 함께 보여주므로 두 기준표를 이어 붙여 띄운다
+  set(['mTierStateHelp','fTierStateHelp'],tierAndFollowerCriteriaText());
+}
+_applyTierHelpTitles();
 // 등급 전역 필터 옵션(전체 + 4등급) — 미분류는 선택지로 두지 않음(등급별 집계 대상이 아니므로)
 // 신규 인플루언서만 골라 보기 위해 '미산정'도 선택지에 둠
 // 등급 필터 2종의 옵션 — 매출축은 '미산정', 팔로워축은 '미입력'이 마지막 항목으로 붙음
