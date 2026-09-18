@@ -1633,7 +1633,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tiertip-2026-09-18-04';
+const DASHBOARD_VERSION='dash-tiertip-2026-09-18-05';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -2021,7 +2021,12 @@ function tierCriteriaText(){
     .concat(TIER_RULES.map(r=>`${r.tier}: 평균 ${tierAmountShort(r.avg)} 이상 또는 최대 ${tierAmountShort(r.max)} 이상`))
     .concat([`${TIER_FALLBACK}: 그 외`,
       '판정: 평균 기준 등급과 최대 기준 등급 중 높은 쪽',
-      `잠정: 완료 건이 1건일 때 / ${TIER_UNRATED}: 완료 건이 없을 때 / 수동: 수동 지정 값이 자동 산정을 덮어쓴 경우`])
+      /* 아래 세 줄을 "A / B / C" 한 줄로 붙이지 말 것. 브라우저 기본 title 툴팁은 폭을 CSS로
+         정할 수 없고 가장 긴 줄이 박스 너비를 결정하는데, 한 줄로 붙이면 62자가 되어 팔로워등급
+         툴팁(최장 26자)보다 두 배 넘게 넓은 상자가 떠 나란히 보면 따로 논다. */
+      '잠정: 완료 건이 1건일 때',
+      `${TIER_UNRATED}: 완료 건이 없을 때`,
+      '수동: 수동 지정 값이 자동 산정을 덮어쓴 경우'])
     .join('\n');
 }
 // 매출·팔로워 두 기준을 한 번에 보여주는 자리(모달 '등급 상태' 박스)용 — 두 문구를 그대로 재사용한다

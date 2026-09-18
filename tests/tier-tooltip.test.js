@@ -54,9 +54,12 @@ const lines = s => s.split('\n');
     check('마이크로: 평균 2천만 이상 또는 최대 2억 이상', L[3] === '마이크로: 평균 2천만 이상 또는 최대 2억 이상', L[3]);
     check('나노: 그 외', L[4] === '나노: 그 외', L[4]);
     check('판정 규칙 줄', L[5] === '판정: 평균 기준 등급과 최대 기준 등급 중 높은 쪽', L[5]);
-    check('잠정/미산정/수동 설명 줄',
-      L[6] === '잠정: 완료 건이 1건일 때 / 미산정: 완료 건이 없을 때 / 수동: 수동 지정 값이 자동 산정을 덮어쓴 경우', L[6]);
-    check('총 7줄', L.length === 7, L.length);
+    /* 이 셋은 "A / B / C" 한 줄로 붙이지 않는다 — 네이티브 title 툴팁의 폭은 가장 긴 줄이
+       정하는데, 붙이면 62자가 되어 팔로워등급 툴팁보다 두 배 넘게 넓어진다([6]이 그 폭을 지킨다). */
+    check('잠정은 별도 줄', L[6] === '잠정: 완료 건이 1건일 때', L[6]);
+    check('미산정은 별도 줄', L[7] === '미산정: 완료 건이 없을 때', L[7]);
+    check('수동은 별도 줄', L[8] === '수동: 수동 지정 값이 자동 산정을 덮어쓴 경우', L[8]);
+    check('총 9줄', L.length === 9, L.length);
     check('금액에 원 단위 원문(100000000 등)이 노출되지 않음', !/\d{7,}/.test(t), t.match(/\d{7,}/));
   }
 
@@ -73,7 +76,7 @@ const lines = s => s.split('\n');
     mega.avg = before.avg; mega.max = before.max;   // 원복
     check('원복하면 원래 문구', lines(ctx.tierCriteriaText())[1] === '메가: 평균 1억 이상 또는 최대 10억 이상');
     // 등급 줄 수도 상수 길이를 따라간다
-    check('등급 줄 수 = TIER_RULES 길이', lines(ctx.tierCriteriaText()).length === X.TIER_RULES.length + 4,
+    check('등급 줄 수 = TIER_RULES 길이', lines(ctx.tierCriteriaText()).length === X.TIER_RULES.length + 6,
       { lines: lines(ctx.tierCriteriaText()).length, rules: X.TIER_RULES.length });
     check('나노(폴백)는 상수에서 옴', ctx.tierCriteriaText().includes(`${X.TIER_FALLBACK}: 그 외`));
     check('미산정 라벨도 상수에서 옴', ctx.tierCriteriaText().includes(`${X.TIER_UNRATED}: 완료 건이 없을 때`));
@@ -116,7 +119,13 @@ const lines = s => s.split('\n');
   console.log('\n[6] 두 툴팁의 구성이 같다');
   {
     const a = lines(ctx.tierCriteriaText()), b = lines(ctx.followerCriteriaText());
-    check('줄 수가 같음(7줄)', a.length === b.length && a.length === 7, { tier: a.length, fol: b.length });
+    /* 네이티브 title 툴팁은 폰트·줄 간격·너비를 CSS로 정할 수 없다(브라우저/OS가 그린다).
+       같은 메커니즘이라 폰트·줄 간격은 저절로 같고, 우리가 실제로 통제할 수 있는 건 **폭**뿐인데
+       그 폭은 가장 긴 줄이 정한다. 두 상자를 나란히 띄웠을 때 따로 놀지 않도록 최장 줄을 맞춘다. */
+    const maxLen = L => Math.max(...L.map(s => s.length));
+    check('두 툴팁의 최장 줄 길이가 비슷함(폭이 따로 놀지 않게)',
+      Math.abs(maxLen(a) - maxLen(b)) <= 12, { tier: maxLen(a), fol: maxLen(b) });
+    check('매출등급에 지나치게 긴 줄이 없음(40자 이하)', maxLen(a) <= 40, maxLen(a));
     check('첫 줄은 둘 다 "…등급 기준 (…)"', /^매출등급 기준 \(.+\)$/.test(a[0]) && /^팔로워등급 기준 \(.+\)$/.test(b[0]));
     check('2~4줄은 둘 다 "등급: … 이상"', [1, 2, 3].every(i => /^[^:]+: .+ 이상$/.test(a[i]) && /^[^:]+: .+ 이상$/.test(b[i])));
     check('5줄은 둘 다 폴백("그 외")', a[4].endsWith(': 그 외') && b[4].endsWith(': 그 외'), [a[4], b[4]]);
