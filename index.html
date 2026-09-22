@@ -803,7 +803,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
           <span class="dash-period-summary" id="dashPeriodSummary"></span>
           <label style="display:flex;align-items:center;gap:8px">
             <span style="font-size:11px;font-weight:700;color:var(--text-2)">인플루언서</span>
-            <input class="dash-filter-input" id="dashInfluencerInput" type="text" placeholder="채널명 검색(예: 러브지나)" autocomplete="off" oninput="_onDashInfluencerInput(this.value)" onfocus="_onDashInfluencerFocus()" onkeydown="_onDashInfluencerKeydown(event)">
+            <input class="dash-filter-input" id="dashInfluencerInput" type="text" placeholder="채널명 검색(예: 러브지나)" autocomplete="off" oninput="_onInfSearchInput('dash',this.value)" onfocus="_onInfSearchFocus('dash')" onkeydown="_onInfSearchKeydown('dash',event)">
           </label>
           <span class="dash-filter-chip" id="dashInfluencerChip" style="display:none"></span>
           <label style="display:flex;align-items:center;gap:8px">
@@ -1085,7 +1085,13 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
             <button class="ym-mini-btn" onclick="ymSelectAll('months')">전체</button>
             <button class="ym-mini-btn" onclick="ymSelectNone('months')">해제</button>
           </div>
+          <div class="ym-filter-group">
+            <span class="ym-filter-lbl">인플루언서</span>
+            <input class="dash-filter-input" id="salesInfluencerInput" type="text" placeholder="채널명 검색(예: 러브지나)" autocomplete="off" oninput="_onInfSearchInput('sales',this.value)" onfocus="_onInfSearchFocus('sales')" onkeydown="_onInfSearchKeydown('sales',event)">
+          </div>
         </div>
+        <!-- 자동완성 팝오버 — 대시보드 것과 같은 이유로 스크립트에서 body 직속으로 옮겨짐 -->
+        <div class="ym-dd-pop" id="salesInfluencerPop"></div>
         <div class="ym-chips" id="ymChips"></div>
       </div>
 
@@ -1633,7 +1639,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 // 배포본 확인용 버전 문자열 — 프론트를 수정할 때마다(순수 프론트 전용 변경 포함) 바꿔서, 콘솔에서
 // "이 브라우저가 최신 프론트를 받았는지"를 바로 확인 가능. apps-script.js의 SCRIPT_VERSION과는
 // 더 이상 짝을 맞추지 않음 — 아래 REQUIRED_SCRIPT_VERSION이 그 역할을 대신함(이유는 그 주석 참고).
-const DASHBOARD_VERSION='dash-tiertip-2026-09-18-05';
+const DASHBOARD_VERSION='dash-infsearch-2026-09-22-01';
 console.log('[dashboard] 프론트 버전:',DASHBOARD_VERSION);
 /* 임베드 여부 단일 창구 — 화면 숨김은 head에서 붙인 html.embed 클래스가 CSS로 처리하고,
    여기서는 JS 동작 분기가 필요할 때 이 상수를 본다(둘의 판정 기준은 같아야 함). */
@@ -2926,10 +2932,10 @@ Object.keys(YM_DD_POP_MAP).forEach(ddId=>{
   if(pop)document.body.appendChild(pop);
 });
 // 인플루언서 자동완성 팝오버도 같은 이유(.card{isolation:isolate} 클리핑)로 body 직속으로 이동
-{
-  const infPop=document.getElementById('dashInfluencerPop');
+['dashInfluencerPop','salesInfluencerPop'].forEach(id=>{
+  const infPop=document.getElementById(id);
   if(infPop)document.body.appendChild(infPop);
-}
+});
 
 // ── 인플루언서(채널명) 전역 필터 — 자동완성 드롭다운 ──
 // 후보 목록은 절대 하드코딩하지 않고 항상 "현재 로드된 DATA"에서 매번 다시 뽑음(중복 제거+가나다순).
@@ -2940,33 +2946,52 @@ function _dashInfluencerAvailable(){
   return[...new Set(DATA.filter(d=>d.start).map(d=>(d.ch||d.influencer||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
 }
 function _dashInfluencerNorm(s){return String(s||'').toLowerCase().replace(/\s+/g,'');} // 대소문자·공백 무시 매칭용
-function _onDashInfluencerInput(val){
+/* 화면 두 곳(대시보드 상단 필터 / 품목별 실적 기간 필터)이 이 컴포넌트 하나를 공유한다.
+   scope마다 다른 건 입력창·팝오버의 id와 "고른 채널을 어디에 담고 무엇을 다시 그릴지"뿐이라
+   그 둘만 아래 레지스트리에 두고, 나머지(후보 추출·부분일치 매칭·팝오버 렌더·위치 계산·
+   Enter/Esc 처리)는 전부 공용 함수가 담당한다. 새 화면에 검색을 붙일 땐 여기 한 항목만 추가.
+   후보 목록은 두 scope 모두 _dashInfluencerAvailable() — 즉 "현재 로드된 전체 DATA" 기준이다
+   (품목/기간으로 좁혀도 선택지가 사라지지 않게 하려는 기존 설계를 그대로 따름). */
+const INF_SEARCH={
+  dash:{
+    input:'dashInfluencerInput',pop:'dashInfluencerPop',
+    set(ch){DASH.channel=ch;_renderDashInfluencerChip();renderDashboard();}
+  },
+  sales:{
+    input:'salesInfluencerInput',pop:'salesInfluencerPop',
+    // 칩은 renderYMFilterBar가 기간 칩과 같은 줄에 그리고, KPI(renderSalesKpi)와 실적 상세
+    // 표는 salesYMMatch를 다시 태우며 갱신됨 — 셋 다 renderTbl 안에 있어 이 한 번이면 충분
+    set(ch){SALES_YM.channel=ch;renderTbl();}
+  }
+};
+function _onInfSearchInput(scope,val){
   const q=_dashInfluencerNorm(val);
   const all=_dashInfluencerAvailable();
   const matches=q?all.filter(ch=>_dashInfluencerNorm(ch).includes(q)):all;
-  _renderDashInfluencerPop(matches.slice(0,30));
+  _renderInfSearchPop(scope,matches.slice(0,30));
 }
-function _onDashInfluencerFocus(){
-  _onDashInfluencerInput(document.getElementById('dashInfluencerInput').value);
+function _onInfSearchFocus(scope){
+  _onInfSearchInput(scope,document.getElementById(INF_SEARCH[scope].input).value);
 }
-function _onDashInfluencerKeydown(ev){
-  if(ev.key==='Escape'){document.getElementById('dashInfluencerPop').classList.remove('open');return;}
+function _onInfSearchKeydown(scope,ev){
+  const popId=INF_SEARCH[scope].pop;
+  if(ev.key==='Escape'){document.getElementById(popId).classList.remove('open');return;}
   if(ev.key!=='Enter')return;
   ev.preventDefault();
-  const first=document.querySelector('#dashInfluencerPop .dash-inf-opt[data-ch]');
-  if(first)_selectDashInfluencer(first.dataset.ch);
+  const first=document.querySelector('#'+popId+' .dash-inf-opt[data-ch]');
+  if(first)_selectInfSearch(scope,first.dataset.ch);
 }
-function _renderDashInfluencerPop(list){
-  const pop=document.getElementById('dashInfluencerPop');
+function _renderInfSearchPop(scope,list){
+  const pop=document.getElementById(INF_SEARCH[scope].pop);
   pop.innerHTML=list.length
-    ?list.map(ch=>`<div class="dash-inf-opt" data-ch="${_escAttr(ch)}" onclick="_selectDashInfluencer(this.dataset.ch)">${ch}</div>`).join('')
+    ?list.map(ch=>`<div class="dash-inf-opt" data-ch="${_escAttr(ch)}" onclick="_selectInfSearch('${scope}',this.dataset.ch)">${ch}</div>`).join('')
     :'<div class="dash-inf-opt-empty">일치하는 채널이 없습니다</div>';
   pop.classList.add('open');
-  _positionDashInfluencerPop();
+  _positionInfSearchPop(scope);
 }
-function _positionDashInfluencerPop(){
-  const input=document.getElementById('dashInfluencerInput');
-  const pop=document.getElementById('dashInfluencerPop');
+function _positionInfSearchPop(scope){
+  const input=document.getElementById(INF_SEARCH[scope].input);
+  const pop=document.getElementById(INF_SEARCH[scope].pop);
   const r=input.getBoundingClientRect();
   const margin=4,vw=window.innerWidth,vh=window.innerHeight;
   pop.style.minWidth=r.width+'px';
@@ -2978,14 +3003,12 @@ function _positionDashInfluencerPop(){
   pop.style.top=top+'px';
   pop.style.left=left+'px';
 }
-function _selectDashInfluencer(ch){
-  DASH.channel=ch;
-  const input=document.getElementById('dashInfluencerInput');
-  input.value='';
-  document.getElementById('dashInfluencerPop').classList.remove('open');
-  _renderDashInfluencerChip();
-  renderDashboard();
+function _selectInfSearch(scope,ch){
+  document.getElementById(INF_SEARCH[scope].input).value='';
+  document.getElementById(INF_SEARCH[scope].pop).classList.remove('open');
+  INF_SEARCH[scope].set(ch);
 }
+function _clearInfSearch(scope){INF_SEARCH[scope].set(null);}
 /* ── 전역 품목 필터 ──────────────────────────────────────────────────────────
    값 형식: 'all' | 'line:<라인키>'(제품 라인 전체) | 'fine:<모델키>'(세부 모델).
    옵션은 PRODUCT_TAXONOMY/PRODUCT_LINE_LABELS 순서를 따르되 실제 데이터에 있는 것만 노출하고,
@@ -3065,16 +3088,11 @@ function _onDashFollowerTierFilterChange(){
   DASH.followerTier=document.getElementById('dashFollowerTierFilter').value;
   renderDashboard();
 }
-function _clearDashInfluencerFilter(){
-  DASH.channel=null;
-  _renderDashInfluencerChip();
-  renderDashboard();
-}
 function _renderDashInfluencerChip(){
   const chip=document.getElementById('dashInfluencerChip');
   if(DASH.channel){
     chip.style.display='inline-flex';
-    chip.innerHTML=`인플루언서: ${DASH.channel} <button type="button" onclick="_clearDashInfluencerFilter()" title="필터 해제">×</button>`;
+    chip.innerHTML=`인플루언서: ${DASH.channel} <button type="button" onclick="_clearInfSearch('dash')" title="필터 해제">×</button>`;
   } else {
     chip.style.display='none';
     chip.innerHTML='';
@@ -3117,14 +3135,17 @@ function toggleYmDd(ddId,ev){
 function _repositionOpenYmDd(){
   const openDd=document.querySelector('.ym-dd.open');
   if(openDd)_positionYmDdPop(openDd);
-  const infPop=document.getElementById('dashInfluencerPop');
-  if(infPop&&infPop.classList.contains('open'))_positionDashInfluencerPop();
+  Object.keys(INF_SEARCH).forEach(scope=>{
+    const infPop=document.getElementById(INF_SEARCH[scope].pop);
+    if(infPop&&infPop.classList.contains('open'))_positionInfSearchPop(scope);
+  });
 }
 window.addEventListener('resize',_repositionOpenYmDd);
 window.addEventListener('scroll',_repositionOpenYmDd,true);
 document.addEventListener('click',ev=>{
   if(ev.target.closest('.ym-dd-pop'))return; // 패널 내부(체크박스/전체 선택·해제 버튼) 클릭은 닫지 않음
-  if(ev.target.id==='dashInfluencerInput')return; // 입력창 클릭 자체는 focus로 이미 열었으니 바로 닫지 않음
+  // 입력창 클릭 자체는 focus로 이미 열었으니 바로 닫지 않음(두 scope 모두)
+  if(Object.keys(INF_SEARCH).some(sc=>ev.target.id===INF_SEARCH[sc].input))return;
   _closeAllYmDd();
 });
 
@@ -4094,7 +4115,7 @@ function openGapCellPop(ev,followerTier,revTier){
   pop.style.top=Math.max(8,Math.min(top,vh-8-ph))+'px';
   pop.style.left=Math.max(8,Math.min(r.left,vw-8-pw))+'px';
 }
-function _gapPickChannel(ch){closeGapCellPop();_selectDashInfluencer(ch);}
+function _gapPickChannel(ch){closeGapCellPop();_selectInfSearch('dash',ch);}
 document.addEventListener('click',e=>{
   const pop=document.getElementById('dashGapCellPop');
   if(pop&&pop.classList.contains('open')&&!pop.contains(e.target))closeGapCellPop();
@@ -5159,12 +5180,18 @@ function toggleCodeDd(el){
 document.addEventListener('click',()=>{document.querySelectorAll('.cd-dd.open').forEach(x=>x.classList.remove('open'));});
 
 /* ── 브랜드별 실적: 연도/월 다중선택 필터 ── */
-const SALES_YM={years:new Set(),months:new Set(),_initialized:false};
+// channel: 인플루언서 검색으로 고른 채널명(null=전체). 페이지 전환 때만 초기화되고
+// 연·월 체크박스나 모델 탭을 바꿔도 유지됨(navSales 참고).
+const SALES_YM={years:new Set(),months:new Set(),channel:null,_initialized:false};
 function salesAvailableYears(){
   return[...new Set(DATA.filter(d=>d.start).map(d=>yearOf(d.start)))].sort((a,b)=>a-b);
 }
+// 연·월·인플루언서를 AND로 판정. KPI(renderSalesKpi)와 실적 상세 표(renderTbl)가 둘 다
+// filteredProd(...).filter(salesYMMatch) 한 경로만 타므로, 필터가 한쪽에만 먹는 일이 없다.
+// 모델 탭(ST.model)은 앞단 filteredProd가 이미 걸러낸 뒤라 여기선 다루지 않음.
 function salesYMMatch(d){
   if(!d.start)return false;
+  if(SALES_YM.channel&&_dashInfluencerNorm(d.ch||d.influencer||'')!==_dashInfluencerNorm(SALES_YM.channel))return false;
   return SALES_YM.years.has(yearOf(d.start))&&SALES_YM.months.has(monthOf(d.start));
 }
 function ymSelectAll(kind){
@@ -5197,10 +5224,15 @@ function renderYMFilterBar(){
   else[...SALES_YM.years].sort((a,b)=>a-b).forEach(y=>chips.push({type:'years',val:y,lbl:y+'년'}));
   if(SALES_YM.months.size===12)chips.push({all:true,lbl:'월: 전체'});
   else[...SALES_YM.months].sort((a,b)=>a-b).forEach(m=>chips.push({type:'months',val:m,lbl:m+'월'}));
-  document.getElementById('ymChips').innerHTML=chips.map(c=>c.all?
+  const ymChipHtml=chips.map(c=>c.all?
     `<span class="ym-chip ym-chip-all">${c.lbl}</span>`:
     `<span class="ym-chip">${c.lbl}<button onclick="toggleYM('${c.type}',${c.val},false)">✕</button></span>`
   ).join('');
+  // 인플루언서 칩은 기간 칩과 같은 줄 맨 끝에. 해제 버튼은 옆 칩들과 같은 ✕로 통일.
+  const infChipHtml=SALES_YM.channel
+    ?`<span class="ym-chip">인플루언서: ${_escHtml(SALES_YM.channel)}<button onclick="_clearInfSearch('sales')" title="필터 해제">✕</button></span>`
+    :'';
+  document.getElementById('ymChips').innerHTML=ymChipHtml+infChipHtml;
 }
 
 /* 실적 상세 표 상단 KPI (연도/월 필터 반영) */
@@ -7142,6 +7174,11 @@ function navSales(el,prod){
   navPage('sales',el);
   ST.prod=prod;
   ST.model='all';
+  // 인플루언서 검색은 페이지를 옮길 때마다 초기화 — 모델 탭·연월 체크박스 변경은 render()/
+  // renderTbl()만 거쳐 이 함수를 타지 않으므로 같은 페이지 안에서는 그대로 유지된다.
+  SALES_YM.channel=null;
+  const infInput=document.getElementById('salesInfluencerInput');
+  if(infInput)infInput.value='';
   renderSubTabs(prod);
   render();
   /* ⚠ 반드시 'product-' 접두어를 붙일 것. 예전엔 슬러그만 써서 주소창에 #더플렌더가 찍혔는데,
