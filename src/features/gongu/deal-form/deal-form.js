@@ -66,13 +66,18 @@ function fRecalcComposition(){
   });
 }
 
-/* opts(전부 선택) — hash: 모달이 열린 동안 주소에 둘 해시(기본 'new-deal'. #gongu/new로 들어온 경우 그 주소를 유지) */
+/* opts(전부 선택) — 미리 채울 기본값. 전부 모달 안에서 자유롭게 바꿀 수 있다(잠그는 칸 없음).
+     line   품목군 key(더플렌더…) — 품목별 실적에서 열 때
+     model  제품 드롭다운 value(더플렌더PRO…) — 그 페이지에서 모델 탭이 골라져 있을 때
+     start  시작일 'YYYY-MM-DD' — 캘린더 날짜 칸에서 열 때(마감일도 같은 날로 시작 — 오늘 기본값과 같은 규칙)
+     hash   모달이 열린 동안 주소에 둘 해시(기본 'new-deal'. #gongu/new로 들어온 경우 그 주소를 유지) */
 function openDealForm(opts){
   opts=opts||{};
   // 오늘 날짜를 기본값으로
   const today=new Date().toISOString().split('T')[0];
-  document.getElementById('fStart').value=today;
-  document.getElementById('fEnd').value=today;
+  const start=opts.start||today;
+  document.getElementById('fStart').value=start;
+  document.getElementById('fEnd').value=start;
   onDateChange();
   _formCodes=[''];
   renderFormCodeList();
@@ -89,6 +94,15 @@ function openDealForm(opts){
   fRecalcComposition();
   document.getElementById('fCopyNotice').style.display='none';
   _initLinkAuto('f'); // 새 폼이므로 자동/수동 상태도 초기화
+  // 품목군 → 제품 순서를 지킬 것: onLineChange가 제품 드롭다운 옵션을 채워야 모델 값이 실제로 선택된다
+  if(opts.line){
+    document.getElementById('fLine').value=opts.line;
+    onLineChange();
+    if(opts.model&&LINE_HAS_MODELS[opts.line]){
+      document.getElementById('fModel').value=opts.model;
+      onModelChange();
+    }
+  }
   document.getElementById('dealOv').classList.add('open');
   _setHash(opts.hash||'new-deal');
 }

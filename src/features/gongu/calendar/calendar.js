@@ -2,6 +2,9 @@
 /* 공구 캘린더 — 연/월 접기 상태, 월 그리드·레인 배치, 프로모션 행. */
 
 /* ── 공구 캘린더 페이지 ── */
+// 우상단 액션 — 기존 등록 모달을 그대로 연다(시작일 기본값은 오늘, 날짜 칸으로 열면 그 날짜)
+renderPageHeaderActions('calPageActions',[{label:'＋ 새 공구건 등록',onclick:'openDealForm()'}]);
+
 // 제품 그룹 키/라벨/막대색 (더플렌더는 모델별로 구분)
 function calProductKey(p){
   if(isFlender(p))return'플렌더'+flenderModel(p);
@@ -183,7 +186,10 @@ function renderCalMonth(y,m){
     const isToday=dt.getTime()===today.getTime();
     const dow=dt.getDay();
     const outMonth=dt.getMonth()+1!==m;
-    hdC+=`<div class="cal-date2${dow===6?' sat':dow===0?' sun':''}${isToday?' today':''}${outMonth?' om':''}">${dt.getDate()}</div>`;
+    // 날짜 칸을 누르면 그 날짜를 시작일로 새 공구건 등록(2026-09-25) — 이 칸엔 원래 클릭 동작이 없었다
+    const ymd=`${dt.getFullYear()}-${_pad2(dt.getMonth()+1)}-${_pad2(dt.getDate())}`;
+    hdC+=`<div class="cal-date2${dow===6?' sat':dow===0?' sun':''}${isToday?' today':''}${outMonth?' om':''}"`+
+      ` onclick="openDealForm({start:'${ymd}'})" title="${dt.getMonth()+1}월 ${dt.getDate()}일 시작으로 새 공구건 등록">${dt.getDate()}</div>`;
   });
 
   const monthStart=gridDays[0],monthEnd=gridDays[gridDays.length-1];

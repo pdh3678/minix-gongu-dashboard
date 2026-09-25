@@ -22,7 +22,8 @@ const SUITES = [
   ['table-header.test.js','표 헤더 공용 컴포넌트 — 두 줄 헤더(subLabel)와 아이콘 위치'],
   ['tier-tooltip.test.js', '등급 기준표 툴팁 — 상수에서 파생, 임계값 표기, 표/모달 공유'],
   ['influencer-filter.test.js','인플루언서 검색 — 대시보드와 품목 페이지가 같은 컴포넌트, KPI·표 동시 적용'],
-  ['nav-structure.test.js', '사이드바·라우팅 — 메뉴 구조, 접기 저장, 기존 해시 유지 + 신규 해시, 임베드']
+  ['nav-structure.test.js', '사이드바·라우팅 — 메뉴 구조, 접기 저장, 기존 해시 유지 + 신규 해시, 임베드'],
+  ['deal-form-prefill.test.js','새 공구건 등록 버튼 — PageHeaderActions, 품목·모델·날짜 미리 채우기, #gongu/new']
 ];
 
 let failed = 0;

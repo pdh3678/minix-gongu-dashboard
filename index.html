@@ -45,6 +45,10 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .page{display:none}
 .page.active{display:flex}
 .page-placeholder{padding:70px 20px;text-align:center;color:var(--text-3);font-size:13px;line-height:1.7}
+/* 페이지 머리 줄(탭 등) + 오른쪽 끝 액션 버튼(PageHeaderActions) */
+.page-head-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.page-action-btn{padding:6px 14px;font-size:12px;white-space:nowrap}
 
 /* ── 공구 캘린더 페이지 ── */
 .cal-year-hd{background:var(--navy);color:#fff;padding:7px 14px;font-size:12px;font-weight:800;border-radius:6px;margin:16px 0 6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:7px}
@@ -67,6 +71,9 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .cal-date2{text-align:center;font-size:10px;color:var(--text-2);background:var(--surface);border-right:1px solid var(--border);border-bottom:2px solid var(--border);padding:4px 0;font-variant-numeric:tabular-nums}
 .cal-date2.sat{color:#1D4ED8}.cal-date2.sun{color:#B91C1C}.cal-date2.om{opacity:.35}
 .cal-date2.today{background:var(--minix);color:#fff;font-weight:800;border-radius:3px}
+/* 날짜 칸을 누르면 그 날짜를 시작일로 새 공구건 등록(calendar.js) */
+.cal-date2{cursor:pointer}
+.cal-date2:not(.today):hover{background:var(--minix-lt);color:var(--minix);font-weight:700}
 .cal-row{border-bottom:1px solid var(--border);min-height:30px}
 .cal-row:last-child{border-bottom:none}
 .cal-rowlbl{display:flex;align-items:center;gap:5px;padding:4px 8px;font-size:11px;font-weight:600;background:var(--surface-2);border-right:1px solid var(--border);position:sticky;z-index:5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -814,6 +821,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
     <!-- ① 공구 캘린더 페이지 -->
     <div class="main page" id="page-calendar">
+      <!-- 우상단 액션(＋ 새 공구건 등록) — PageHeaderActions가 채움(calendar.js) -->
+      <div class="page-head-row"><div id="calPageActions"></div></div>
       <div class="card">
         <div class="card-hd">공구 캘린더 <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="openPromoForm()">＋ 프로모션 추가</button></div>
         <div id="calPageBody"></div>
@@ -1105,7 +1114,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 
     <!-- ③ 브랜드별 실적 페이지 — 기존 표 임시 배치, 2단계에서 재설계 예정 -->
     <div class="main page" id="page-sales">
-      <div class="subtabs" id="subTabs"></div>
+      <!-- 모델 탭(전체/PRO/MAX/mini/NEXT)과 같은 줄 오른쪽 끝에 액션 — 탭이 없는 품목(더 슬림·더 에어드라이)도 버튼은 같은 자리 -->
+      <div class="page-head-row">
+        <div class="subtabs" id="subTabs"></div>
+        <div id="salesPageActions"></div>
+      </div>
 
       <div class="card">
         <div class="card-hd">기간 필터</div>
@@ -1698,6 +1711,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="src/features/gongu/analysis/achievement.js"></script>
 <script src="src/features/gongu/analysis/seasonality.js"></script>
 <script src="src/shared/components/sortable-th.js"></script>
+<script src="src/shared/components/page-header-actions.js"></script>
 <script src="src/features/gongu/sales/sales-table.js"></script>
 <script src="src/shared/components/form-errors.js"></script>
 <script src="src/features/gongu/pending/pending-list.js"></script>

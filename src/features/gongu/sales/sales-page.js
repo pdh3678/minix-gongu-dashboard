@@ -1,6 +1,25 @@
 'use strict';
 /* 품목별 실적 페이지 — 모델 탭과 페이지 진입(navSales). */
 
+// 모델 탭 줄 오른쪽 끝 액션 — 네 품목 페이지가 같은 #page-sales를 쓰므로 한 번만 붙이고, 무엇을 미리
+// 채울지는 누르는 순간의 ST(품목·모델 탭)로 정한다.
+renderPageHeaderActions('salesPageActions',[{label:'＋ 새 공구건 등록',onclick:'_openDealFormFromSales()'}]);
+/* 품목별 실적에서 연 등록 모달 — 보고 있던 품목군을, 모델 탭이 골라져 있으면 그 모델까지 미리 고른다.
+   모두 기본값일 뿐이라 모달에서 품목군·제품을 바꾸거나 다른 품목의 상품코드를 추가해도 된다. */
+function _openDealFormFromSales(){
+  const line=PRODUCT_LINES.find(l=>l.st===ST.prod);
+  const lineKey=line?line.key:'';
+  openDealForm({line:lineKey,model:_dealFormModelForTab(lineKey,ST.model)});
+}
+// 모델 탭 값(PRO/MAX/기본…) → 등록 폼 제품 드롭다운 value(더플렌더PRO…). 탭이 '전체'거나 없으면 ''.
+// 둘 다 PRODUCT_CATALOG의 같은 모델 항목(tab/option)에서 오므로 따로 대응표를 두지 않는다.
+function _dealFormModelForTab(lineKey,tab){
+  if(!lineKey||!tab||tab==='all')return'';
+  const line=PRODUCT_CATALOG.find(l=>l.key===lineKey);
+  const m=line&&line.models.find(x=>x.gongu&&x.tab===tab&&x.option);
+  return m?m.option:'';
+}
+
 // 모델 탭 구성(PRODUCT_MODEL_TABS)은 PRODUCT_CATALOG에서 파생 — 탭이 없는 제품(슬림/에어드라이)은 subTabs가 숨겨짐
 function renderSubTabs(prod){
   const subTabs=document.getElementById('subTabs');
