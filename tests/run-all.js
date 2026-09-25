@@ -21,7 +21,8 @@ const SUITES = [
   ['relogin.test.js',     '세션 만료 → 재로그인 — 오버레이가 반드시 걷히고 보던 페이지로 복귀'],
   ['table-header.test.js','표 헤더 공용 컴포넌트 — 두 줄 헤더(subLabel)와 아이콘 위치'],
   ['tier-tooltip.test.js', '등급 기준표 툴팁 — 상수에서 파생, 임계값 표기, 표/모달 공유'],
-  ['influencer-filter.test.js','인플루언서 검색 — 대시보드와 품목 페이지가 같은 컴포넌트, KPI·표 동시 적용']
+  ['influencer-filter.test.js','인플루언서 검색 — 대시보드와 품목 페이지가 같은 컴포넌트, KPI·표 동시 적용'],
+  ['nav-structure.test.js', '사이드바·라우팅 — 메뉴 구조, 접기 저장, 기존 해시 유지 + 신규 해시, 임베드']
 ];
 
 let failed = 0;

@@ -66,7 +66,9 @@ function fRecalcComposition(){
   });
 }
 
-function openDealForm(){
+/* opts(전부 선택) — hash: 모달이 열린 동안 주소에 둘 해시(기본 'new-deal'. #gongu/new로 들어온 경우 그 주소를 유지) */
+function openDealForm(opts){
+  opts=opts||{};
   // 오늘 날짜를 기본값으로
   const today=new Date().toISOString().split('T')[0];
   document.getElementById('fStart').value=today;
@@ -88,7 +90,7 @@ function openDealForm(){
   document.getElementById('fCopyNotice').style.display='none';
   _initLinkAuto('f'); // 새 폼이므로 자동/수동 상태도 초기화
   document.getElementById('dealOv').classList.add('open');
-  _setHash('new-deal');
+  _setHash(opts.hash||'new-deal');
 }
 /* 신규 등록이 실패했을 때, 사용자가 방금 친 값을 그대로 담아 등록 폼을 다시 연다 (2026-09-15).
    closeDealForm()이 입력칸을 전부 비우므로 낙관적 반영 후에는 폼이 빈 상태다. 여기서 되돌려

@@ -1,4 +1,4 @@
-<title>MINIX 공동구매 대시보드</title>
+<title>미닉스 오프라인&amp;특수파트 대시보드</title>
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -11,9 +11,6 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .hdr{background:var(--navy);color:#fff;padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .hdr-left{display:flex;align-items:center;gap:12px;min-width:0}
 .hdr-title{font-size:15px;font-weight:700;letter-spacing:-.3px;white-space:nowrap}
-.hdr-title span{opacity:.5;font-weight:400}
-.hdr-sep{width:1px;height:18px;background:rgba(255,255,255,.2);flex-shrink:0}
-.hdr-sub{font-size:12px;opacity:.6;white-space:nowrap}
 .hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .conn-pill{font-size:11px;padding:3px 9px;border-radius:99px;white-space:nowrap;transition:background .2s;cursor:pointer}
 .cp-sample{background:rgba(255,255,255,.1);color:rgba(255,255,255,.65)}
@@ -166,9 +163,22 @@ html.embed .login-logo{font-size:17px;margin-bottom:18px} /* iframe은 대개 �
 .sb-sec-hd{width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;border:none;background:rgba(255,255,255,.04);color:#EDEFF3;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:4px}
 .sb-sec-hd:hover{background:rgba(255,255,255,.08)}
 .sb-chev{font-size:9px;color:#8B93A7;transition:transform .15s;flex-shrink:0}
-.sb-sec.closed .sb-chev{transform:rotate(-90deg)}
+/* 그룹이 중첩되므로(공동구매 > 품목별 실적) 자식 결합자로 자기 머리·목록만 건드린다 — 자손 선택자면
+   바깥 그룹을 접었다 펼 때 안쪽 그룹의 화살표까지 같이 돌아간다 */
+.sb-sec.closed>.sb-sec-hd .sb-chev{transform:rotate(-90deg)}
 .sb-items{display:flex;flex-direction:column;gap:1px;margin-bottom:6px}
-.sb-sec.closed .sb-items{display:none}
+.sb-sec.closed>.sb-items{display:none}
+/* 그룹 안의 하위 그룹 — 머리는 일반 항목처럼 보이고(아이콘+글자), 하위 항목은 한 단계 들여쓴다 */
+.sb-sub{margin-top:0}
+.sb-sub>.sb-sec-hd{justify-content:flex-start;gap:10px;background:none;color:#B7BBC6;font-size:13px;font-weight:600;padding:8px 10px 8px 13px;margin-bottom:2px}
+.sb-sub>.sb-sec-hd:hover{background:rgba(255,255,255,.06);color:#fff}
+.sb-sub>.sb-sec-hd .sb-chev{margin-left:auto}
+.sb-sub>.sb-items{padding-left:12px;margin-bottom:2px}
+/* 메뉴 옆 건수 배지(미기입 목록: 종료됐는데 실적 미기입) — 0건이면 스크립트가 숨긴다 */
+.sb-badge{margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:9px;background:#DC2626;color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-variant-numeric:tabular-nums}
+.app-shell.sb-collapsed .sb-sub>.sb-items{padding-left:0} /* 아이콘만 남는 접힘 상태에선 들여쓰기가 정렬만 깨뜨림 */
+.app-shell.sb-collapsed .sb-item{position:relative}
+.app-shell.sb-collapsed .sb-badge{position:absolute;top:1px;right:6px;min-width:16px;height:16px;padding:0 4px;font-size:9px}
 .app-shell.sb-collapsed .sb-sec-hd{display:none}
 .app-shell.sb-collapsed .sb-items{display:flex!important}
 
@@ -682,8 +692,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 </div>
 <div id="loginScreen">
   <div class="login-card">
-    <div class="login-logo">Minix <em>공동구매 대시보드</em></div>
-    <div class="login-desc">미닉스 브랜드 공구 관리<br>주식회사 앳홈 Google 계정으로 로그인하세요</div>
+    <div class="login-logo">Minix <em>오프라인&amp;특수파트</em></div>
+    <div class="login-desc">미닉스 오프라인&amp;특수파트 대시보드<br>주식회사 앳홈 Google 계정으로 로그인하세요</div>
     <div class="login-btn-wrap">
       <div id="gisBtn"></div>
     </div>
@@ -714,25 +724,44 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       <img class="sb-logo-img" src="Minix_BI_White_Transparency.png" alt="MINIX">
       <button class="sb-toggle" title="사이드바 접기" onclick="toggleSidebar()">☰</button>
     </div>
+    <!-- 그룹(.sb-sec)의 data-sec는 접기 상태를 localStorage에 저장하는 키 — 바꾸면 사용자가 접어둔 상태가 풀린다.
+         data-page 값은 라우터의 PAGE_ID_TO_HASH 키와 같아야 한다(src/shared/router.js). -->
     <nav class="sb-nav">
-      <div class="sb-item-solo" data-page="calendar" onclick="navPage('calendar',this)">
-        <span class="sb-ic">📅</span><span class="sb-label">공구 캘린더</span>
+      <div class="sb-item-solo" data-page="home" onclick="navPage('home',this)">
+        <span class="sb-ic">🏠</span><span class="sb-label">파트 홈</span>
       </div>
-      <div class="sb-item-solo active" data-page="dashboard" onclick="navPage('dashboard',this)">
-        <span class="sb-ic">📊</span><span class="sb-label">대시보드</span>
-      </div>
-      <div class="sb-sec">
-        <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">품목별 실적</span><span class="sb-chev">▾</span></button>
-        <!-- 품목 항목은 PRODUCT_LINES 상수에서 생성됨(_renderProductNav) — 여기에 직접 쓰지 말 것 -->
-        <div class="sb-items" id="sbProductItems"></div>
-      </div>
-      <div class="sb-sec">
-        <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">공구 관리</span><span class="sb-chev">▾</span></button>
+      <div class="sb-sec" data-sec="offline">
+        <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">오프라인</span><span class="sb-chev">▾</span></button>
         <div class="sb-items">
-          <div class="sb-item" onclick="openDealForm()"><span class="sb-ic">＋</span><span class="sb-label">새 공구건 등록</span></div>
-          <div class="sb-item" data-page="management" onclick="navPage('management',this)"><span class="sb-ic">📝</span><span class="sb-label">실적 미기입 목록</span></div>
-          <div class="sb-item" data-page="review" onclick="navPage('review',this)"><span class="sb-ic">🗒️</span><span class="sb-label">회고</span></div>
+          <div class="sb-item" data-page="offline-channels" onclick="navPage('offline-channels',this)"><span class="sb-ic">🏬</span><span class="sb-label">채널 현황</span></div>
+          <div class="sb-item" data-page="offline-channel" onclick="navPage('offline-channel',this)"><span class="sb-ic">🔍</span><span class="sb-label">채널 상세</span></div>
+          <div class="sb-item" data-page="offline-inventory" onclick="navPage('offline-inventory',this)"><span class="sb-ic">🗃️</span><span class="sb-label">재고 현황</span></div>
         </div>
+      </div>
+      <div class="sb-sec" data-sec="gongu">
+        <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">공동구매</span><span class="sb-chev">▾</span></button>
+        <div class="sb-items">
+          <div class="sb-item" data-page="calendar" onclick="navPage('calendar',this)"><span class="sb-ic">📅</span><span class="sb-label">공구 캘린더</span></div>
+          <div class="sb-item active" data-page="dashboard" onclick="navPage('dashboard',this)"><span class="sb-ic">📊</span><span class="sb-label">공구 분석</span></div>
+          <div class="sb-sec sb-sub" data-sec="gongu-products">
+            <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-ic">📈</span><span class="sb-label">품목별 실적</span><span class="sb-chev">▾</span></button>
+            <!-- 품목 항목은 PRODUCT_LINES 상수에서 생성됨(_renderProductNav) — 여기에 직접 쓰지 말 것 -->
+            <div class="sb-items" id="sbProductItems"></div>
+          </div>
+          <div class="sb-item" data-page="review" onclick="navPage('review',this)"><span class="sb-ic">🗒️</span><span class="sb-label">공동구매 회고</span></div>
+          <div class="sb-item" data-page="management" onclick="navPage('management',this)"><span class="sb-ic">📝</span><span class="sb-label">미기입 목록</span><span class="sb-badge" id="sbPendingBadge" style="display:none"></span></div>
+        </div>
+      </div>
+      <div class="sb-sec" data-sec="admin">
+        <button class="sb-sec-hd" onclick="toggleSec(this)"><span class="sb-label">대시보드 관리</span><span class="sb-chev">▾</span></button>
+        <div class="sb-items">
+          <div class="sb-item" data-page="admin-upload" onclick="navPage('admin-upload',this)"><span class="sb-ic">⬆️</span><span class="sb-label">데이터 업로드</span></div>
+          <div class="sb-item" data-page="admin-code-mapping" onclick="navPage('admin-code-mapping',this)"><span class="sb-ic">🧩</span><span class="sb-label">코드 매핑</span></div>
+          <div class="sb-item" data-page="admin-targets" onclick="navPage('admin-targets',this)"><span class="sb-ic">🎯</span><span class="sb-label">목표 관리</span></div>
+        </div>
+      </div>
+      <div class="sb-item-solo" data-page="monthly-review" onclick="navPage('monthly-review',this)">
+        <span class="sb-ic">📓</span><span class="sb-label">월 회고</span>
       </div>
     </nav>
     <div class="sb-bottom">
@@ -760,9 +789,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
     <div class="hdr">
       <div class="hdr-left">
         <button class="icon-btn mobile-menu-btn" title="메뉴" onclick="openMobileSidebar()">☰</button>
-        <div class="hdr-title">공동구매 대시보드 <span>Minix</span></div>
-        <div class="hdr-sep"></div>
-        <div class="hdr-sub">미닉스 공구 관리</div>
+        <div class="hdr-title">미닉스 오프라인&amp;특수파트 대시보드</div>
       </div>
       <div class="hdr-right">
         <span class="conn-pill cp-sample" id="connPill" onclick="refreshData()" title="클릭 시 재연결">● 샘플 데이터</span>
@@ -774,6 +801,16 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
         <div class="hdr-date" id="hDate"></div>
       </div>
     </div>
+
+    <!-- 파트 홈 · 오프라인 · 대시보드 관리 · 월 회고 페이지 — 내용은 src/features/<기능>/ 파일이 채운다 -->
+    <div class="main page" id="page-home"></div>
+    <div class="main page" id="page-offline-channels"></div>
+    <div class="main page" id="page-offline-channel"></div>
+    <div class="main page" id="page-offline-inventory"></div>
+    <div class="main page" id="page-admin-upload"></div>
+    <div class="main page" id="page-admin-code-mapping"></div>
+    <div class="main page" id="page-admin-targets"></div>
+    <div class="main page" id="page-monthly-review"></div>
 
     <!-- ① 공구 캘린더 페이지 -->
     <div class="main page" id="page-calendar">
