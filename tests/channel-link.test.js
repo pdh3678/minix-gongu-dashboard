@@ -13,7 +13,7 @@
 
    실행: node tests/channel-link.test.js  (또는 node tests/run-all.js) */
 const path = require('path');
-const { loadFrontend } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+const { loadFrontend, readFrontSource } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
 const PROJ = process.argv[2] || path.join(__dirname, '..');
 
 let pass = 0, fail = 0;
@@ -215,7 +215,7 @@ console.log('\n[9] 등록 폼도 같은 동작');
 console.log('\n[10] 마크업 — 두 폼 모두 핸들러가 걸려 있다');
 {
   const fs = require('fs');
-  const html = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+  const html = readFrontSource(PROJ);
   check('모달 인스타 ID oninput', html.indexOf(`id="mIgId" placeholder="예: minnie.life" oninput="mOnChannelIdChange('ig')"`) >= 0);
   check('모달 유튜브 ID oninput', html.indexOf(`id="mYtId"`) >= 0 && html.indexOf(`mOnChannelIdChange('yt')`) >= 0);
   check('모달 링크 뱃지', html.indexOf(`id="mLinkAuto"`) >= 0 && html.indexOf(`relinkChannel('m')`) >= 0);
@@ -290,7 +290,7 @@ console.log('\n[11] 표 렌더 — 시트에 링크가 없어도 ID로 즉석 �
 console.log('\n[12] 채널명이 보이는 표들이 모두 헬퍼를 쓴다');
 {
   const fs = require('fs');
-  const html = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+  const html = readFrontSource(PROJ);
   const body = s => { const i = html.indexOf(s); return html.slice(i, i + 1200); };
   check('대시보드 개별 공구 건', body('function renderDashList').indexOf('chCell(d)') >= 0);
   check('실적 미기입 목록', body('function renderMgmtPage').indexOf('chCell(d)') >= 0);

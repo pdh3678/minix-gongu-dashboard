@@ -28,8 +28,9 @@ services:
         value: "frame-ancestors 'self' https://minix-workspace.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'"
 
       # ── script-src 등 전체 정책은 아직 Report-Only다 (2026-09-16) ─────────────
-      # 왜 바로 강제하지 않는가: 이 대시보드는 본문 전체가 하나의 거대한 **인라인 <script>**라
-      # script-src에 'unsafe-inline'을 넣을 수밖에 없다. Render는 정적 호스팅이라 요청마다
+      # 왜 바로 강제하지 않는가: 본체는 src/ 파일로 나뉘었지만(2026-09-25) 수백 개의 인라인
+      # onclick 핸들러와 head의 임베드 판정 스크립트가 남아 있어 script-src에 'unsafe-inline'을
+      # 넣을 수밖에 없다. Render는 정적 호스팅이라 요청마다
       # nonce를 심을 수 없고, 해시 방식은 배포할 때마다 값이 바뀌어 유지가 안 된다.
       #
       # 그래도 의미가 있다: 'unsafe-inline'이 있어도 **외부 스크립트 로드는 막힌다**.

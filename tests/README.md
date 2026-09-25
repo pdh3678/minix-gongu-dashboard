@@ -11,13 +11,17 @@ node tests/profile-save.js   # 저장 경로 성능 측정(테스트 아님)
 
 ## 어떻게 검증하나
 
-이 프로젝트에는 서버(Apps Script)도 프론트(단일 HTML)도 모듈 시스템이 없다. 그래서 코드를
-테스트용으로 쪼개는 대신, **배포되는 파일을 그대로 실행한다**:
+이 프로젝트에는 서버(Apps Script)도 프론트도 모듈 시스템이 없다. 프론트 본체는 `src/` 아래의
+일반 스크립트 파일들이고(전역 공유), `index.html`의 `<script src>` 순서가 곧 실행 순서다.
+그래서 테스트용으로 코드를 따로 조립하는 대신, **배포되는 파일을 그대로 실행한다**:
 
 - `apps-script.js`를 `vm`에 넣고, `SpreadsheetApp`·`CacheService` 등 구글 API를
   `lib/mock-sheets.js`의 목으로 갈아끼운다.
-- `index.html`에서 인라인 `<script>`를 꺼내 허용적인 DOM 스텁 위에서 실행한다
-  (`lib/front-sandbox.js`).
+- `index.html`을 읽어 인라인 스크립트와 `src/` 파일들을 **문서 순서대로, 파일마다 따로**
+  허용적인 DOM 스텁 위에서 실행한다(`lib/front-sandbox.js`). 파일을 이어 붙이지 않는 이유는
+  브라우저처럼 "함수 호이스팅은 파일을 넘지 않는다"는 차이를 그대로 재현하기 위해서다.
+- 마크업·CSS와 코드를 한 문서에서 대조하는 정적 검사는 `readFrontSource()`를 쓴다 —
+  `src/` 태그 자리에 파일 내용을 끼워 넣은, 예전 단일 HTML과 같은 모양의 문서를 돌려준다.
 - `save-path.test.js`는 위 둘을 동시에 띄우고 `_gasWrite`만 직결로 이어, HTTP만 생략한 채
   프론트→서버→응답 병합을 실제 코드로 돌린다.
 

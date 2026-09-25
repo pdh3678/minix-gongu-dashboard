@@ -12,7 +12,7 @@
 
    실행: node tests/tier-tooltip.test.js  (또는 node tests/run-all.js) */
 const fs = require('fs'), path = require('path');
-const { loadFrontend, stubNode } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+const { loadFrontend, stubNode, readFrontSource } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
 
 const PROJ = process.argv[2] || path.join(__dirname, '..');
 const SHIM = `
@@ -166,7 +166,7 @@ const lines = s => s.split('\n');
       ctx.tierAndFollowerCriteriaText().includes(tier) && ctx.tierAndFollowerCriteriaText().includes(fol));
 
     // '등급 상태' 라벨의 ⓘ가 HTML에 실제로 있어야 위 title이 붙을 자리가 생긴다
-    const src = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+    const src = readFrontSource(PROJ);
     check('모달 등급 상태 라벨에 ⓘ 추가됨', src.includes('id="mTierStateHelp"'));
     check('등록 폼 등급 상태 라벨에 ⓘ 추가됨', src.includes('id="fTierStateHelp"'));
     check('두 ⓘ 모두 기존 도움말과 같은 클래스(모양 통일)',

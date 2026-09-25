@@ -15,7 +15,7 @@
 
    실행: node tests/table-header.test.js  (또는 node tests/run-all.js) */
 const fs = require('fs'), path = require('path');
-const { loadFrontend, stubNode } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+const { loadFrontend, stubNode, readFrontSource } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
 
 const PROJ = process.argv[2] || path.join(__dirname, '..');
 const SHIM = `
@@ -136,7 +136,7 @@ function thParts(html) {
   console.log('\n[6] 다른 두 표(개별 공구 건 / 실적 표)도 같은 컴포넌트를 쓴다');
   {
     // 소스에서 세 렌더 지점이 모두 sortableThHtml을 거치는지 먼저 확인
-    const src = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+    const src = readFrontSource(PROJ);
     check('sortableThHtml 호출이 3곳(채널/개별 공구 건/실적 표)',
       (src.match(/sortableThHtml\(/g) || []).length === 4, // 정의 1 + 호출 3
       (src.match(/sortableThHtml\(/g) || []).length);
@@ -171,7 +171,7 @@ function thParts(html) {
 
   console.log('\n[7] CSS — 두 줄 헤더의 모양과 최소 폭');
   {
-    const css = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+    const css = readFrontSource(PROJ);
     check('헤더 셀이 상단 정렬(vertical-align:top) — 주 라벨들이 첫 줄에서 맞음',
       /thead th\{[^}]*vertical-align:top/.test(css));
     check('보조 라벨 래퍼도 같은 기준(top)이라 첫 줄이 어긋나지 않음',

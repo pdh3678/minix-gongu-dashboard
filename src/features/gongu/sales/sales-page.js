@@ -1,0 +1,44 @@
+'use strict';
+/* 품목별 실적 페이지 — 모델 탭과 페이지 진입(navSales). */
+
+// 제품군별 모델 탭 구성 — 탭이 없는 제품(슬림/에어드라이)은 목록에서 빠져 subTabs가 숨겨짐
+const PRODUCT_MODEL_TABS={
+  '플렌더':{label:'더 플렌더',tabs:[{m:'all',lb:'전체'},{m:'PRO',lb:'PRO'},{m:'MAX',lb:'MAX'},{m:'mini',lb:'mini'},{m:'NEXT',lb:'NEXT'}]},
+  '시프트':{label:'더 시프트',tabs:[{m:'all',lb:'전체'},{m:'기본',lb:'더 시프트'},{m:'PRO',lb:'PRO'}]}
+};
+function renderSubTabs(prod){
+  const subTabs=document.getElementById('subTabs');
+  const cfg=PRODUCT_MODEL_TABS[prod];
+  if(!cfg){subTabs.classList.remove('open');subTabs.innerHTML='';return;}
+  subTabs.classList.add('open');
+  subTabs.innerHTML=`<span style="font-size:11px;color:var(--text-3);margin-right:6px;font-weight:600">${cfg.label}</span>`+
+    cfg.tabs.map(t=>`<button class="stab${t.m==='all'?' sam':''}" data-m="${t.m}">${t.lb}</button>`).join('');
+  subTabs.querySelectorAll('.stab').forEach(stab=>{
+    stab.addEventListener('click',()=>{
+      subTabs.querySelectorAll('.stab').forEach(s=>s.classList.remove('sam'));
+      stab.classList.add('sam');
+      ST.model=stab.dataset.m;
+      render();
+    });
+  });
+}
+
+// 브랜드별 실적 페이지로 이동 + 제품 필터 적용
+function navSales(el,prod){
+  navPage('sales',el);
+  ST.prod=prod;
+  ST.model='all';
+  // 인플루언서 검색은 페이지를 옮길 때마다 초기화 — 모델 탭·연월 체크박스 변경은 render()/
+  // renderTbl()만 거쳐 이 함수를 타지 않으므로 같은 페이지 안에서는 그대로 유지된다.
+  SALES_YM.channel=null;
+  const infInput=document.getElementById('salesInfluencerInput');
+  if(infInput)infInput.value='';
+  renderSubTabs(prod);
+  render();
+  /* ⚠ 반드시 'product-' 접두어를 붙일 것. 예전엔 슬러그만 써서 주소창에 #더플렌더가 찍혔는데,
+     _routeFromHash는 'product-'로 시작하는 해시만 품목 페이지로 보내기 때문에 그 주소를
+     새로고침하거나 공유하면 조용히 대시보드로 떨어졌다(쓰는 쪽과 읽는 쪽이 어긋나 있었음).
+     모달을 닫을 때 되돌아가는 _currentPageHash도 같은 값이어야 해서 함께 맞춘다. */
+  const hashKey=ST_PRODUCT_TO_HASH[prod];
+  if(hashKey){const h='product-'+hashKey;_currentPageHash=h;_setHash(h);}
+}

@@ -1,8 +1,9 @@
-/* index.html의 인라인 스크립트를 node에서 그대로 실행하기 위한 샌드박스.
+/* index.html이 싣는 스크립트를 node에서 그대로 실행하기 위한 샌드박스.
 
-   대시보드는 빌드 단계가 없는 단일 HTML이라, 테스트를 위해 코드를 모듈로 쪼개면 그 순간
-   "테스트가 검증하는 코드"와 "실제로 배포되는 코드"가 갈라진다. 그래서 쪼개는 대신, 배포되는
-   index.html에서 스크립트를 그대로 꺼내 허용적인 DOM 스텁 위에서 실행한다.
+   대시보드는 빌드 단계가 없다. 본체는 src/ 아래 일반 <script> 파일들이고(2026-09-25 분할 —
+   모듈이 아니라 전역을 공유), index.html의 <script src> 순서가 곧 실행 순서다. 테스트용으로
+   코드를 따로 조립하면 "테스트가 검증하는 코드"와 "실제로 배포되는 코드"가 갈라지므로, 이
+   샌드박스는 index.html을 읽어 **같은 파일을 같은 순서로** 허용적인 DOM 스텁 위에서 실행한다.
 
    ⚠ const/let 선언은 vm 컨텍스트의 프로퍼티로 노출되지 않는다(function 선언과 var만 노출됨).
       그래서 스크립트 끝에 접근자 shim을 덧붙여서 필요한 것만 꺼내 쓴다. */
@@ -36,19 +37,42 @@ function makeStorage() {
   };
 }
 
-// index.html의 인라인 script들을 문서 순서대로 꺼낸다(외부 src는 제외)
-function extractScripts(projectPath) {
+/* index.html의 script 태그를 문서 순서대로 읽는다.
+   inline — 태그 안에 코드가 있는 것(head의 임베드 판정 등)
+   file   — src="src/..." 로 싣는 대시보드 본체 파일
+   외부 CDN(chart.js·GSI)과 빌드 산출물(review-assets/)은 앱 코드가 아니므로 제외한다. */
+function scriptEntries(projectPath) {
   const html = fs.readFileSync(path.join(projectPath, 'index.html'), 'utf8');
-  const re = new RegExp('<script(?![^>]*\\bsrc=)[^>]*>([\\s\\S]*?)<\\/script>', 'g');
+  const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
   const out = [];
   let m;
-  while ((m = re.exec(html)) !== null) out.push(m[1]);
-  if (!out.length) throw new Error('index.html에서 인라인 스크립트를 찾지 못했습니다.');
+  while ((m = re.exec(html)) !== null) {
+    const src = (m[1].match(/\bsrc="([^"]+)"/) || [])[1];
+    if (!src) { out.push({ kind: 'inline', name: 'index.html(inline script)', code: m[2], tag: m[0] }); continue; }
+    if (!/^src\//.test(src)) continue;
+    const code = fs.readFileSync(path.join(projectPath, src), 'utf8');
+    out.push({ kind: 'file', name: src, code, tag: m[0] });
+  }
+  if (!out.some(e => e.kind === 'file')) throw new Error('index.html에서 src/ 스크립트를 찾지 못했습니다.');
   return out;
 }
-// 그중 가장 큰 것(대시보드 본체)
+// 문서 순서대로 모든 앱 스크립트 코드(인라인 + src/ 파일) — 소스 텍스트를 정적으로 검사할 때 쓴다
+function extractScripts(projectPath) {
+  return scriptEntries(projectPath).map(e => e.code);
+}
+// 대시보드 본체(src/ 파일 전부를 로드 순서대로 이은 것)
 function extractMainScript(projectPath) {
-  return extractScripts(projectPath).slice().sort((a, b) => b.length - a.length)[0];
+  return scriptEntries(projectPath).filter(e => e.kind === 'file').map(e => e.code).join('\n');
+}
+/* index.html에서 src/ 스크립트 태그를 그 파일 내용의 인라인 태그로 바꾼 문서.
+   "마크업·CSS와 코드를 한 문서에서 함께 대조하는" 정적 검사용 — 예전 단일 HTML과 같은 모양이라
+   코드 위치(어느 태그 앞/뒤인지)도 그대로 비교된다. */
+function readFrontSource(projectPath) {
+  let html = fs.readFileSync(path.join(projectPath, 'index.html'), 'utf8');
+  for (const e of scriptEntries(projectPath)) {
+    if (e.kind === 'file') html = html.replace(e.tag, () => '<script>/* ' + e.name + ' */\n' + e.code + '</script>');
+  }
+  return html;
 }
 
 /* 프론트를 로드해 { ctx, X, src } 반환.
@@ -60,9 +84,10 @@ function extractMainScript(projectPath) {
                          문서 순서대로 먼저 실행한다. 실제 브라우저와 같은 순서를 재현하기 위함. */
 function loadFrontend(projectPath, extraShimBody, opts) {
   opts = opts || {};
-  const all = extractScripts(projectPath);
-  const src = all.slice().sort((a, b) => b.length - a.length)[0];
-  const head = all.filter(s => s !== src);
+  const entries = scriptEntries(projectPath);
+  const files = entries.filter(e => e.kind === 'file');
+  const head = entries.filter(e => e.kind === 'inline').map(e => e.code);
+  const src = files.map(e => e.code).join('\n');
   const search = opts.search || '';
 
   const sandbox = {
@@ -144,8 +169,12 @@ function loadFrontend(projectPath, extraShimBody, opts) {
   if (opts.runHeadScripts) {
     head.forEach((s, i) => vm.runInContext(s, ctx, { filename: 'index.html(head script ' + i + ')' }));
   }
-  vm.runInContext(src + shim, ctx, { filename: 'index.html(inline script)' });
+  /* 파일마다 따로 실행한다(브라우저의 <script>와 같다) — 최상위 const/let은 같은 컨텍스트 안에서
+     파일 사이에 공유되지만, 함수 호이스팅은 파일을 넘지 않는다. 한 덩어리로 이어 붙이면 이 차이가
+     가려져 "테스트는 통과하는데 브라우저에서는 ReferenceError"가 생길 수 있다. */
+  files.forEach(f => vm.runInContext(f.code, ctx, { filename: f.name }));
+  vm.runInContext(shim, ctx, { filename: 'front-sandbox(shim)' });
   return { ctx, X: ctx.__X__, src, head };
 }
 
-module.exports = { loadFrontend, extractMainScript, extractScripts, stubNode };
+module.exports = { loadFrontend, extractMainScript, extractScripts, readFrontSource, scriptEntries, stubNode };

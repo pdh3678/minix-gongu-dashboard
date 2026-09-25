@@ -9,10 +9,10 @@
 
    실행: node tests/embed.test.js  (또는 node tests/run-all.js) */
 const fs = require('fs'), path = require('path');
-const { loadFrontend } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+const { loadFrontend, readFrontSource } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
 
 const PROJ = process.argv[2] || path.join(__dirname, '..');
-const html = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+const html = readFrontSource(PROJ);
 
 let pass = 0, fail = 0;
 function check(label, cond, extra) {

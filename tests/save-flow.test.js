@@ -10,7 +10,7 @@
 
    실행: node tests/save-flow.test.js  (또는 node tests/run-all.js) */
 const path = require('path');
-const { loadFrontend } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+const { loadFrontend, readFrontSource } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
 
 const PROJ = process.argv[2] || path.join(__dirname, '..');
 
@@ -198,7 +198,7 @@ function setup(dealOverrides, fieldOverrides) {
   console.log('\n[7] 저장 차단이 정말 사라졌는지 — 코드에서 확인');
   {
     const fs2 = require('fs'), path2 = require('path');
-    const html = fs2.readFileSync(path2.join(PROJ, 'index.html'), 'utf8');
+    const html = readFrontSource(PROJ);
     const fn = html.slice(html.indexOf('function _applyMultiRowNotice'),
       html.indexOf('function', html.indexOf('function _applyMultiRowNotice') + 10));
     check('_isComposite로 버튼을 막지 않음', fn.indexOf('disabled=blockSave') < 0, fn.slice(0, 200));

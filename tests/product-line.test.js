@@ -9,7 +9,7 @@
    실행: node tests/product-line.test.js  (또는 node tests/run-all.js) */
 const fs = require('fs');
 const path = require('path');
-const { loadFrontend } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+const { loadFrontend, readFrontSource } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
 
 const PROJ = process.argv[2] || path.join(__dirname, '..');
 const SHIM = `
@@ -101,7 +101,7 @@ function captureRender(ctx, fn) {
   check('더 슬림 라벨과 아이콘이 함께 렌더됨',
     navHtml.includes('>' + SLIM.label + '<') && navHtml.includes('>' + slim.icon + '<'));
   check('HTML에 품목이 하드코딩돼 남아있지 않음',
-    !fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8')
+    !readFrontSource(PROJ)
       .includes(`<div class="sb-item" data-prod="플렌더"`));
 
   console.log('\n[4] 등록/수정 모달의 품목군 드롭다운도 같은 상수에서 생성됨');

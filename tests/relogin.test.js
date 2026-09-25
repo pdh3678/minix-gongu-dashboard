@@ -22,7 +22,7 @@
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const { makeSheet, installGlobals } = require(path.join(__dirname, 'lib', 'mock-sheets.js'));
 const BASE_HEADERS = require(path.join(__dirname, 'lib', 'real-headers.js'));
-const { loadFrontend, extractScripts, stubNode } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+const { loadFrontend, extractScripts, stubNode, readFrontSource } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
 
 const PROJ = process.argv[2] || path.join(__dirname, '..');
 const GAS_PATH = path.join(PROJ, 'apps-script.js');
@@ -309,7 +309,7 @@ async function doLogin(ctx) {
 
   console.log('\n[10] 프론트가 요구하는 GAS 버전과 실제 GAS 버전이 맞는가');
   {
-    const html = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+    const html = readFrontSource(PROJ);
     const req = (html.match(/REQUIRED_SCRIPT_VERSION='([^']+)'/) || [])[1];
     const gasv = (fs.readFileSync(GAS_PATH, 'utf8').match(/SCRIPT_VERSION = '([^']+)'/) || [])[1];
     check('REQUIRED_SCRIPT_VERSION == apps-script.js의 SCRIPT_VERSION',

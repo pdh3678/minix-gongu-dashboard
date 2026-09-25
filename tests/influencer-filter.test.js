@@ -17,7 +17,7 @@
    실행: node tests/influencer-filter.test.js  (또는 node tests/run-all.js) */
 const fs = require('fs');
 const path = require('path');
-const { loadFrontend } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+const { loadFrontend, readFrontSource } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
 
 const PROJ = process.argv[2] || path.join(__dirname, '..');
 const SHIM = `
@@ -60,7 +60,7 @@ const SAMPLE = [
 
 (async () => {
   const { ctx, X, src } = loadFrontend(PROJ, SHIM);
-  const html = fs.readFileSync(path.join(PROJ, 'index.html'), 'utf8');
+  const html = readFrontSource(PROJ);
   const DATA = X.DATA;
   DATA.splice(0, DATA.length, ...SAMPLE.map(d => ({ ...d })));
   X.setSalesYM([2026], [1,2,3,4,5,6,7,8,9,10,11,12]);
