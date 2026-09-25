@@ -1,11 +1,7 @@
 'use strict';
 /* 품목별 실적 페이지 — 모델 탭과 페이지 진입(navSales). */
 
-// 제품군별 모델 탭 구성 — 탭이 없는 제품(슬림/에어드라이)은 목록에서 빠져 subTabs가 숨겨짐
-const PRODUCT_MODEL_TABS={
-  '플렌더':{label:'더 플렌더',tabs:[{m:'all',lb:'전체'},{m:'PRO',lb:'PRO'},{m:'MAX',lb:'MAX'},{m:'mini',lb:'mini'},{m:'NEXT',lb:'NEXT'}]},
-  '시프트':{label:'더 시프트',tabs:[{m:'all',lb:'전체'},{m:'기본',lb:'더 시프트'},{m:'PRO',lb:'PRO'}]}
-};
+// 모델 탭 구성(PRODUCT_MODEL_TABS)은 PRODUCT_CATALOG에서 파생 — 탭이 없는 제품(슬림/에어드라이)은 subTabs가 숨겨짐
 function renderSubTabs(prod){
   const subTabs=document.getElementById('subTabs');
   const cfg=PRODUCT_MODEL_TABS[prod];

@@ -25,6 +25,7 @@ const SHIM = `
   get LINE_MODEL_OPTIONS(){return LINE_MODEL_OPTIONS;},
   get PRODUCT_MODEL_TABS(){return PRODUCT_MODEL_TABS;},
   get GIFT_ITEMS(){return GIFT_ITEMS;},
+  get PRODUCT_CATALOG(){return PRODUCT_CATALOG;},
   get ST(){return ST;}`;
 
 let pass = 0, fail = 0;
@@ -259,6 +260,47 @@ function captureRender(ctx, fn) {
     // 저장된 제품명이 화면 쪽 분류로 되돌아오는지(왕복 일관성)
     check('되읽은 제품명이 다시 슬림 품목으로 분류됨', f.productColorKey(row.product) === SLIM.st);
     check('되읽은 제품명의 배지 색이 더 슬림 색', f.productColor(row.product).bg === slimColor.bg);
+  }
+
+  console.log('\n[12] 품목 카탈로그 — 오프라인용 품목은 카탈로그에만, 공구 화면은 전과 동일');
+  {
+    const cat = X.PRODUCT_CATALOG;
+    check('PRODUCT_CATALOG가 배열로 정의됨', Array.isArray(cat) && cat.length >= 6, cat && cat.length);
+    check('모든 품목군·모델에 gongu 속성이 boolean으로 명시됨',
+      cat.every(l => typeof l.gongu === 'boolean' && l.models.every(m => typeof m.gongu === 'boolean')));
+    const lineByLabel = lb => cat.find(l => l.label === lb);
+    ['미니 건조기', '미니 식기세척기'].forEach(lb => {
+      const l = lineByLabel(lb);
+      check(`카탈로그에 품목군 '${lb}'가 있음(공구 비노출)`, !!l && l.gongu === false, l);
+      check(`  ↳ '${lb}'는 사이드바·드롭다운·해시에 없음`,
+        l && !X.PRODUCT_LINES.some(p => p.key === l.key) && X.HASH_PRODUCT_TO_ST[l.key] === undefined &&
+        X.PRODUCT_LINE_LABELS[l.key] === undefined);
+    });
+    const plus = lineByLabel('더 플렌더').models.find(m => m.label === '더 플렌더 PLUS');
+    check("더 플렌더 하위에 'PLUS' 모델이 있음(공구 비노출)", !!plus && plus.gongu === false, plus);
+    check('  ↳ PLUS는 모델 탭에 없음',
+      JSON.stringify(X.PRODUCT_MODEL_TABS['플렌더'].tabs.map(t => t.m)) === JSON.stringify(['all', 'PRO', 'MAX', 'mini', 'NEXT']),
+      X.PRODUCT_MODEL_TABS['플렌더'].tabs);
+    check('  ↳ PLUS는 등록 폼 제품 드롭다운에 없음',
+      JSON.stringify(X.LINE_MODEL_OPTIONS['더플렌더']) === JSON.stringify(['더플렌더PRO', '더플렌더MAX', '더플렌더mini', '더플렌더NEXT']),
+      X.LINE_MODEL_OPTIONS['더플렌더']);
+    check('  ↳ PLUS는 배지 색/집계 키(PRODUCT_TAXONOMY)에 없음', !X.PRODUCT_TAXONOMY.some(t => t.key === plus.key));
+    // 공구 화면이 보는 파생 상수 — 카탈로그 전환(2026-09-25) 이전의 리터럴 값과 똑같아야 한다
+    check('더 시프트 모델 탭이 전과 동일(전체/더 시프트/PRO)',
+      JSON.stringify(X.PRODUCT_MODEL_TABS['시프트']) ===
+      JSON.stringify({ label: '더 시프트', tabs: [{ m: 'all', lb: '전체' }, { m: '기본', lb: '더 시프트' }, { m: 'PRO', lb: 'PRO' }] }),
+      X.PRODUCT_MODEL_TABS['시프트']);
+    check('모델 탭이 있는 품목은 플렌더·시프트 둘뿐', JSON.stringify(Object.keys(X.PRODUCT_MODEL_TABS)) === '["플렌더","시프트"]');
+    check('LINE_HAS_MODELS가 전과 동일', JSON.stringify(X.LINE_HAS_MODELS) === '{"더플렌더":true,"더시프트":true}', X.LINE_HAS_MODELS);
+    check('LINE_MODEL_OPTIONS[더시프트]가 전과 동일', JSON.stringify(X.LINE_MODEL_OPTIONS['더시프트']) === '["더시프트","더시프트PRO"]');
+    const SHEET_BEFORE = { '더플렌더PRO': '더 플렌더 PRO', '더플렌더MAX': '더 플렌더 MAX', '더플렌더mini': '더 플렌더 mini',
+      '더플렌더NEXT': '더 플렌더 NEXT', '더시프트': '더 시프트', '더시프트PRO': '더 시프트 PRO', '더에어드라이': '더 에어드라이', '더슬림': '더 슬림' };
+    const sheetKeys = Object.keys(X.PRODUCT_SHEET_NAME);
+    check('PRODUCT_SHEET_NAME이 전과 같은 키·값(순서 무관 — 조회로만 쓰임)',
+      sheetKeys.length === Object.keys(SHEET_BEFORE).length && sheetKeys.every(k => X.PRODUCT_SHEET_NAME[k] === SHEET_BEFORE[k]),
+      X.PRODUCT_SHEET_NAME);
+    check('비노출 품목은 저장 표기 매핑에도 없어 저장이 차단됨',
+      ctx.toSheetProductName('미니건조기') === null && ctx.toSheetProductName('더플렌더PLUS') === null);
   }
 
   console.log('\n' + '─'.repeat(50));

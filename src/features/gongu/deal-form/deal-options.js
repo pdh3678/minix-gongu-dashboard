@@ -44,18 +44,8 @@ function _buildCompositionString({gifts,firstComeItem,firstComeQty,points,note})
 }
 
 /* ── 새 공구건 폼 ── */
-// 품목군별 제품 드롭다운 여부 — 신규 등록 모달(fLine/fModel)과 수정 모달(mLine/mModel) 둘 다
-// 이 상수 하나만 참조함(예전엔 두 모달이 각각 다른 상수를 써서 한쪽만 고치면 어긋나기 쉬웠음 —
-// 더시프트 PRO 드롭다운이 신규 등록에만 있고 수정 모달엔 없던 게 그 사례).
-const LINE_HAS_MODELS={'더플렌더':true,'더시프트':true};
-// 품목군별 제품 드롭다운 옵션(내부 표기, 공백 없음) — 값 표기는 대시보드 품목별 실적의 모델 매칭
-// 규칙(flenderModel/shiftModel)과 정확히 일치해야 함. 시트에 실제로 저장되는 표기(공백 포함)는
-// 이 값이 아니라 PRODUCT_SHEET_NAME 매핑을 거친 결과이니, 옵션을 추가할 땐 반드시 그 매핑에도
-// 같이 추가할 것(안 하면 toSheetProductName이 콘솔 경고를 남김).
-const LINE_MODEL_OPTIONS={
-  '더플렌더':['더플렌더PRO','더플렌더MAX','더플렌더mini','더플렌더NEXT'],
-  '더시프트':['더시프트','더시프트PRO']
-};
+// 품목군별 제품 드롭다운 여부(LINE_HAS_MODELS)·옵션(LINE_MODEL_OPTIONS)은 shared/constants/products.js의
+// PRODUCT_CATALOG에서 파생된다 — 모델을 추가할 땐 카탈로그에 option/sheet를 적으면 여기와 시트 표기가 같이 따라온다.
 // 품목군별 제품 드롭다운(fModel/mModel) 옵션을 LINE_MODEL_OPTIONS 기준으로 다시 그림 — 신규
 // 등록/수정 두 모달이 이 함수 하나만 거치므로 옵션 목록이 절대 어긋나지 않음.
 // 2026-08-21: 옵션의 value는 그대로 내부 표기(공백 없음, toSheetProductName/저장 로직이 그대로
