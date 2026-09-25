@@ -45,6 +45,7 @@ body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFo
 .page{display:none}
 .page.active{display:flex}
 .page-placeholder{padding:70px 20px;text-align:center;color:var(--text-3);font-size:13px;line-height:1.7}
+.page-placeholder .ph-ready{font-size:15px;font-weight:800;color:var(--text-2);margin-bottom:4px}
 /* 페이지 머리 줄(탭 등) + 오른쪽 끝 액션 버튼(PageHeaderActions) */
 .page-head-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .page-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
@@ -1725,6 +1726,7 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="src/features/gongu/analysis/seasonality.js"></script>
 <script src="src/shared/components/sortable-th.js"></script>
 <script src="src/shared/components/page-header-actions.js"></script>
+<script src="src/shared/components/placeholder-page.js"></script>
 <script src="src/features/gongu/sales/sales-table.js"></script>
 <script src="src/shared/components/form-errors.js"></script>
 <script src="src/features/gongu/pending/pending-list.js"></script>
@@ -1751,5 +1753,13 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="src/shared/api/gas-client.js"></script>
 <script src="src/shared/auth/login.js"></script>
 <script src="src/shared/presence.js"></script>
+<script src="src/features/home/home.js"></script>
+<script src="src/features/offline/channels.js"></script>
+<script src="src/features/offline/channel.js"></script>
+<script src="src/features/offline/inventory.js"></script>
+<script src="src/features/admin/upload.js"></script>
+<script src="src/features/admin/code-mapping.js"></script>
+<script src="src/features/admin/targets.js"></script>
+<script src="src/features/monthly-review/monthly-review.js"></script>
 <script src="src/main.js"></script>
 <script id="gsiScriptTag" src="https://accounts.google.com/gsi/client" async defer onload="_gsiScriptLoaded()" onerror="_gsiScriptFailed()"></script>

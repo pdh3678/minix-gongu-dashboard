@@ -163,6 +163,40 @@ function fakeEl(extra) {
     check('0건 → 숨김', el.style.display === 'none' && el.textContent === '', el);
   }
 
+  console.log('\n[9] 신규 페이지 빈 틀 — 제목 + 준비 중 + 예정 내용 한 줄');
+  {
+    const vm = require('vm');
+    const { scriptEntries } = require(path.join(__dirname, 'lib', 'front-sandbox.js'));
+    const PLAN = {
+      home: ['파트 홈', '공구+오프라인 통합 목표 대비 실적, 재고 경보 요약 (추후)'],
+      'offline-channels': ['채널 현황', '채널별 달성률·재고일수·진열 점포 수 카드 (1~2단계)'],
+      'offline-channel': ['채널 상세', '채널별 SKU Sell-in/Sell-out/재고 추이 (2단계)'],
+      'offline-inventory': ['재고 현황', 'SKU × 채널 재고 분포와 경보 (2단계)'],
+      'admin-upload': ['데이터 업로드', '협력사 포털 엑셀 업로드 (1단계)'],
+      'admin-code-mapping': ['코드 매핑', '채널별 상품코드 ↔ 표준 SKU 매핑 (1단계)'],
+      'admin-targets': ['목표 관리', '채널별 Sell-in 목표 (2단계)'],
+      'monthly-review': ['월 회고', '파트 전체 월간 회고, 공동구매 회고 편집기 재사용 (추후)']
+    };
+    const { ctx } = loadFrontend(PROJ, SHIM);
+    const box = {};
+    ctx.document.getElementById = id => (box[id] = box[id] || { innerHTML: '' });
+    // 로드 시점엔 스텁 DOM에 그려졌으므로, 신규 기능 파일만 받아 적는 DOM 위에서 다시 실행한다(함수 호출뿐인 파일)
+    const files = scriptEntries(PROJ).filter(e => /^src\/features\/(home|offline|admin|monthly-review)\//.test(e.name));
+    check('신규 기능 파일 8개가 index.html에 실림', files.length === 8, files.map(f => f.name));
+    files.forEach(f => vm.runInContext(f.code, ctx, { filename: f.name }));
+    Object.keys(PLAN).forEach(p => {
+      const h = (box['page-' + p] || {}).innerHTML || '';
+      check(`${PLAN[p][0]}: 제목·준비 중·예정 내용`, h.indexOf('<div class="card-hd">' + PLAN[p][0] + '</div>') >= 0 &&
+        h.indexOf('준비 중') > 0 && h.indexOf('예정: ' + PLAN[p][1].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')) > 0, h);
+    });
+    const order = scriptEntries(PROJ).filter(e => e.kind === 'file').map(e => e.name);
+    check('main.js는 여전히 맨 마지막', order[order.length - 1] === 'src/main.js', order.slice(-3));
+    check('폴더 구조: features/home·offline·gongu·admin·monthly-review, shared',
+      ['src/features/home/', 'src/features/offline/', 'src/features/gongu/', 'src/features/admin/', 'src/features/monthly-review/', 'src/shared/']
+        .every(dir => order.some(n => n.indexOf(dir) === 0)));
+    check('품목 상수는 src/shared/constants/ 에 있음', order.indexOf('src/shared/constants/products.js') >= 0);
+  }
+
   console.log('\n' + '─'.repeat(50));
   console.log('통과 ' + pass + ' / 실패 ' + fail);
   process.exit(fail ? 1 : 0);
