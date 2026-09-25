@@ -415,7 +415,16 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .fol-missing-btn{border:none;background:var(--warn-bg);color:var(--warn);font-family:inherit;font-size:10.5px;
   font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;margin-left:8px;letter-spacing:0}
 .fol-missing-btn.on{background:var(--warn);color:#fff}
-/* 채널 정보 미입력 목록 — 빈 칸을 눌러 그 자리에서 채우는 인라인 편집(팔로워 편집과 같은 조작) */
+/* 미기입 목록 · 실적 미기입 — 진행상태 필터 칩(여러 개 선택)과 행 강조.
+   완료(종료)됐는데 실적이 없는 건은 지금 채워야 하므로 강조, 진행중·예정은 아직 채울 때가 아니라 흐리게 */
+.mgmt-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.mgmt-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:14px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-3);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+.mgmt-chip.on{background:var(--minix-lt);border-color:var(--minix);color:var(--minix)}
+.mgmt-chip-n{font-variant-numeric:tabular-nums;font-weight:800}
+#mgmtBody tr.mgmt-overdue td{background:#FFF7ED}
+#mgmtBody tr.mgmt-overdue td:first-child{box-shadow:inset 3px 0 0 #EA580C}
+#mgmtBody tr.mgmt-later{opacity:.5}
+/* 채널 정보 미기입 목록 — 빈 칸을 눌러 그 자리에서 채우는 인라인 편집(팔로워 편집과 같은 조작) */
 .chid-cell{cursor:text}
 .chid-cell:hover{background:var(--minix-lt)}
 .chid-empty{color:var(--text-3)}
@@ -1155,19 +1164,23 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
       </div>
     </div>
 
-    <!-- ④ 공구 관리 페이지 — [실적 미기입 | 채널 정보 미입력] 두 탭 -->
+    <!-- ④ 미기입 목록 — [실적 미기입 | 채널 정보 미기입] 두 탭 -->
     <div class="main page" id="page-management">
       <div class="card">
         <div class="card-hd">
           <span>채워야 할 것들<span class="gap-tabs" id="mgmtTabs" style="margin-left:10px;vertical-align:middle">
             <button type="button" data-tab="perf" onclick="_setMgmtTab('perf')">실적 미기입</button>
-            <button type="button" data-tab="chinfo" onclick="_setMgmtTab('chinfo')">채널 정보 미입력</button>
+            <button type="button" data-tab="chinfo" onclick="_setMgmtTab('chinfo')">채널 정보 미기입</button>
           </span></span><span class="card-hd-r" id="mgmtCnt"></span>
         </div>
-        <div class="tbl-wrap" id="mgmtPerfWrap">
-          <table><thead><tr>
-            <th>제품</th><th>채널</th><th>기간</th><th>공구가</th><th>진행상태</th>
-          </tr></thead><tbody id="mgmtBody"></tbody></table>
+        <div id="mgmtPerfWrap">
+          <!-- 진행상태 필터 칩(완료/진행중/예정, 기본 전체 선택) — renderMgmtPage가 건수와 함께 그림 -->
+          <div class="mgmt-chips" id="mgmtStatusChips"></div>
+          <div class="tbl-wrap">
+            <table><thead><tr>
+              <th>제품</th><th>채널</th><th>기간</th><th>공구가</th><th>진행상태</th>
+            </tr></thead><tbody id="mgmtBody"></tbody></table>
+          </div>
         </div>
         <div class="tbl-wrap" id="mgmtChWrap" style="display:none">
           <table><thead><tr>

@@ -1,5 +1,5 @@
 'use strict';
-/* 실적 미기입 목록 — 실적 미기입 / 채널 정보 탭과 인라인 입력. */
+/* 미기입 목록 — 실적 미기입(진행상태별 강조·필터) / 채널 정보 미기입 탭, 인라인 입력, 사이드바 배지. */
 
 /* ── 공구 관리 페이지: 실적 미기입 목록 ── */
 // 판매수량과 총매출이 둘 다 비어있거나 0인 건(전체 공구건 대상, 상태 무관)
@@ -31,6 +31,25 @@ function _mgmtChCell(ch,key,val){
   return `<td class="chid-cell${isFol?' num-col':''}" data-ch="${_escAttr(ch)}" data-key="${key}" `+
     `onclick="_startChIdEdit(this)" title="${hint}"><span class="chid-empty">— 입력</span></td>`;
 }
+/* ── 실적 미기입 탭: 진행상태로 나눠 보기 (2026-09-25) ──────────────────────────
+   미기입 판정(pendingPerfDeals)은 그대로 두고, 보여주는 순서·강조·필터만 진행상태로 가른다.
+   진행상태는 화면 전체가 쓰는 _displayStatus(시작/종료일 기준 예정·진행중·완료)를 그대로 쓴다.
+   완료 건이 맨 위(강조) — 끝났는데 실적이 없는 건 지금 채워야 한다. 진행중·예정은 그 아래 흐리게.
+   같은 상태 안에서는 기존 순서(종료일이 오래된 순)를 유지한다. */
+const MGMT_STATUS_ORDER=['완료','진행중','예정'];
+let _mgmtStatusOn=new Set(MGMT_STATUS_ORDER); // 필터 칩 — 기본 전체 선택(새로고침하면 다시 전체)
+function _toggleMgmtStatus(s){
+  if(_mgmtStatusOn.has(s))_mgmtStatusOn.delete(s);else _mgmtStatusOn.add(s);
+  renderMgmtPage();
+}
+// [{d, status}] — 진행상태 순(완료→진행중→예정→그 외). 시트의 특수 상태(알려진 3종 밖)는 맨 아래.
+function _mgmtPerfRows(){
+  const rank=s=>{const i=MGMT_STATUS_ORDER.indexOf(s);return i<0?MGMT_STATUS_ORDER.length:i;};
+  return pendingPerfDeals().map((d,i)=>({d,i,status:_displayStatus(d)}))
+    .sort((a,b)=>rank(a.status)-rank(b.status)||a.i-b.i)
+    .map(({d,status})=>({d,status}));
+}
+
 let _mgmtTab='perf'; // 'perf' | 'chinfo'
 function _setMgmtTab(t){if(_mgmtTab===t)return;_mgmtTab=t;renderMgmtPage();}
 function renderMgmtPage(){
@@ -39,15 +58,25 @@ function renderMgmtPage(){
   document.getElementById('mgmtPerfWrap').style.display=_mgmtTab==='perf'?'':'none';
   document.getElementById('mgmtChWrap').style.display=_mgmtTab==='chinfo'?'':'none';
 
-  const f=pendingPerfDeals();
-  document.getElementById('mgmtBody').innerHTML=f.length?f.map(d=>`
-    <tr>
+  const rows=_mgmtPerfRows();
+  const counts={};
+  rows.forEach(r=>{counts[r.status]=(counts[r.status]||0)+1;});
+  document.getElementById('mgmtStatusChips').innerHTML=MGMT_STATUS_ORDER.map(s=>
+    `<button type="button" class="mgmt-chip${_mgmtStatusOn.has(s)?' on':''}" onclick="_toggleMgmtStatus('${s}')">`+
+    `${s} <span class="mgmt-chip-n">${counts[s]||0}</span></button>`).join('');
+  // 특수 상태는 칩으로 고를 수 없으므로 필터와 무관하게 항상 보인다(숨기면 영영 못 찾는다)
+  const shown=rows.filter(r=>!MGMT_STATUS_ORDER.includes(r.status)||_mgmtStatusOn.has(r.status));
+  document.getElementById('mgmtBody').innerHTML=shown.length?shown.map(({d,status})=>`
+    <tr class="${status==='완료'?'mgmt-overdue':'mgmt-later'}">
       <td>${productBadge(d.product)}</td>
       <td>${chCell(d)}</td>
       <td>${fmtS(d.start)} ~ ${fmtS(d.end)}</td>
       <td>${won(d.s&&d.s.sale)}</td>
-      <td>${bdg(_displayStatus(d))+_savingChip(d)}</td>
-    </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-3)">실적 미기입 건이 없습니다 🎉</td></tr>`;
+      <td>${bdg(status)+_savingChip(d)}</td>
+    </tr>`).join(''):`<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text-3)">${
+      rows.length?'선택한 진행상태의 실적 미기입 건이 없습니다':'실적 미기입 건이 없습니다 🎉'}</td></tr>`;
+  // 사이드바 '미기입 목록' 배지 — 종료(완료)됐는데 실적 미기입인 건수(필터와 무관, 0건이면 숨김)
+  _setSbBadge('sbPendingBadge',counts['완료']||0);
 
   const chRows=pendingChannelInfo();
   document.getElementById('mgmtChBody').innerHTML=chRows.length?chRows.map(r=>`
@@ -60,8 +89,9 @@ function renderMgmtPage(){
       ${_mgmtChCell(r.ch,'followers',r.followers)}
     </tr>`).join(''):`<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-3)">채널 정보가 모두 채워져 있습니다 🎉</td></tr>`;
 
-  document.getElementById('mgmtCnt').textContent=
-    _mgmtTab==='perf'?f.length+'건':chRows.length+'채널';
+  document.getElementById('mgmtCnt').textContent=_mgmtTab==='perf'
+    ?(shown.length===rows.length?rows.length+'건':`${shown.length}건 / 전체 ${rows.length}건`)
+    :chRows.length+'채널';
 }
 
 /* ── 채널 정보 인라인 편집 (미입력 목록) ─────────────────────────────────────
