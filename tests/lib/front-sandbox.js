@@ -27,6 +27,11 @@ function stubNode() {
   });
 }
 
+function seededStorage(init) {
+  const s = makeStorage();
+  Object.keys(init || {}).forEach(k => s.setItem(k, init[k]));
+  return s;
+}
 function makeStorage() {
   const m = {};
   return {
@@ -80,6 +85,8 @@ function readFrontSource(projectPath) {
    X   — const/let 값 접근용 shim (DATA, 버전 문자열, _savingDeals 등)
 
    opts.search         — location.search 값('?embed=1' 등). 임베드 모드 검증용.
+   opts.hostname / opts.pathname / opts.hash — 접속 주소(기본 minix-offline-dashboard.onrender.com, '/', '').
+   opts.localStorage   — 스크립트 실행 전에 넣어 둘 localStorage 값 {키: 값} (세션 복원 경로 검증용).
    opts.runHeadScripts — true면 본체보다 앞에 있는 작은 인라인 스크립트(임베드 판정 등)도
                          문서 순서대로 먼저 실행한다. 실제 브라우저와 같은 순서를 재현하기 위함. */
 function loadFrontend(projectPath, extraShimBody, opts) {
@@ -89,6 +96,7 @@ function loadFrontend(projectPath, extraShimBody, opts) {
   const head = entries.filter(e => e.kind === 'inline').map(e => e.code);
   const src = files.map(e => e.code).join('\n');
   const search = opts.search || '';
+  const hostname = opts.hostname || 'minix-offline-dashboard.onrender.com';
 
   const sandbox = {
     console, Math, Date, JSON, Number, String, Boolean, Array, Object, Map, Set, RegExp, Error,
@@ -109,11 +117,13 @@ function loadFrontend(projectPath, extraShimBody, opts) {
         }
       }
     },
-    localStorage: makeStorage(), sessionStorage: makeStorage(),
+    localStorage: seededStorage(opts.localStorage), sessionStorage: makeStorage(),
+    // 기본은 새 서비스 주소(2026-09-26 이전). 주소 이전 스크립트를 검증할 땐 opts.hostname으로 옛 주소를 준다.
     location: {
-      protocol: 'https:', hash: '', pathname: '/', search,
-      origin: 'https://minix-gongu-dashboard.onrender.com',
-      href: 'https://minix-gongu-dashboard.onrender.com/' + search
+      protocol: 'https:', hash: opts.hash || '', pathname: opts.pathname || '/', search,
+      hostname, origin: 'https://' + hostname,
+      href: 'https://' + hostname + (opts.pathname || '/') + search + (opts.hash || ''),
+      _replaced: null, replace(u) { this._replaced = u; } // 실제로 이동하지 않고 어디로 가려 했는지만 기록
     },
     // _setHash가 실제로 어떤 URL을 쓰는지 봐야 하므로 기록형 스텁
     history: {

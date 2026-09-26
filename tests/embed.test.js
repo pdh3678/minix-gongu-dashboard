@@ -145,8 +145,11 @@ console.log('\n[10] 로그인 화면은 같은 페이지 오버레이 — 해시
 {
   // 로그인 때문에 다른 주소로 튕기면 원래 요청 경로가 사라진다. 이 앱은 #loginScreen을
   // 덮어씌우기만 하므로 URL이 그대로고, 로그인 후 _routeFromHash가 그 해시를 그대로 읽는다.
-  check('로그인이 location을 바꾸지 않음(리다이렉트 코드 없음)',
-    html.indexOf('location.href=') < 0 && html.indexOf('location.replace(') < 0);
+  // 예외는 문서 맨 위의 서비스 주소 이전 스크립트 하나뿐(옛 주소 → 새 주소, service-move.test.js가 따로 지킴)
+  const afterMove = html.slice(html.indexOf('</script>'));
+  check('로그인이 location을 바꾸지 않음(리다이렉트 코드 없음 — 주소 이전 스크립트 제외)',
+    html.indexOf('location.href=') < 0 && afterMove.indexOf('location.replace(') < 0 &&
+    html.indexOf('location.replace(') < html.indexOf('</script>'));
   check('_enterDashboard가 로그인 후 해시로 라우팅', /_enterDashboard[\s\S]{0,600}_routeFromHash\(\)/.test(html));
 }
 
@@ -194,7 +197,7 @@ console.log('\n[13] 임베드 로그인 — 팝업 방식 확인 + 차단 시 �
   ctx._openLoginInNewTab();
   check('새 탭 URL에서 embed 제거', opened.indexOf('embed') < 0, opened);
   check('보던 페이지(해시) 유지', opened.indexOf('#product-TheShift') >= 0, opened);
-  check('대시보드 원본 주소', opened.indexOf('minix-gongu-dashboard.onrender.com/') >= 0, opened);
+  check('대시보드 원본 주소(새 서비스 주소)', opened.indexOf('minix-offline-dashboard.onrender.com/') >= 0, opened);
 }
 {
   // 일반 모드에서는 같은 주소를 새 탭에 열어봤자 의미가 없으므로 버튼을 내보내지 않는다
