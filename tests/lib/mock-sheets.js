@@ -61,6 +61,15 @@ function makeSheet(name, grid) {
       getTextStyles() { note('r', 'getTextStyles', nr * nc); throw new Error('no styles'); },
       getA1Notation() { return 'R' + r + 'C' + c + ':R' + (r + nr - 1) + 'C' + (c + nc - 1); },
       copyTo() { note('w', 'copyTo', nr * nc); return api; },
+      clearContent() {
+        note('w', 'clearContent', nr * nc);
+        calls.push({ op: 'clearContent', r, c, nr, nc });
+        for (let i = 0; i < nr; i++) {
+          const row = cell(r + i, c + nc - 1);
+          for (let j = 0; j < nc; j++) row[c - 1 + j] = '';
+        }
+        return api;
+      },
       setFontWeight() { return api; }
     };
     return api;
