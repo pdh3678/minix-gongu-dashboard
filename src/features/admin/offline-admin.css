@@ -1,0 +1,75 @@
+/* 대시보드 관리 — 데이터 업로드(#admin/upload)·코드 매핑(#admin/code-mapping)·매핑 패널.
+   색·간격은 index.html :root 토큰을 그대로 쓴다(새 색을 만들지 않음). */
+
+/* 상태 패널 */
+.off-status td{white-space:normal}
+.off-status tbody tr,.up-log tbody tr{cursor:default}
+.off-miss{color:var(--warn);font-weight:700}
+.off-ok{color:var(--ok);font-weight:700}
+.off-muted{color:var(--text-3)}
+
+/* 업로드 드롭존 */
+.up-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:26px 16px;border:2px dashed var(--border-s);border-radius:var(--r);background:var(--surface-2);color:var(--text-2);text-align:center;cursor:pointer;transition:background .12s,border-color .12s}
+.up-drop:hover,.up-drop.over{background:var(--minix-lt);border-color:var(--minix);color:var(--minix)}
+.up-drop input{display:none}
+.up-drop-main{font-size:14px;font-weight:700}
+.up-drop-sub{font-size:11px;color:var(--text-3)}
+.up-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 4px}
+.up-progress{font-size:12px;font-weight:700;color:var(--minix)}
+
+/* 파일 카드 */
+.up-cards{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.up-card{border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;background:var(--surface)}
+.up-card.done{border-color:var(--ok);background:var(--ok-bg)}
+.up-card.error{border-color:#FCA5A5}
+.up-card-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.up-fname{font-weight:700;word-break:break-all}
+.up-chip{display:inline-flex;align-items:center;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:700;background:var(--nbg);color:var(--text-2);white-space:nowrap}
+.up-chip.ready{background:var(--minix-lt);color:var(--minix)}
+.up-chip.applying{background:var(--warn-bg);color:var(--warn)}
+.up-chip.done{background:var(--ok);color:#fff}
+.up-chip.error{background:#FEE2E2;color:#B91C1C}
+.up-card-hd .up-acts{margin-left:auto;display:flex;gap:6px}
+.up-btn{padding:5px 12px;font-size:12px}
+.up-row{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;margin-top:10px}
+.up-row .f-lbl{margin-right:-6px}
+.up-row .f-inp,.up-row .f-sel{width:auto;padding:5px 9px;font-size:12px}
+.up-row .f-sel{padding-right:28px}
+.up-year{width:84px!important}
+.up-need{outline:2px solid var(--warn);outline-offset:1px}
+.up-stats{font-size:12px;color:var(--text-2);margin-top:8px;line-height:1.7}
+.up-stats b{color:var(--text);font-variant-numeric:tabular-nums}
+.up-unm{border:1px solid var(--warn);background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+.up-unm.none{border-color:var(--ok);background:var(--ok-bg);color:var(--ok);cursor:default}
+.up-warn{margin:8px 0 0 18px;font-size:12px;color:var(--warn)}
+.up-err{margin-top:8px;font-size:12px;color:#B91C1C;font-weight:600;white-space:pre-wrap}
+.up-result{margin-top:8px;font-size:12px;color:var(--ok);font-weight:600;line-height:1.7}
+.up-panel{margin-top:10px;border-top:1px dashed var(--border);padding-top:10px}
+.up-log td{font-size:12px}
+.up-log td.up-log-warn{white-space:normal;max-width:360px;color:var(--warn)}
+
+/* 매핑 패널 (업로드 카드·코드 매핑 화면 공용) */
+.mp-tbl td{vertical-align:top;white-space:normal}
+.mp-tbl tbody tr{cursor:default}
+.mp-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;word-break:break-all}
+.mp-tbl .f-sel{width:auto;min-width:220px;max-width:340px;padding:5px 28px 5px 9px;font-size:12px}
+.mp-tbl .mp-type{min-width:84px}
+.mp-sugg{margin-top:4px;font-size:11px;color:var(--text-3)}
+.mp-chip{border:1px solid var(--minix);background:var(--minix-lt);color:var(--minix);border-radius:12px;padding:1px 8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+.mp-link{border:none;background:none;color:var(--minix);font-size:11px;font-weight:700;cursor:pointer;padding:0;margin-top:4px;font-family:inherit}
+.mp-hint{font-size:10px;color:var(--text-3);margin-left:4px}
+.mp-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.mp-empty{padding:18px;text-align:center;color:var(--text-3);font-size:12px}
+.mp-newsku{border:1px solid var(--minix);border-radius:var(--r);background:var(--minix-lt);padding:12px 14px;margin-bottom:10px}
+.mp-newsku .up-row{margin-top:6px}
+.mp-newsku .mp-ns-name{min-width:260px}
+
+/* 코드 매핑 화면 — 전체 매핑 표 */
+.cm-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.cm-filters .f-sel,.cm-filters .f-inp{width:auto;padding:5px 9px;font-size:12px}
+.cm-filters .f-sel{padding-right:28px}
+.cm-tbl td{white-space:normal}
+.cm-tbl tbody tr{cursor:default}
+.cm-off td{color:var(--text-3)}
+.cm-acts{display:flex;gap:6px;white-space:nowrap}
+.cm-danger{border-color:#FCA5A5!important;color:#B91C1C!important}

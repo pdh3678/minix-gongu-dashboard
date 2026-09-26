@@ -700,6 +700,8 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 .login-diag-retry:hover{background:#FEF3C7}
 
 </style>
+<!-- 대시보드 관리(데이터 업로드·코드 매핑) 전용 스타일 -->
+<link rel="stylesheet" href="src/features/admin/offline-admin.css">
 <script>
 /* 임베드 판정은 첫 페인트 전에 끝나야 한다 — 문서 끝의 큰 스크립트에서 걸면 사이드바가 한 번
    보였다가 사라지는 깜빡임이 생긴다. 그래서 여기(head)에서 클래스만 먼저 붙이고,
@@ -1767,6 +1769,11 @@ tbody tr:hover td.sticky-col1,tbody tr:hover td.sticky-col2{background:var(--sur
 <script src="src/shared/api/gas-client.js"></script>
 <script src="src/shared/auth/login.js"></script>
 <script src="src/shared/presence.js"></script>
+<script src="src/features/offline/parsers.js"></script>
+<script src="src/features/offline/resolver.js"></script>
+<script src="src/features/offline/sheetjs.js"></script>
+<script src="src/features/offline/api.js"></script>
+<script src="src/features/admin/mapping-panel.js"></script>
 <script src="src/features/home/home.js"></script>
 <script src="src/features/offline/channels.js"></script>
 <script src="src/features/offline/channel.js"></script>

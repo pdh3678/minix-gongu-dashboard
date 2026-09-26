@@ -42,6 +42,8 @@ const PAGE_WITH_PARAM=['offline-channel'];
 const DEFAULT_PAGE_ID='home'; // 해시 없음/알 수 없는 해시 → 파트 홈
 let _currentPageHash='dashboard'; // 새 공구건 등록 모달을 닫을 때 되돌아갈 해시(모달 밑에 깔린 실제 탭)
 let _pageParam=null; // 지금 페이지의 해시 파라미터(#offline/channel/{channelId}의 channelId) — 없으면 null
+// 페이지에 들어올 때마다 부를 함수(데이터를 서버에서 받아 그리는 페이지용) — 페이지 파일이 자기 것을 등록한다
+const PAGE_MOUNTS={};
 
 function _setHash(h){
   /* ⚠ location.search를 반드시 보존할 것. 예전엔 pathname만 붙여서, 임베드(?embed=1)로 들어와도
@@ -103,4 +105,5 @@ function navPage(pageId,el,param){
   _currentPageHash=hash;
   _setHash(hash);
   if(pageId==='review')_mountReviewApp();
+  if(PAGE_MOUNTS[pageId])PAGE_MOUNTS[pageId](_pageParam);
 }
