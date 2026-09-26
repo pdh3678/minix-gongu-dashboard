@@ -28,7 +28,8 @@ const SUITES = [
   ['service-move.test.js',    '서비스 주소 이전 — 옛 주소만 새 주소로(경로·쿼리·해시 보존), 이동 중 부트스트랩 정지'],
   ['offline-setup.test.js',   '오프라인 시트 구조 — 11개 탭·헤더·텍스트 서식, 재실행 안전, 원장 교체 헬퍼'],
   ['offline-resolver.test.js','오프라인 코드 해석 — (채널, 원본코드) 키, 비활성 매핑, 모델명·재고구분·SKU 제안'],
-  ['../scripts/test-offline-parsers.js','오프라인 파서 — 5종 판별·헤더 탐색·숫자/날짜/코드 정규화(합성 픽스처)']
+  ['../scripts/test-offline-parsers.js','오프라인 파서 — 5종 판별·헤더 탐색·숫자/날짜/코드 정규화(합성 픽스처)'],
+  ['offline-ledger.test.js',  '오프라인 원장 반영 — 기간 교체·스냅샷·하이마트 누적 차이, 재업로드·순서 무관 동일']
 ];
 
 let failed = 0;

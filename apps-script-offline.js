@@ -271,3 +271,287 @@ function _offMappedKeys(mappingRows) {
   mappingRows.forEach(function (r) { if (r[0] && r[1] && r[2]) set[r[0] + OFF_KEY_SEP + r[1]] = true; });
   return set;
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 업로드 반영 ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/* 파일 1개 단위.
+   data.meta    = { fileName, fileType, channelId, baseDate(스냅샷형) | replaceStart·replaceEnd(기간 교체형), rawRowCount }
+   data.records = { sales[], storeStock[], channelStock[], himart[], stores[], names{code: 상품명} }
+                  (파서 출력 그대로 — src/features/offline/parsers.js 의 toUploadPayload) */
+function _offUpload(data, auth) {
+  var meta = data.meta || {}, rec = data.records || {};
+  var ft = OFF_FILE_TYPES[meta.fileType];
+  if (!ft) throw new Error('알 수 없는 파일 유형입니다: ' + meta.fileType);
+  if (meta.channelId !== ft.channelId) throw new Error(meta.fileType + ' 파일의 채널은 ' + ft.channelId + ' 여야 합니다 (받은 값: ' + meta.channelId + ')');
+  if (ft.kind === 'period') {
+    if (!_offIsDate(meta.replaceStart) || !_offIsDate(meta.replaceEnd) || meta.replaceStart > meta.replaceEnd) {
+      throw new Error('교체 기간이 올바르지 않습니다: ' + meta.replaceStart + ' ~ ' + meta.replaceEnd);
+    }
+  } else if (!_offIsDate(meta.baseDate)) {
+    throw new Error('기준일이 올바르지 않습니다: ' + meta.baseDate);
+  }
+  _offValidateRecords(rec);
+
+  return _offWithLock(function () {
+    var ctx = {
+      ss: _offSS(), today: _offToday(), warnings: [], applied: {},
+      uploadId: 'U' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().slice(0, 4)
+    };
+    try {
+      var range = {};
+      if (ft.kind === 'period') range = _offApplyPeriodSales(ctx, meta, rec);
+      else {
+        range = _offApplyStock(ctx, meta, rec);
+        if (ft.kind === 'himart') range.himart = _offApplyHimart(ctx, meta, rec);
+      }
+      _offUpsertStores(ctx, meta.channelId, rec.stores || []);
+      var unmatched = _offUpdateUnmatched(ctx, meta.channelId, _offCodesOf(rec));
+      _offAppendLog(ctx, meta, auth, '성공', unmatched.length);
+      _offInvalidateCache();
+      return { success: true, uploadId: ctx.uploadId, applied: ctx.applied, replaceRange: range, unmatched: unmatched, warnings: ctx.warnings };
+    } catch (e) {
+      // 실패도 로그에 남긴다(다음 업로드가 같은 범위를 교체하므로 재시도하면 복구된다)
+      try { _offAppendLog(ctx, meta, auth, '실패: ' + String((e && e.message) || e).slice(0, 300), 0); } catch (e2) {}
+      throw e;
+    }
+  });
+}
+
+function _offValidateRecords(rec) {
+  function num(v, what) {
+    if (v === '' || v == null) return;
+    if (typeof v !== 'number' || !isFinite(v)) throw new Error(what + ' 값이 숫자가 아닙니다: ' + v);
+  }
+  function code(v, what) { if (typeof v !== 'string' || !v) throw new Error(what + '이(가) 비었습니다.'); }
+  (rec.sales || []).forEach(function (r) {
+    if (!_offIsDate(r.s) || !_offIsDate(r.e) || r.s > r.e) throw new Error('판매 레코드 기간이 올바르지 않습니다: ' + r.s + ' ~ ' + r.e);
+    code(r.code, '판매 레코드 원본코드'); num(r.qty, '수량'); num(r.inst, '설치완료수량');
+  });
+  (rec.storeStock || []).forEach(function (r) {
+    code(r.code, '점포 재고 원본코드');
+    ['stock', 'transit', 'reserved', 'monthIn', 'monthSale'].forEach(function (k) { num(r[k], '점포 재고 ' + k); });
+  });
+  (rec.channelStock || []).forEach(function (r) {
+    code(r.code, '채널 재고 원본코드');
+    ['stock', 'transit', 'reserved'].forEach(function (k) { num(r[k], '채널 재고 ' + k); });
+  });
+  (rec.himart || []).forEach(function (r) {
+    code(r.code, '하이마트 원본코드');
+    ['real', 'sale', 'week', 'day', 'stock'].forEach(function (k) { num(r[k], '하이마트 ' + k); });
+  });
+}
+
+// A. 기간 교체형 — 이 채널의 판매원장 중 교체 기간 안의 행을 지우고 새 행을 넣는다
+function _offApplyPeriodSales(ctx, meta, rec) {
+  var ch = meta.channelId, s = meta.replaceStart, e = meta.replaceEnd;
+  var rows = [], outside = 0;
+  (rec.sales || []).forEach(function (r) {
+    if (r.s < s || r.e > e) { outside++; return; } // 교체 범위 밖을 넣으면 재업로드 때 중복된다
+    var qty = Number(r.qty) || 0;
+    var inst = (r.inst === '' || r.inst == null) ? '' : (Number(r.inst) || 0);
+    if (!qty && !inst) return;
+    rows.push([r.s, r.e, r.s === r.e ? 'day' : 'period', ch, r.store || '', r.code, qty, inst, 'upload', ctx.uploadId]);
+  });
+  if (outside) ctx.warnings.push('교체 기간(' + s + '~' + e + ') 밖의 레코드 ' + outside + '건은 반영하지 않았습니다');
+  var def = OFF_TABS.sales, sheet = _offSheet(ctx.ss, 'sales');
+  var res = _offReplaceRows(sheet, def, _offReadRows(sheet, def), function (r) {
+    return !(r[3] === ch && r[0] >= s && r[1] <= e);
+  }, rows);
+  ctx.applied.sales = rows.length;
+  ctx.applied.salesRemoved = res.removed;
+  return { start: s, end: e };
+}
+
+// B. 스냅샷형 — 재고_채널일별은 (기준일, 채널) 교체, 재고_점포최신은 더 최신일 때만 채널 통째 교체
+function _offApplyStock(ctx, meta, rec) {
+  var ch = meta.channelId, D = meta.baseDate;
+  var dDef = OFF_TABS.stockDaily, dSheet = _offSheet(ctx.ss, 'stockDaily');
+  var dRows = (rec.channelStock || []).map(function (r) {
+    return [D, ch, r.code, Number(r.stock) || 0, _offOpt(r.transit), _offOpt(r.reserved), ctx.uploadId];
+  });
+  _offReplaceRows(dSheet, dDef, _offReadRows(dSheet, dDef), function (r) { return !(r[0] === D && r[1] === ch); }, dRows);
+  ctx.applied.stockDaily = dRows.length;
+
+  var sDef = OFF_TABS.stockStore, sSheet = _offSheet(ctx.ss, 'stockStore');
+  var sOld = _offReadRows(sSheet, sDef);
+  var current = '';
+  sOld.forEach(function (r) { if (r[1] === ch && r[0] > current) current = r[0]; });
+  if (current && D < current) {
+    ctx.warnings.push('재고_점포최신은 더 최신 기준일(' + current + ') 데이터가 있어 갱신하지 않았습니다');
+    ctx.applied.stockStore = 0;
+  } else {
+    var sRows = (rec.storeStock || []).map(function (r) {
+      return [D, ch, r.store || '', r.code, Number(r.stock) || 0, _offOpt(r.transit), _offOpt(r.reserved), _offOpt(r.monthIn), _offOpt(r.monthSale), ctx.uploadId];
+    });
+    _offReplaceRows(sSheet, sDef, sOld, function (r) { return r[1] !== ch; }, sRows);
+    ctx.applied.stockStore = sRows.length;
+  }
+  return { baseDate: D };
+}
+
+// 파일에 없는 값은 빈칸('없음')으로 — 0(있는데 0개)과 구분한다
+function _offOpt(v) { return (v === '' || v == null) ? '' : (Number(v) || 0); }
+
+/* C. 하이마트 판매 계산 — 당월 누적(당월판매·당월실판매) 스냅샷의 차이로 판매를 만든다.
+   1) 누적스냅샷에 기준일 D0 교체 저장
+   2) 영향 날짜 = D0 + D0 바로 다음에 존재하는 스냅샷 날짜(그 날의 "이전 스냅샷"이 D0로 바뀌므로)
+   3) 영향 날짜마다 _offHimartSalesFor로 다시 계산, 판매원장의 하이마트 행 중 기간종료가 영향 날짜인 것을 교체
+   스냅샷에는 판매 값(당월실판매·당월판매·금주판매·당일판매)이 하나라도 있는 행만 둔다. 없는 행은
+   "0으로 본다"는 계산 규칙과 결과가 같고, 점포×상품 전부(하루 1,600여 행)를 45일 쌓으면 매 업로드가
+   수십만 셀을 읽고 쓰게 된다. */
+function _offApplyHimart(ctx, meta, rec) {
+  var D0 = meta.baseDate;
+  var snapDef = OFF_TABS.himartSnap, snapSheet = _offSheet(ctx.ss, 'himartSnap');
+  var oldSnap = _offReadRows(snapSheet, snapDef);
+  var newSnap = [];
+  (rec.himart || []).forEach(function (r) {
+    if (!(r.real || r.sale || r.week || r.day)) return;
+    newSnap.push([D0, r.store || '', r.code, Number(r.real) || 0, Number(r.sale) || 0, Number(r.week) || 0, Number(r.day) || 0, Number(r.stock) || 0, ctx.uploadId]);
+  });
+  // 판매 값이 하나도 없는 날(월초 등)도 "이 날 스냅샷이 있었다"는 사실은 남겨야 다음 날이 day로 계산된다
+  if (!newSnap.length) newSnap.push([D0, '', '', 0, 0, 0, 0, 0, ctx.uploadId]);
+
+  var merged = oldSnap.filter(function (r) { return r[0] !== D0 && _offIsDate(r[0]); }).concat(newSnap);
+  var byDate = {};
+  merged.forEach(function (r) {
+    var m = byDate[r[0]] || (byDate[r[0]] = {});
+    m[r[1] + OFF_KEY_SEP + r[2]] = { real: Number(r[3]) || 0, sale: Number(r[4]) || 0, day: Number(r[6]) || 0 };
+  });
+  var dates = Object.keys(byDate).sort();
+  var affected = [D0];
+  for (var i = 0; i < dates.length; i++) if (dates[i] > D0) { affected.push(dates[i]); break; }
+
+  var newSales = [], recomputed = [], affectedSet = {};
+  affected.forEach(function (D) {
+    affectedSet[D] = true;
+    var res = _offHimartSalesFor(D, byDate, dates, ctx.uploadId);
+    newSales = newSales.concat(res.rows);
+    recomputed.push({ date: D, unit: res.unit, start: res.start, rows: res.rows.length });
+    if (res.mismatch) ctx.warnings.push('하이마트 ' + D + ' 당일판매 불일치 ' + res.mismatch + '건 (예: ' + res.samples.join(', ') + ')');
+  });
+
+  var sDef = OFF_TABS.sales, sSheet = _offSheet(ctx.ss, 'sales');
+  var res2 = _offReplaceRows(sSheet, sDef, _offReadRows(sSheet, sDef), function (r) {
+    return !(r[3] === 'himart' && affectedSet[r[1]]);
+  }, newSales);
+  ctx.applied.sales = newSales.length;
+  ctx.applied.salesRemoved = res2.removed;
+
+  var cutoff = _offAddDays(ctx.today, -OFF_SNAPSHOT_KEEP_DAYS);
+  var keepSnap = newSnap.filter(function (r) { return r[0] >= cutoff; });
+  _offReplaceRows(snapSheet, snapDef, oldSnap, function (r) { return r[0] !== D0 && r[0] >= cutoff; }, keepSnap);
+  ctx.applied.himartSnap = keepSnap.length;
+  return { recomputed: recomputed };
+}
+
+/* 영향 날짜 D 하나의 하이마트 판매 레코드(점포코드 × 원본코드).
+   prev = D보다 이전의 가장 최근 스냅샷(같은 달일 때만 유효 — 당월 누적은 매달 1일에 0부터 다시 쌓인다)
+     prev = D-1           → day    [D, D]        수량 = 당월판매(D) − 당월판매(prev)
+     prev가 같은 달, D-1 아님 → period [prev+1, D]   (같은 식)
+     같은 달에 prev 없음    → D가 1일이면 day, 아니면 period [그 달 1일, D]   수량 = 당월판매(D)
+   설치완료수량은 같은 식을 당월실판매로. 한쪽 스냅샷에 없는 점포·코드는 0으로 본다.
+   day 레코드는 파일의 당일판매(D)와 대조해 불일치 건수를 센다(검증용 — 값은 차이 계산 결과를 쓴다). */
+function _offHimartSalesFor(D, byDate, dates, uploadId) {
+  var prev = null;
+  for (var i = 0; i < dates.length && dates[i] < D; i++) prev = dates[i];
+  if (prev && prev.slice(0, 7) !== D.slice(0, 7)) prev = null;
+  var start = prev ? _offAddDays(prev, 1) : D.slice(0, 8) + '01';
+  var unit = start === D ? 'day' : 'period';
+  var cur = byDate[D] || {}, base = prev ? (byDate[prev] || {}) : {};
+  var keys = {};
+  Object.keys(cur).forEach(function (k) { keys[k] = true; });
+  Object.keys(base).forEach(function (k) { keys[k] = true; });
+  var ZERO = { real: 0, sale: 0, day: 0 };
+  var rows = [], mismatch = 0, samples = [];
+  Object.keys(keys).sort().forEach(function (k) {
+    var p = k.split(OFF_KEY_SEP);
+    if (!p[0] && !p[1]) return; // 판매 없는 날 표시용 빈 행
+    var c = cur[k] || ZERO, b = base[k] || ZERO;
+    var qty = c.sale - b.sale, inst = c.real - b.real;
+    if (qty || inst) rows.push([start, D, unit, 'himart', p[0], p[1], qty, inst, 'upload', uploadId]);
+    if (unit === 'day' && qty !== c.day) {
+      mismatch++;
+      if (samples.length < 3) samples.push(p[0] + '/' + p[1] + ' 계산 ' + qty + '≠당일 ' + c.day);
+    }
+  });
+  return { rows: rows, unit: unit, start: start, mismatch: mismatch, samples: samples };
+}
+
+// 점포마스터 upsert — 새 점포는 추가, 있던 점포는 이름·지역(값이 있을 때만)과 최근확인일 갱신
+function _offUpsertStores(ctx, ch, stores) {
+  if (!stores.length) return;
+  var def = OFF_TABS.store, sheet = _offSheet(ctx.ss, 'store');
+  var rows = _offReadRows(sheet, def);
+  var prev = rows.length;
+  var idx = {};
+  rows.forEach(function (r) { idx[r[0] + OFF_KEY_SEP + r[1]] = r; });
+  var added = 0;
+  stores.forEach(function (s) {
+    var code = String(s.code || '').trim();
+    if (!code) return;
+    var row = idx[ch + OFF_KEY_SEP + code];
+    if (!row) {
+      row = [ch, code, s.name || '', s.region || '', ctx.today, ctx.today];
+      rows.push(row); idx[ch + OFF_KEY_SEP + code] = row; added++;
+      return;
+    }
+    if (s.name) row[2] = s.name;
+    if (s.region) row[3] = s.region;
+    if (ctx.today > row[5]) row[5] = ctx.today;
+  });
+  _offWriteAll(sheet, def, rows, prev);
+  ctx.applied.storesAdded = added;
+}
+
+// 레코드에 나온 원본코드 → 상품명
+function _offCodesOf(rec) {
+  var names = rec.names || {}, out = {};
+  function add(code) { if (code && !(code in out)) out[code] = String(names[code] || ''); }
+  (rec.sales || []).forEach(function (r) { add(r.code); });
+  (rec.storeStock || []).forEach(function (r) { add(r.code); });
+  (rec.channelStock || []).forEach(function (r) { add(r.code); });
+  (rec.himart || []).forEach(function (r) { add(r.code); });
+  return out;
+}
+
+// 미매칭코드 갱신 — 이번 업로드에서 매핑 없는 코드를 누적(발견횟수 = 나온 업로드 수), 매핑된 코드는 정리
+function _offUpdateUnmatched(ctx, ch, codes) {
+  var mapped = _offMappedKeys(_offReadRows(_offSheet(ctx.ss, 'mapping'), OFF_TABS.mapping));
+  var def = OFF_TABS.unmatched, sheet = _offSheet(ctx.ss, 'unmatched');
+  var rows = _offReadRows(sheet, def);
+  var prev = rows.length;
+  var idx = {};
+  rows.forEach(function (r) { idx[r[0] + OFF_KEY_SEP + r[1]] = r; });
+  var list = [];
+  Object.keys(codes).sort().forEach(function (code) {
+    var k = ch + OFF_KEY_SEP + code;
+    if (mapped[k]) return;
+    list.push({ code: code, name: codes[code] });
+    var row = idx[k];
+    if (row) {
+      if (codes[code]) row[2] = codes[code];
+      row[4] = ctx.today;
+      row[5] = (Number(row[5]) || 0) + 1;
+    } else {
+      row = [ch, code, codes[code], ctx.today, ctx.today, 1];
+      rows.push(row); idx[k] = row;
+    }
+  });
+  _offWriteAll(sheet, def, rows.filter(function (r) { return !mapped[r[0] + OFF_KEY_SEP + r[1]]; }), prev);
+  return list;
+}
+
+function _offAppendLog(ctx, meta, auth, status, unmatchedCount) {
+  var ft = OFF_FILE_TYPES[meta.fileType] || {};
+  var range = ft.kind === 'period' ? (meta.replaceStart + '~' + meta.replaceEnd) : (meta.baseDate || '');
+  var a = ctx.applied;
+  var appliedRows = (a.sales || 0) + (a.stockDaily || 0) + (a.stockStore || 0) + (a.himartSnap || 0);
+  var def = OFF_TABS.uploadLog, sheet = _offSheet(ctx.ss, 'uploadLog');
+  _offWriteBlock(sheet, def, sheet.getLastRow() + 1, [[
+    ctx.uploadId, Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), (auth && auth.email) || '',
+    String(meta.fileName || '').slice(0, 200), meta.fileType, meta.channelId, range,
+    Number(meta.rawRowCount) || 0, appliedRows, unmatchedCount, ctx.warnings.join(' / ').slice(0, 2000), status
+  ]]);
+}
