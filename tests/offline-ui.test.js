@@ -8,6 +8,8 @@
      · 전체 반영은 하이마트를 기준일 오름차순으로 맨 뒤에, 파일 1개 = 요청 1개로 순차 전송
      · 카드의 "미매칭 N개"에서 바로 매핑(제안 칩 → 저장 버튼으로 확정), 새 SKU 만들기(표준명 자동)
      · 파일명·상품명 같은 외부 문자열은 HTML로 해석되지 않는다
+     · 코드 매핑 화면(#admin/code-mapping): 미매칭 목록(같은 패널) + 전체 매핑 표의 필터·검색·수정,
+       비활성화는 두 번 눌러야 하고, 저장하면 마스터·미매칭을 다시 받는다
 
    실행: node tests/offline-ui.test.js  (또는 node tests/run-all.js) */
 const path = require('path');
@@ -22,7 +24,7 @@ function check(l, c, extra) {
 const tick = () => new Promise(r => setTimeout(r, 0));
 async function settle() { for (let i = 0; i < 8; i++) await tick(); }
 
-const SHIM = 'get UP(){return _UP;}, get MASTERS(){return OFFLINE_MASTERS;}, get MP(){return _MP;}, get PAGE_MOUNTS(){return PAGE_MOUNTS;}';
+const SHIM = 'get UP(){return _UP;}, get MASTERS(){return OFFLINE_MASTERS;}, get MP(){return _MP;}, get PAGE_MOUNTS(){return PAGE_MOUNTS;}, get CM(){return _CM;}';
 
 // ── 합성 파일 ──
 const HIMART = d => [['지사명', '인도처코드', '인도처명', '상품코드', '상품명', '당월실판매', '당월판매', '금주판매', '당일판매', '잔여재고', '회전율'],
@@ -213,6 +215,67 @@ function setup() {
     check('파일명 태그가 그대로 나가지 않음', page().indexOf('<img src=x') < 0 && page().indexOf('&lt;img src=x') >= 0);
     check('구간 압축', ctx._upDayRanges(['2026-09-01', '2026-09-02', '2026-09-04', '2026-09-30']) === '9/1~9/2, 9/4, 9/30' && ctx._upDayRanges([]) === '');
     check('월 경계 연속', ctx._upDayRanges(['2026-09-30', '2026-10-01']) === '9/30~10/1');
+  }
+
+  console.log('\n[9] 코드 매핑 화면 — 미매칭 목록 + 전체 매핑 표');
+  {
+    const { ctx, X, calls, el, replies } = setup();
+    const M = JSON.parse(JSON.stringify(MASTERS));
+    M.mappings.push({ channelId: 'emart', code: '8809770080968', skuId: 'SKU-0001', stockType: '정상', name: '미닉스 더플렌더 MAX(그레이지)', registeredAt: '2026-09-27', registeredBy: 'a@athomecorp.com', note: '' },
+      { channelId: 'himart', code: 'MNVC-100G', skuId: '', stockType: '정상', name: '무선청소기 <i>x</i>', note: '비활성화 2026-09-27 a@athomecorp.com' });
+    replies.offline_getMasters = () => JSON.parse(JSON.stringify(M));
+    replies.offline_getUnmatched = () => ({ success: true, items: [{ channelId: 'himart', code: '(J)MNFD-200G', name: '가상 MAX 전시', firstSeen: '2026-09-20', lastSeen: '2026-09-25', count: 3 }] });
+    check('코드 매핑 페이지가 PAGE_MOUNTS에 등록', typeof X.PAGE_MOUNTS['admin-code-mapping'] === 'function');
+    ctx.navPage('admin-code-mapping', null);
+    await settle();
+    const page = () => el('page-admin-code-mapping').innerHTML, table = () => el('cmTable').innerHTML;
+    check('들어오면 마스터·미매칭을 받는다', calls.some(c => c.action === 'offline_getMasters') && calls.some(c => c.action === 'offline_getUnmatched'));
+    check('두 영역과 미매칭 수', page().indexOf('미매칭 코드 1개') >= 0 && page().indexOf('전체 매핑') >= 0 && page().indexOf('준비 중') < 0);
+    const ph = el('cmUnmatched').innerHTML;
+    check('미매칭 패널: 채널·발견횟수·최근발견일 열, 모델 제안', ph.indexOf('<th>채널</th>') >= 0 && ph.indexOf('<td>하이마트</td>') >= 0 && ph.indexOf('<td class="num-col">3</td>') >= 0 && ph.indexOf('제안(모델 MNFD-200G)') >= 0);
+    check('전체 매핑 3건, 건수 표시', (table().match(/class="mp-code"/g) || []).length === 3 && el('cmCount').textContent === '3 / 3건', el('cmCount').textContent);
+    check('비활성 매핑: "비활성" + 다시 매핑 버튼(비활성화 버튼 없음)', /off-miss">비활성/.test(table()) && table().indexOf('다시 매핑') >= 0);
+    check('상품명 이스케이프', table().indexOf('<i>x</i>') < 0);
+
+    ctx._cmSetFilter('ch', 'emart');
+    check('채널 필터', ctx._cmFilteredMappings().map(x => x.code).join() === '8809770080968');
+    ctx._cmSetFilter('ch', ''); ctx._cmSetFilter('line', '-');
+    check('품목군 "비활성(SKU 없음)"', ctx._cmFilteredMappings().map(x => x.code).join() === 'MNVC-100G');
+    ctx._cmSetFilter('line', '더플렌더');
+    check('품목군 필터 = 매핑된 SKU의 품목군', ctx._cmFilteredMappings().length === 2);
+    ctx._cmSetFilter('line', ''); ctx._cmSetFilter('q', '그레이지', true);
+    check('검색: SKU 표준명·상품명·코드', ctx._cmFilteredMappings().length === 2 && el('cmCount').textContent === '2 / 3건');
+    ctx._cmSetFilter('q', 'mnvc', true);
+    check('검색은 대소문자 무시', ctx._cmFilteredMappings().map(x => x.code).join() === 'MNVC-100G');
+    ctx._cmSetFilter('q', '', true); ctx._cmSetFilter('type', '전시');
+    check('재고구분 필터(전시 없음) → 안내 문구', ctx._cmFilteredMappings().length === 0 && table().indexOf('조건에 맞는 매핑이 없습니다') >= 0);
+    ctx._cmSetFilter('type', '');
+
+    const rows = () => X.CM.rows;
+    const iE = rows().findIndex(x => x.code === 'MNFD-200G');
+    ctx._cmStartEdit(iE);
+    check('수정 줄: SKU 드롭다운·재고구분·비고·저장', table().indexOf('_cmSaveEdit(' + iE + ')') >= 0 && table().indexOf('내 이메일로 기록') >= 0);
+    ctx._cmEditSet('stockType', '리퍼'); ctx._cmEditSet('note', '확인 완료');
+    calls.length = 0;
+    await ctx._cmSaveEdit(iE);
+    await settle();
+    const sv = calls.find(c => c.action === 'offline_saveMapping');
+    check('수정 저장 = upsert(재고구분·비고 반영)', sv && JSON.stringify(sv.data.items) === JSON.stringify([{ op: 'upsert', channelId: 'etland', code: 'MNFD-200G', skuId: 'SKU-0001', stockType: '리퍼', name: '가상 MAX', note: '확인 완료' }]), sv && sv.data);
+    check('저장 후 마스터·미매칭을 다시 받음', calls.some(c => c.action === 'offline_getMasters') && calls.some(c => c.action === 'offline_getUnmatched') && X.CM.editKey === null);
+
+    const iD = rows().findIndex(x => x.code === '8809770080968');
+    calls.length = 0;
+    await ctx._cmDeactivate(iD);
+    check('비활성화 첫 클릭은 확인 버튼으로만 바뀜(요청 없음)', !calls.some(c => c.action === 'offline_saveMapping') && table().indexOf('비활성화 확인') >= 0);
+    await ctx._cmDeactivate(iD);
+    await settle();
+    const dv = calls.find(c => c.action === 'offline_saveMapping');
+    check('두 번째 클릭에 deactivate 요청', dv && JSON.stringify(dv.data.items) === JSON.stringify([{ op: 'deactivate', channelId: 'emart', code: '8809770080968' }]), dv && dv.data);
+
+    replies.offline_getMasters = () => { throw new Error('Apps Script 배포본에 오프라인 기능이 아직 없습니다 — 재배포 필요'); };
+    X.CM.unmatched = null;
+    await ctx._cmLoad();
+    check('서버 오류는 화면에 문구로(예외로 멈추지 않음)', page().indexOf('재배포') >= 0);
   }
 
   console.log('\n' + '─'.repeat(50));
