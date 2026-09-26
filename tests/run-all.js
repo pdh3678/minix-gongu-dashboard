@@ -26,7 +26,8 @@ const SUITES = [
   ['deal-form-prefill.test.js','새 공구건 등록 버튼 — PageHeaderActions, 품목·모델·날짜 미리 채우기, #gongu/new'],
   ['pending-list.test.js',    '미기입 목록 — 판정 그대로, 완료 강조·진행중/예정 흐리게, 상태 칩, 사이드바 배지'],
   ['service-move.test.js',    '서비스 주소 이전 — 옛 주소만 새 주소로(경로·쿼리·해시 보존), 이동 중 부트스트랩 정지'],
-  ['offline-setup.test.js',   '오프라인 시트 구조 — 11개 탭·헤더·텍스트 서식, 재실행 안전, 원장 교체 헬퍼']
+  ['offline-setup.test.js',   '오프라인 시트 구조 — 11개 탭·헤더·텍스트 서식, 재실행 안전, 원장 교체 헬퍼'],
+  ['offline-resolver.test.js','오프라인 코드 해석 — (채널, 원본코드) 키, 비활성 매핑, 모델명·재고구분·SKU 제안']
 ];
 
 let failed = 0;
