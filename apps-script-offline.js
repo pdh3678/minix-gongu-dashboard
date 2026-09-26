@@ -555,3 +555,240 @@ function _offAppendLog(ctx, meta, auth, status, unmatchedCount) {
     Number(meta.rawRowCount) || 0, appliedRows, unmatchedCount, ctx.warnings.join(' / ').slice(0, 2000), status
   ]]);
 }
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── API 라우팅 (doPost → 여기) ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// apps-script.js 의 doPost가 세션을 확인한 뒤 action이 offline_ 로 시작하면 여기로 보낸다.
+function _offlineHandle(action, data, auth) {
+  try {
+    var out;
+    if (action === 'offline_getMasters') out = _offGetMasters();
+    else if (action === 'offline_upload') out = _offUpload(data || {}, auth);
+    else if (action === 'offline_saveSku') out = _offSaveSku(data || {}, auth);
+    else if (action === 'offline_saveMapping') out = _offSaveMapping(data || {}, auth);
+    else if (action === 'offline_getUnmatched') out = _offGetUnmatched();
+    else if (action === 'offline_getUploadLog') out = _offGetUploadLog();
+    else if (action === 'offline_getStatus') out = _offGetStatus();
+    else throw new Error('알 수 없는 오프라인 액션: ' + action);
+    return _json(out);
+  } catch (err) {
+    Logger.log('[오프라인 실패] action=' + action + ' / ' + err + '\n' + (err && err.stack));
+    return _json({ error: String((err && err.message) || err), action: action });
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 마스터 읽기 ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function _offSkuObj(r) { return { skuId: r[0], name: r[1], line: r[2], model: r[3], option: r[4], active: r[5] || 'Y', order: r[6], note: r[7] }; }
+function _offMappingObj(r) { return { channelId: r[0], code: r[1], skuId: r[2], stockType: r[3], name: r[4], registeredAt: r[5], registeredBy: r[6], note: r[7] }; }
+
+function _offGetMasters() {
+  var cache = CacheService.getScriptCache();
+  var hit = _cacheGetJSON(cache, 'offline:masters');
+  if (hit) { hit.cached = true; return hit; }
+  var ss = _offSS();
+  var out = {
+    success: true,
+    skus: _offReadRows(_offSheet(ss, 'sku'), OFF_TABS.sku).filter(function (r) { return r[0]; }).map(_offSkuObj),
+    channels: _offReadRows(_offSheet(ss, 'channel'), OFF_TABS.channel).filter(function (r) { return r[0]; }).map(function (r) {
+      return { channelId: r[0], name: r[1], type: r[2], active: r[3], order: r[4] };
+    }),
+    mappings: _offReadRows(_offSheet(ss, 'mapping'), OFF_TABS.mapping).filter(function (r) { return r[0] && r[1]; }).map(_offMappingObj),
+    stores: _offReadRows(_offSheet(ss, 'store'), OFF_TABS.store).filter(function (r) { return r[0] && r[1]; }).map(function (r) {
+      return { channelId: r[0], code: r[1], name: r[2], region: r[3], firstSeen: r[4], lastSeen: r[5] };
+    }),
+    productLines: OFFLINE_PRODUCT_LINES,
+    stockTypes: OFF_STOCK_TYPES
+  };
+  _cachePutJSON(cache, 'offline:masters', out, OFF_CACHE_TTL_SEC);
+  return out;
+}
+
+function _offGetUnmatched() {
+  var ss = _offSS();
+  var mapped = _offMappedKeys(_offReadRows(_offSheet(ss, 'mapping'), OFF_TABS.mapping));
+  var items = _offReadRows(_offSheet(ss, 'unmatched'), OFF_TABS.unmatched)
+    .filter(function (r) { return r[0] && r[1] && !mapped[r[0] + OFF_KEY_SEP + r[1]]; })
+    .map(function (r) { return { channelId: r[0], code: r[1], name: r[2], firstSeen: r[3], lastSeen: r[4], count: Number(r[5]) || 0 }; });
+  items.sort(function (a, b) { return (b.count - a.count) || (b.lastSeen < a.lastSeen ? -1 : b.lastSeen > a.lastSeen ? 1 : 0); });
+  return { success: true, items: items };
+}
+
+// 최근 50건 — 로그 전체를 읽지 않고 끝부분만 읽는다
+function _offGetUploadLog() {
+  var ss = _offSS();
+  var def = OFF_TABS.uploadLog;
+  var sheet = _offSheet(ss, 'uploadLog');
+  var last = sheet.getLastRow();
+  var n = Math.min(50, Math.max(0, last - 1));
+  if (!n) return { success: true, items: [] };
+  var rows = sheet.getRange(last - n + 1, 1, n, def.headers.length).getValues();
+  var items = rows.map(function (r) {
+    return {
+      uploadId: _offStr(r[0]), at: _offStr(r[1]), uploader: _offStr(r[2]), fileName: _offStr(r[3]),
+      fileType: _offStr(r[4]), channelId: _offStr(r[5]), range: _offStr(r[6]),
+      rawRows: Number(r[7]) || 0, appliedRows: Number(r[8]) || 0, unmatched: Number(r[9]) || 0,
+      warnings: _offStr(r[10]), status: _offStr(r[11])
+    };
+  }).filter(function (x) { return x.uploadId; });
+  items.reverse();
+  return { success: true, items: items };
+}
+
+/* 채널·데이터유형별 마지막 기준일과 이번 달 빈 날짜.
+   원장이 아니라 **업로드로그**로 판단한다 — 판매가 0인 날은 판매원장에 행이 없어서, 원장만 보면
+   "업로드는 했는데 판매가 없었던 날"과 "파일을 안 올린 날"을 구분할 수 없다.
+   빈 날짜 = 이번 달 1일 ~ 어제 중 어떤 업로드도 덮지 않은 날(하이마트는 스냅샷 기준일이 없는 날). */
+function _offGetStatus() {
+  var cache = CacheService.getScriptCache();
+  var hit = _cacheGetJSON(cache, 'offline:status');
+  if (hit) { hit.cached = true; return hit; }
+  var ss = _offSS();
+  var channels = _offReadRows(_offSheet(ss, 'channel'), OFF_TABS.channel).filter(function (r) { return r[0]; });
+  var logRows = _offReadRows(_offSheet(ss, 'uploadLog'), OFF_TABS.uploadLog);
+  var today = _offToday();
+  var monthStart = today.slice(0, 8) + '01';
+  var yesterday = _offAddDays(today, -1);
+  var byCh = {};
+  channels.forEach(function (r) { byCh[r[0]] = { channelId: r[0], name: r[1], active: r[3], order: r[4], salesLast: '', stockLast: '', covered: {} }; });
+  logRows.forEach(function (r) {
+    var ft = OFF_FILE_TYPES[r[4]];
+    var st = byCh[r[5]];
+    if (!ft || !st || r[11] !== '성공') return;
+    var parts = String(r[6] || '').split('~');
+    var a = parts[0], b = parts[1] || parts[0];
+    if (!_offIsDate(a) || !_offIsDate(b)) return;
+    if (ft.kind === 'period' || ft.kind === 'himart') {
+      if (b > st.salesLast) st.salesLast = b;
+      for (var d = a; d <= b; d = _offAddDays(d, 1)) st.covered[d] = true;
+    }
+    if (ft.kind === 'snapshot' || ft.kind === 'himart') {
+      if (a > st.stockLast) st.stockLast = a;
+    }
+  });
+  var out = { success: true, today: today, month: today.slice(0, 7), channels: [] };
+  Object.keys(byCh).forEach(function (id) {
+    var st = byCh[id];
+    if (st.active !== 'Y' && !st.salesLast && !st.stockLast) return; // 안 쓰는 채널은 생략
+    var missing = [];
+    for (var d = monthStart; d <= yesterday; d = _offAddDays(d, 1)) if (!st.covered[d]) missing.push(d);
+    out.channels.push({ channelId: id, name: st.name, salesLast: st.salesLast, stockLast: st.stockLast, missingDays: missing, order: st.order });
+  });
+  out.channels.sort(function (x, y) { return (Number(x.order) || 99) - (Number(y.order) || 99); });
+  _cachePutJSON(cache, 'offline:status', out, OFF_CACHE_TTL_SEC);
+  return out;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── 마스터 쓰기 ──
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function _offNextSkuId(rows) {
+  var max = 0;
+  rows.forEach(function (r) {
+    var m = /^SKU-(\d+)$/.exec(r[0]);
+    if (m && +m[1] > max) max = +m[1];
+  });
+  var n = String(max + 1);
+  while (n.length < 4) n = '0' + n;
+  return 'SKU-' + n;
+}
+
+// 제품마스터 추가(sku.skuId 없음) / 수정(sku.skuId 있음)
+function _offSaveSku(data, auth) {
+  var s = data.sku || {};
+  var line = String(s.line || '').trim();
+  if (OFFLINE_PRODUCT_LINES.indexOf(line) < 0) throw new Error('품목군은 ' + OFFLINE_PRODUCT_LINES.join(', ') + ' 중 하나여야 합니다 (받은 값: ' + line + ')');
+  var name = String(s.name || '').trim();
+  if (!name) throw new Error('표준명이 비었습니다.');
+  var order = (s.order === '' || s.order == null) ? '' : Number(s.order);
+  if (order !== '' && !isFinite(order)) throw new Error('정렬순서는 숫자여야 합니다.');
+  return _offWithLock(function () {
+    var ss = _offSS();
+    var def = OFF_TABS.sku;
+    var sheet = _offSheet(ss, 'sku');
+    var rows = _offReadRows(sheet, def);
+    var prev = rows.length;
+    var id = String(s.skuId || '').trim();
+    var row = null;
+    if (id) {
+      for (var i = 0; i < rows.length; i++) if (rows[i][0] === id) { row = rows[i]; break; }
+      if (!row) throw new Error('없는 sku_id 입니다: ' + id);
+    } else {
+      id = _offNextSkuId(rows);
+      row = [id, '', '', '', '', '', '', ''];
+      rows.push(row);
+    }
+    row[1] = name; row[2] = line;
+    row[3] = String(s.model || '').trim(); row[4] = String(s.option || '').trim();
+    row[5] = s.active === 'N' ? 'N' : 'Y'; row[6] = order; row[7] = String(s.note || '').trim();
+    _offWriteAll(sheet, def, rows, prev);
+    _offInvalidateCache();
+    Logger.log('[오프라인] SKU 저장 ' + id + ' by ' + auth.email);
+    return { success: true, sku: _offSkuObj(row) };
+  });
+}
+
+/* 코드매핑 추가·수정·비활성화 (여러 건 한 번에).
+   items: [{ op: 'upsert'|'deactivate', channelId, code, skuId, stockType, name, note }]
+   비활성화 = sku_id를 비우고 비고에 기록 — 행(이력)은 남기고, 코드는 다시 미매칭 목록으로 올린다. */
+function _offSaveMapping(data, auth) {
+  var items = data.items || [];
+  if (!items.length) throw new Error('저장할 매핑이 없습니다.');
+  return _offWithLock(function () {
+    var ss = _offSS();
+    var today = _offToday();
+    var skuIds = {}, channelIds = {};
+    _offReadRows(_offSheet(ss, 'sku'), OFF_TABS.sku).forEach(function (r) { if (r[0]) skuIds[r[0]] = true; });
+    _offReadRows(_offSheet(ss, 'channel'), OFF_TABS.channel).forEach(function (r) { if (r[0]) channelIds[r[0]] = true; });
+
+    var mDef = OFF_TABS.mapping, mSheet = _offSheet(ss, 'mapping');
+    var mRows = _offReadRows(mSheet, mDef);
+    var mPrev = mRows.length;
+    var idx = {};
+    mRows.forEach(function (r) { idx[r[0] + OFF_KEY_SEP + r[1]] = r; });
+    var mappedNow = {}, deactivated = [];
+    items.forEach(function (it) {
+      var ch = String(it.channelId || '').trim(), code = String(it.code || '').trim();
+      if (!channelIds[ch]) throw new Error('채널마스터에 없는 channel_id 입니다: ' + ch);
+      if (!code) throw new Error('원본코드가 비었습니다.');
+      var k = ch + OFF_KEY_SEP + code;
+      var row = idx[k];
+      if (it.op === 'deactivate') {
+        if (!row) throw new Error('매핑이 없는 코드입니다: ' + ch + ' / ' + code);
+        row[2] = '';
+        row[7] = ('비활성화 ' + today + ' ' + auth.email + (row[7] ? ' · ' + row[7] : '')).slice(0, 500);
+        deactivated.push(row);
+        return;
+      }
+      var sku = String(it.skuId || '').trim();
+      if (!skuIds[sku]) throw new Error('제품마스터에 없는 sku_id 입니다: ' + sku);
+      var st = it.stockType || '정상';
+      if (OFF_STOCK_TYPES.indexOf(st) < 0) throw new Error('재고구분은 ' + OFF_STOCK_TYPES.join('/') + ' 중 하나여야 합니다: ' + st);
+      if (!row) { row = [ch, code, '', '', '', '', '', '']; mRows.push(row); idx[k] = row; }
+      row[2] = sku; row[3] = st;
+      if (it.name) row[4] = String(it.name).trim();
+      row[5] = today; row[6] = auth.email;
+      if (it.note !== undefined) row[7] = String(it.note || '').trim();
+      mappedNow[k] = true;
+    });
+    _offWriteAll(mSheet, mDef, mRows, mPrev);
+
+    // 미매칭코드 — 매핑된 코드는 빼고, 비활성화된 코드는 다시 올린다
+    var uDef = OFF_TABS.unmatched, uSheet = _offSheet(ss, 'unmatched');
+    var uRows = _offReadRows(uSheet, uDef);
+    var uPrev = uRows.length;
+    var kept = uRows.filter(function (r) { return !mappedNow[r[0] + OFF_KEY_SEP + r[1]]; });
+    var inList = {};
+    kept.forEach(function (r) { inList[r[0] + OFF_KEY_SEP + r[1]] = true; });
+    deactivated.forEach(function (r) {
+      if (!inList[r[0] + OFF_KEY_SEP + r[1]]) kept.push([r[0], r[1], r[4], today, today, 0]);
+    });
+    _offWriteAll(uSheet, uDef, kept, uPrev);
+    _offInvalidateCache();
+    Logger.log('[오프라인] 매핑 저장 ' + items.length + '건 by ' + auth.email);
+    return { success: true, saved: Object.keys(mappedNow).length, deactivated: deactivated.length };
+  });
+}

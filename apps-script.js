@@ -10,6 +10,7 @@
  * 2. 이 파일 내용 전체 붙여넣기 후 저장
  * 3. 배포 → 새 배포 → 웹 앱으로 배포 → 새 URL 발급
  * 4. 대시보드 연결 설정에 새 URL 입력
+ * 오프라인 원장 기능은 같은 프로젝트의 두 번째 파일(apps-script-offline.js → 편집기 파일명 "offline")에 있다.
  */
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -19,7 +20,7 @@
 // 배포본 확인용 버전 문자열 — 이 파일을 수정할 때마다 값을 바꿔서, doGet 응답에 포함시켜
 // 프론트(REQUIRED_SCRIPT_VERSION — DASHBOARD_VERSION이 아님, 그쪽은 프론트 전용 버전이라 이 값과
 // 더 이상 짝을 맞추지 않음)와 대조하면 "로컬 파일 = 실제 배포본"인지 바로 확인 가능
-var SCRIPT_VERSION = 'session-2026-09-18-01';
+var SCRIPT_VERSION = 'offline-ledger-2026-09-27-01';
 
 // 메인 데이터 시트명 — 새 스프레드시트의 실제 탭명
 var MAIN_SHEET = '실적통합';
@@ -2634,7 +2635,9 @@ function doPost(e) {
     if (!auth.ok) return _json({ error: 'AUTH_REQUIRED', reason: auth.reason });
 
     if (body.action === 'presence') return _presenceHeartbeat(auth);
-    throw new Error('doPost는 presence 전용입니다 — 그 외 액션(' + body.action + ')은 doGet(GET)으로 보내야 합니다.');
+    // 오프라인 원장(apps-script-offline.js) — 업로드 레코드가 수백 KB라 GET 청크 대신 본문으로 받는다
+    if (String(body.action || '').indexOf('offline_') === 0) return _offlineHandle(body.action, body.data, auth);
+    throw new Error('doPost는 presence·offline_ 전용입니다 — 그 외 액션(' + body.action + ')은 doGet(GET)으로 보내야 합니다.');
   } catch (err) {
     return _json({ error: err.toString() });
   }
