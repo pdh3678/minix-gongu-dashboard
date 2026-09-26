@@ -197,7 +197,7 @@ console.log('\n[13] 임베드 로그인 — 팝업 방식 확인 + 차단 시 �
   ctx._openLoginInNewTab();
   check('새 탭 URL에서 embed 제거', opened.indexOf('embed') < 0, opened);
   check('보던 페이지(해시) 유지', opened.indexOf('#product-TheShift') >= 0, opened);
-  check('대시보드 원본 주소(새 서비스 주소)', opened.indexOf('minix-offline-dashboard.onrender.com/') >= 0, opened);
+  check('대시보드 원본 주소(새 서비스 주소)', opened.indexOf('minix-offlinepart-dashboard.onrender.com/') >= 0, opened);
 }
 {
   // 일반 모드에서는 같은 주소를 새 탭에 열어봤자 의미가 없으므로 버튼을 내보내지 않는다

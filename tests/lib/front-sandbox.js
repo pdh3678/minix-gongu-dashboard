@@ -85,7 +85,7 @@ function readFrontSource(projectPath) {
    X   — const/let 값 접근용 shim (DATA, 버전 문자열, _savingDeals 등)
 
    opts.search         — location.search 값('?embed=1' 등). 임베드 모드 검증용.
-   opts.hostname / opts.pathname / opts.hash — 접속 주소(기본 minix-offline-dashboard.onrender.com, '/', '').
+   opts.hostname / opts.pathname / opts.hash — 접속 주소(기본 minix-offlinepart-dashboard.onrender.com, '/', '').
    opts.localStorage   — 스크립트 실행 전에 넣어 둘 localStorage 값 {키: 값} (세션 복원 경로 검증용).
    opts.runHeadScripts — true면 본체보다 앞에 있는 작은 인라인 스크립트(임베드 판정 등)도
                          문서 순서대로 먼저 실행한다. 실제 브라우저와 같은 순서를 재현하기 위함. */
@@ -96,7 +96,7 @@ function loadFrontend(projectPath, extraShimBody, opts) {
   const head = entries.filter(e => e.kind === 'inline').map(e => e.code);
   const src = files.map(e => e.code).join('\n');
   const search = opts.search || '';
-  const hostname = opts.hostname || 'minix-offline-dashboard.onrender.com';
+  const hostname = opts.hostname || 'minix-offlinepart-dashboard.onrender.com';
 
   const sandbox = {
     console, Math, Date, JSON, Number, String, Boolean, Array, Object, Map, Set, RegExp, Error,

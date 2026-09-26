@@ -1,5 +1,5 @@
 <script>
-/* 서비스 주소 이전(2026-09-26) — 옛 주소(minix-gongu-dashboard)로 들어오면 새 주소(minix-offline-dashboard)로 옮긴다.
+/* 서비스 주소 이전(2026-09-26) — 옛 주소(minix-gongu-dashboard)로 들어오면 새 주소(minix-offlinepart-dashboard)로 옮긴다.
    경로·쿼리(?embed=1)·해시(#calendar 등)를 그대로 붙여서, 워크스페이스 iframe 미러링과 북마크가 같은 화면으로 이어진다.
    hostname이 정확히 옛 주소일 때만 동작 — 새 주소·localhost에서는 아무 일도 하지 않는다(무한 리다이렉트 방지).
    ⚠ 다른 모든 스크립트보다 먼저 있어야 한다. __SERVICE_MOVED__가 서 있으면 main.js의 부트스트랩이 시작하지 않는다
@@ -8,7 +8,7 @@
 (function(){
   if(location.hostname==='minix-gongu-dashboard.onrender.com'){
     window.__SERVICE_MOVED__=true;
-    location.replace('https://minix-offline-dashboard.onrender.com'+location.pathname+location.search+location.hash);
+    location.replace('https://minix-offlinepart-dashboard.onrender.com'+location.pathname+location.search+location.hash);
   }
 })();
 </script>
